@@ -138,3 +138,8 @@ _LOGGER = logging.getLogger(__name__)
 - Keep the integration lightweight and efficient
 - Use Home Assistant's helper utilities when available
 - Follow the principle: clean, readable, testable, and maintainable code
+
+## Documentation
+
+- Place documentation files in the `docs/` fodler
+    - Excpetion: README.md, CHANGELOG.md, CONTRIBUTING.md, LICENSE

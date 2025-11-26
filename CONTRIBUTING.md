@@ -16,12 +16,95 @@ instructions for contributing to the project.
 
 ## Development Setup
 
+### Quick Start with Pre-configured Container (Recommended)
+
+The fastest way to develop and test:
+
 ```bash
 # Clone the repository
 git clone https://gitlab.com/valsr/haanim.git
 cd haanim
 
-# Create a virtual environment (optional but recommended)
+# Build and start the development environment (one command!)
+./podman/build-and-run.sh
+```
+
+This will:
+
+- Build a pre-configured Home Assistant image
+- Start the container with your code live-mounted
+- Auto-login as admin (no password needed)
+- HACS pre-installed and configured
+- HAAnim integration pre-configured
+- Automatically open your browser
+
+After making changes to the code:
+
+```bash
+# Restart to apply changes
+./podman/restart.sh
+
+# View logs to debug
+./podman/logs.sh
+
+# Stop when done
+./podman/stop.sh
+```
+
+See [CONTAINER_DEV.md](CONTAINER_DEV.md) or [dev/README.md](podman/README.md) for complete
+documentation.
+
+### Using VS Code (Recommended)
+
+1. Open the project in VS Code
+2. Press **Ctrl+Shift+B** (or Cmd+Shift+B on Mac)
+3. Select "Container: Build and Run"
+4. VS Code will build, start, and open your browser automatically
+
+All container tasks are available via:
+
+- **Ctrl+Shift+B** - Quick access to build task
+- **Ctrl+Shift+P** → "Tasks: Run Task" - All available tasks
+
+### Manual Setup with UV
+
+For local development without containers:
+
+UV is a fast Python package manager that makes dependency management easy:
+
+```bash
+# Clone the repository
+git clone https://gitlab.com/valsr/haanim.git
+cd haanim
+
+# Install UV and dependencies
+make install
+
+# Install dev dependencies
+make dev
+
+# Run tests
+make test
+
+# Format code
+make format
+
+# Run linting
+make lint
+```
+
+See [UV_GUIDE.md](UV_GUIDE.md) for comprehensive UV usage instructions.
+
+#### Traditional pip Setup
+
+If you prefer not to use UV:
+
+```bash
+# Clone the repository
+git clone https://gitlab.com/valsr/haanim.git
+cd haanim
+
+# Create a virtual environment
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
@@ -29,7 +112,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install homeassistant
 
 # Install development dependencies
-pip install black flake8 pylint mypy
+pip install black flake8 pylint mypy pytest
 ```
 
 ## Code Style
@@ -44,9 +127,31 @@ pip install black flake8 pylint mypy
 
 Before submitting a merge request:
 
-1. Test your changes in a Home Assistant development environment
-2. Ensure all existing functionality still works
-3. Add tests for new features if applicable
+1. Run the test suite: `make test` (or `uv run pytest`)
+2. Ensure code is formatted: `make format` (or `uv run black custom_components/haanim/`)
+3. Run linting checks: `make lint` (or use individual linters)
+4. Test your changes in a Home Assistant development environment
+5. Ensure all existing functionality still works
+6. Add tests for new features if applicable
+
+### Running Tests
+
+```bash
+# Using Make
+make test
+
+# Using UV directly
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=custom_components/haanim
+
+# Run specific test file
+uv run pytest tests/test_config_flow.py
+
+# Run with verbose output
+uv run pytest -v
+```
 
 ## Commit Messages
 
@@ -64,6 +169,7 @@ Before submitting a merge request:
 ## Questions?
 
 If you have questions, feel free to:
+
 - Open an issue on GitLab
 - Ask in the Home Assistant community forums
 

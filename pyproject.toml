@@ -1,0 +1,110 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "haanim"
+version = "0.1.0"
+description = "A Home Assistant custom component for HAAnim integration"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Your Name", email = "your.email@example.com" }]
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = ["homeassistant>=2024.1.0"]
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.0.0",
+    "pylint>=3.0.0",
+    "flake8>=7.0.0",
+    "mypy>=1.8.0",
+    "pytest>=8.0.0",
+    "pytest-homeassistant-custom-component>=0.13.0",
+    "pytest-cov>=4.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/valsr/haanim"
+Documentation = "https://github.com/valsr/haanim"
+Repository = "https://gitlab.com/valsr/haanim"
+Issues = "https://github.com/valsr/haanim/issues"
+
+[dependency-groups]
+dev = [
+    "black>=24.0.0",
+    "pylint>=3.0.0",
+    "flake8>=7.0.0",
+    "mypy>=1.8.0",
+    "pytest>=8.0.0",
+    "pytest-homeassistant-custom-component>=0.13.0",
+    "pytest-cov>=4.1.0",
+]
+
+[tool.black]
+line-length = 110
+target-version = ["py311", "py312"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.pylint.main]
+py-version = "3.11"
+ignore = [".venv", "venv", ".pytest_cache"]
+max-line-length = 110
+
+[tool.pylint.messages_control]
+disable = [
+    "too-few-public-methods",
+    "too-many-instance-attributes",
+    "too-many-arguments",
+]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=custom_components/haanim --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["custom_components/haanim"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]

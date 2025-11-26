@@ -1,0 +1,60 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov
+
+# UV
+.venv
+.uv
+uv.lock
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Development
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# CI/CD
+.gitlab-ci.yml
+.github/
+
+# Dev environment
+podman/logs.sh
+podman/restart.sh
+podman/shell.sh
+podman/start.sh
+podman/stop.sh
+podman/*.md
+podman/config/
+
+# Docker
+docker-compose.yml
+docker-compose.*.yml
+!docker-compose.dev.yml
+Dockerfile
+!Dockerfile.dev
+
+# Tests
+tests/
+*.test.py
+
+# Misc
+.DS_Store
+Thumbs.db

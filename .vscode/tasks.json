@@ -1,0 +1,166 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+    "label": "Container: Build and Run",
+      "type": "shell",
+    "command": "./podman/build-and-run.sh",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+      },
+      "runOptions": {
+        "runOn": "default"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+    "label": "Container: Build Image",
+      "type": "shell",
+    "command": "./podman/build-image.sh",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "clear": true
+    }
+},
+{
+    "label": "Container: Start",
+    "type": "shell",
+    "command": "bash",
+    "args": [
+        "-c",
+        "if command -v podman >/dev/null 2>&1; then podman start haanim-dev; elif command -v docker >/dev/null 2>&1; then docker start haanim-dev; else echo 'Neither podman nor docker found'; exit 1; fi"
+    ],
+    "problemMatcher": [],
+    "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": false
+      }
+    },
+    {
+    "label": "Container: Stop",
+      "type": "shell",
+    "command": "./podman/stop.sh",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": false
+      }
+    },
+    {
+    "label": "Container: Restart",
+      "type": "shell",
+    "command": "./podman/restart.sh",
+    "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": false
+      }
+    },
+    {
+    "label": "Container: View Logs",
+      "type": "shell",
+    "command": "./podman/logs.sh",
+      "problemMatcher": [],
+    "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      }
+    },
+    {
+    "label": "Container: Open Shell",
+      "type": "shell",
+    "command": "./podman/shell.sh",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      }
+    },
+    {
+      "label": "Open Home Assistant in Browser",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "-c",
+        "if command -v xdg-open >/dev/null 2>&1; then xdg-open http://localhost:8123; elif command -v open >/dev/null 2>&1; then open http://localhost:8123; elif command -v start >/dev/null 2>&1; then start http://localhost:8123; else echo Could not detect the web browser to use.; exit 1; fi; sleep 1"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared",
+        "focus": false
+      }
+    },
+    {
+      "label": "Format Code (Black)",
+      "type": "shell",
+      "command": "uv",
+      "args": [
+        "run",
+        "black",
+        "--line-length",
+        "110",
+        "custom_components/haanim/"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": false
+      }
+    },
+    {
+      "label": "Run Tests (pytest)",
+      "type": "shell",
+      "command": "uv",
+      "args": [
+        "run",
+        "pytest",
+        "-v",
+        "--cov=custom_components/haanim"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Run Linting (Pylint)",
+      "type": "shell",
+      "command": "uv",
+      "args": [
+        "run",
+        "pylint",
+        "custom_components/haanim/"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      }
+    }
+  ]
+}

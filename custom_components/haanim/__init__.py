@@ -13,9 +13,7 @@ from homeassistant.helpers.typing import ConfigType
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "haanim"
-PLATFORMS: list[Platform] = (
-    []
-)  # Add platforms like Platform.SENSOR, Platform.SWITCH, etc.
+PLATFORMS: list[Platform] = []  # Add platforms like Platform.SENSOR, Platform.SWITCH, etc.
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:

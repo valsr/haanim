@@ -1,0 +1,72 @@
+# Development Home Assistant Configuration
+
+# Configure Home Assistant
+homeassistant:
+  name: HAAnim Development
+  latitude: 0
+  longitude: 0
+  elevation: 0
+  unit_system: metric
+  time_zone: UTC
+  allowlist_external_dirs:
+    - /config/custom_components
+  # Bypass authentication for development
+  auth_providers:
+    - type: homeassistant
+    - type: trusted_networks
+      trusted_networks:
+        - 127.0.0.1
+        - ::1
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+        - 10.0.0.0/8
+        - 0.0.0.0/0
+      allow_bypass_login: true
+
+# Enable the frontend
+frontend:
+
+# Enable configuration UI
+config:
+
+# Enable system health information
+system_health:
+
+# Enable Home Assistant history
+history:
+
+# Enable logbook
+logbook:
+
+# Enable map
+map:
+
+# Text to speech
+tts:
+  - platform: google_translate
+
+# Enable discovery
+discovery:
+
+# Enable mobile app support
+mobile_app:
+
+# Enable Python script
+python_script:
+
+# Logger configuration for debugging
+logger:
+  default: info
+  logs:
+    custom_components.haanim: debug
+    custom_components.hacs: info
+    homeassistant.components.http: warning
+
+# Example automation for testing
+automation: !include automations.yaml
+
+# Example scene for testing
+scene: !include scenes.yaml
+
+# Example script for testing
+script: !include scripts.yaml

@@ -1,0 +1,38 @@
+FROM docker.io/homeassistant/home-assistant:latest
+
+# Set environment variables
+ENV TZ=UTC
+
+# Create necessary directories
+RUN mkdir -p /config/custom_components \
+    && mkdir -p /config/.storage \
+    && mkdir -p /config/python_scripts
+
+# Copy configuration files
+COPY podman/container-config/configuration.yaml /config/configuration.yaml
+COPY podman/container-config/automations.yaml /config/automations.yaml
+COPY podman/container-config/scenes.yaml /config/scenes.yaml
+COPY podman/container-config/scripts.yaml /config/scripts.yaml
+
+# Copy pre-configured storage files
+COPY podman/container-config/.storage/onboarding /config/.storage/onboarding
+COPY podman/container-config/.storage/auth /config/.storage/auth
+COPY podman/container-config/.storage/auth_provider.homeassistant /config/.storage/auth_provider.homeassistant
+COPY podman/container-config/.storage/core.config_entries /config/.storage/core.config_entries
+COPY podman/container-config/.storage/frontend.user_data_admin_user_id_12345 /config/.storage/frontend.user_data_admin_user_id_12345
+
+# Note: HAAnim integration is mounted as a volume from the host
+# This allows live code changes without rebuilding the container
+
+# Set proper permissions
+RUN chown -R root:root /config
+
+# Expose port
+EXPOSE 8123
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8123 || exit 1
+
+# Start Home Assistant
+CMD ["python", "-m", "homeassistant", "--config", "/config"]

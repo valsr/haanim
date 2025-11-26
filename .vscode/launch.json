@@ -1,0 +1,91 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run: Home Assistant Development",
+      "type": "node",
+      "request": "launch",
+      "preLaunchTask": "Run: Start Dev Environment & Open Browser",
+      "serverReadyAction": {
+        "pattern": "Home Assistant is ready!",
+        "action": "debugWithChrome",
+        "uriFormat": "http://localhost:8123"
+      },
+      "presentation": {
+        "hidden": false,
+        "group": "homeassistant",
+        "order": 1
+      }
+    },
+    {
+      "name": "Debug: Attach to Home Assistant Container",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}/custom_components/haanim",
+          "remoteRoot": "/config/custom_components/haanim"
+        }
+      ],
+      "justMyCode": false,
+      "presentation": {
+        "hidden": false,
+        "group": "homeassistant",
+        "order": 2
+      }
+    },
+    {
+      "name": "Debug: Current Python File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "presentation": {
+        "hidden": false,
+        "group": "python",
+        "order": 1
+      }
+    },
+    {
+      "name": "Debug: Pytest Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "${file}",
+        "-v",
+        "-s"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "presentation": {
+        "hidden": false,
+        "group": "testing",
+        "order": 1
+      }
+    },
+    {
+      "name": "Debug: All Pytest Tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "tests/",
+        "-v",
+        "-s"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "presentation": {
+        "hidden": false,
+        "group": "testing",
+        "order": 2
+      }
+    }
+  ]
+}

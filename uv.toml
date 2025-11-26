@@ -1,0 +1,5 @@
+# UV Configuration
+# https://docs.astral.sh/uv/configuration/
+
+# This file is optional - UV works well with defaults
+# Uncomment and modify settings as needed
