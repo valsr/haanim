@@ -1,0 +1,7 @@
+{
+    "name": "HAAnim",
+    "content_in_root": false,
+    "filename": "haanim.zip",
+    "render_readme": true,
+    "homeassistant": "2023.1.0"
+}

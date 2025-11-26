@@ -1,0 +1,13 @@
+{
+    "domain": "haanim",
+    "name": "HAAnim",
+    "codeowners": [
+        "@yourusername"
+    ],
+    "config_flow": true,
+    "documentation": "https://github.com/yourusername/haanim",
+    "issue_tracker": "https://github.com/yourusername/haanim/issues",
+    "requirements": [],
+    "version": "0.1.0",
+    "iot_class": "local_polling"
+}
