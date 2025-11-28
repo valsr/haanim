@@ -51,14 +51,14 @@ Your code in `custom_components/haanim/` is live-mounted. Just edit and restart!
 
 ### Common Commands
 
-| Command                     | Description                          |
-| --------------------------- | ------------------------------------ |
-| `./podman/build-and-run.sh` | Build image and start (one command!) |
-| `./podman/restart.sh`       | Restart after code changes           |
-| `./podman/stop.sh`          | Stop container                       |
-| `./podman/logs.sh`          | View real-time logs (Ctrl+C to exit) |
-| `./podman/shell.sh`         | Open shell in container              |
-| `./podman/build-image.sh`   | Rebuild image (after config changes) |
+| Command                    | Description                           |
+| -------------------------- | ------------------------------------- |
+| `./podman/build-and-run.sh`   | Build image and start (one command!)  |
+| `./podman/restart.sh`         | Restart after code changes            |
+| `./podman/stop.sh`            | Stop container                        |
+| `./podman/logs.sh`            | View real-time logs (Ctrl+C to exit)  |
+| `./podman/shell.sh`           | Open shell in container               |
+| `./podman/build-image.sh`     | Rebuild image (after config changes)  |
 
 ### VS Code Integration (Recommended)
 

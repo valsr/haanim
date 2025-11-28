@@ -51,7 +51,7 @@ After making changes to the code:
 ./podman/stop.sh
 ```
 
-See [CONTAINER_DEV.md](CONTAINER_DEV.md) or [dev/README.md](podman/README.md) for complete
+See [docs/CONTAINER_DEV.md](docs/CONTAINER_DEV.md) or [podman/README.md](podman/README.md) for complete
 documentation.
 
 ### Using VS Code (Recommended)
@@ -93,7 +93,7 @@ make format
 make lint
 ```
 
-See [UV_GUIDE.md](UV_GUIDE.md) for comprehensive UV usage instructions.
+See [docs/UV_GUIDE.md](docs/UV_GUIDE.md) for comprehensive UV usage instructions.
 
 #### Traditional pip Setup
 

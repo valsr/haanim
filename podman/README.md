@@ -17,7 +17,7 @@ This will:
 - Open your browser to Home Assistant
 - Auto-login as admin (no password needed)
 
-See [CONTAINER_DEV.md](../CONTAINER_DEV.md) for complete documentation.
+See [CONTAINER_DEV.md](../docs/CONTAINER_DEV.md) for complete documentation.
 
 ## Directory Structure
 
@@ -38,20 +38,17 @@ See [CONTAINER_DEV.md](../CONTAINER_DEV.md) for complete documentation.
   - `automations.yaml`, `scenes.yaml`, `scripts.yaml` - Empty config files
   - See [container-config/README.md](container-config/README.md) for details
 
+
+
 ### Documentation
 
-- **[HACS_SETUP.md](HACS_SETUP.md)** - HACS setup and GitHub authentication
-- **[COMPONENTS.md](COMPONENTS.md)** - Component management information
 - **[PODMAN_INFO.md](PODMAN_INFO.md)** - Podman-specific troubleshooting
+- **[../docs/CONTAINER_DEV.md](../docs/CONTAINER_DEV.md)** - Complete container development guide
 
 ## Available Scripts
 
 ### Build and Run (Recommended)
 
-Build the image and start the container in one command:
-
-```bash
-./podman/build-and-run.sh
 ```
 
 ### Build Image Only
@@ -158,12 +155,11 @@ podman stop <container-name>
 
 For more troubleshooting, see:
 
-- [CONTAINER_DEV.md](../CONTAINER_DEV.md) - Complete container guide
+- [CONTAINER_DEV.md](../docs/CONTAINER_DEV.md) - Complete container guide
 - [PODMAN_INFO.md](PODMAN_INFO.md) - Podman-specific issues
 
 ## Additional Resources
 
-- **[../CONTAINER_DEV.md](../CONTAINER_DEV.md)** - Complete development container guide
-- **[../QUICKSTART_CONTAINER.md](../QUICKSTART_CONTAINER.md)** - Quick reference
+- **[../docs/CONTAINER_DEV.md](../docs/CONTAINER_DEV.md)** - Complete development container guide
+- **[../docs/QUICKSTART_CONTAINER.md](../docs/QUICKSTART_CONTAINER.md)** - Quick reference
 - **[container-config/README.md](container-config/README.md)** - Configuration details
-- **[HACS_SETUP.md](HACS_SETUP.md)** - HACS authentication guide

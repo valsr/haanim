@@ -28,12 +28,6 @@ HAAnim is a custom integration for Home Assistant that allows you to [describe w
 2. Repository: `https://gitlab.com/valsr/haanim`
 3. Category: **Integration**
 4. Click **ADD**
-5. **HACS** → **Integrations** → **+ Explore & Download**
-6. Search **"HAAnim"** → **Download**
-7. **Restart Home Assistant**
-
-For detailed instructions, see [HACS_QUICKSTART.md](HACS_QUICKSTART.md) or
-[HACS_INTEGRATION.md](HACS_INTEGRATION.md).
 
 ### Manual Installation
 
@@ -102,7 +96,7 @@ vim custom_components/haanim/sensor.py
 - Debug logging enabled
 - All setup wizards completed
 
-See [CONTAINER_DEV.md](CONTAINER_DEV.md) or [QUICKSTART_CONTAINER.md](QUICKSTART_CONTAINER.md)
+See [docs/CONTAINER_DEV.md](docs/CONTAINER_DEV.md) or [docs/QUICKSTART_CONTAINER.md](docs/QUICKSTART_CONTAINER.md)
 for complete documentation.
 
 ### VS Code Tasks (Recommended for VS Code Users)
@@ -125,7 +119,7 @@ The project includes pre-configured VS Code tasks for an optimal development exp
 - Container management tasks
 - Python debugging support
 
-See [VSCODE_TASKS.md](VSCODE_TASKS.md) for complete documentation.
+See [docs/VSCODE_TASKS.md](docs/VSCODE_TASKS.md) for complete documentation.
 
 ### VS Code DevContainer
 
@@ -212,7 +206,7 @@ This project uses GitLab CI for automated testing and quality checks. Every push
 - **Coverage reporting**: Automatic coverage calculation and reporting
 - **Security scanning**: Secret detection and dependency scanning
 
-See [GITLAB_CI_GUIDE.md](GITLAB_CI_GUIDE.md) for detailed pipeline documentation.
+See [docs/GITLAB_CI_GUIDE.md](docs/GITLAB_CI_GUIDE.md) for detailed pipeline documentation.
 
 ## Contributing
 
