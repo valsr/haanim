@@ -159,15 +159,15 @@ All tool configurations are now in `pyproject.toml`:
 
 ### Black (Code Formatter)
 - Line length: 110 characters
-- Target: Python 3.11, 3.12
+- Target: Python 3.13
 
 ### Pylint (Linter)
-- Python version: 3.11
+- Python version: 3.13
 - Line length: 110 characters
 - Disabled some overly strict rules
 
 ### Mypy (Type Checker)
-- Python version: 3.11
+- Python version: 3.13
 - Strict mode enabled
 - Imports are checked
 
@@ -224,7 +224,6 @@ However, **UV is now the recommended approach** for consistency and speed.
 The project uses GitLab CI with comprehensive pipeline in `.gitlab-ci.yml`:
 
 **Features:**
-- Multi-version testing (Python 3.11 and 3.12)
 - Parallel test and lint jobs
 - Coverage reporting with artifacts
 - Caching for faster builds

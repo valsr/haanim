@@ -19,8 +19,8 @@ The GitLab CI pipeline is configured in `.gitlab-ci.yml` and uses UV for fast, r
 
 #### Test Jobs
 
-**`test:python3.11`** and **`test:python3.12`**
-- Runs on Python 3.11 and 3.12 respectively
+**`test:python3.13`**
+- Runs on Python 3.13
 - Executes pytest with coverage reporting
 - Generates coverage artifacts in multiple formats
 - Coverage badge automatically extracted from output
@@ -304,13 +304,9 @@ Test multiple configurations:
   script:
     - uv run pytest
 
-test:python3.11:
+test:python3.13:
   extends: .test_template
-  image: python:3.11
-
-test:python3.12:
-  extends: .test_template
-  image: python:3.12
+  image: python:3.13
 ```
 
 ## Best Practices

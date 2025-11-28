@@ -6,8 +6,7 @@
 Stages: setup → test → lint → security
 
 Jobs:
-  test:python3.11    ─┐
-  test:python3.12     ├─ Parallel
+  test:python3.13     ├─ Parallel
   lint:black         ─┤
   lint:pylint         │
   lint:flake8         │
@@ -26,8 +25,7 @@ Jobs:
 
 | Job                | Purpose              | Blocks MR? |
 | ------------------ | -------------------- | ---------- |
-| `test:python3.11`  | Tests on Python 3.11 | ✅ Yes      |
-| `test:python3.12`  | Tests on Python 3.12 | ✅ Yes      |
+| `test:python3.13`  | Tests on Python 3.13 | ✅ Yes      |
 | `lint:black`       | Code formatting      | ✅ Yes      |
 | `lint:pylint`      | Python linting       | ❌ No       |
 | `lint:flake8`      | Style checking       | ❌ No       |

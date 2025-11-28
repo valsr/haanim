@@ -201,7 +201,6 @@ make check     # Run all checks
 
 This project uses GitLab CI for automated testing and quality checks. Every push and merge request triggers:
 
-- **Multi-version testing**: Tests run on Python 3.11 and 3.12
 - **Code quality checks**: Black, Pylint, Flake8, and Mypy
 - **Coverage reporting**: Automatic coverage calculation and reporting
 - **Security scanning**: Secret detection and dependency scanning

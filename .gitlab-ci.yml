@@ -43,10 +43,10 @@ cache:
 # Test Stage
 # ================================
 
-test:python3.11:
+test:python3.13:
   extends: .uv_setup
   stage: test
-  image: python:3.11
+  image: python:3.13
   script:
     - uv run pytest --cov=custom_components/haanim --cov-report=term --cov-report=xml --cov-report=html
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'

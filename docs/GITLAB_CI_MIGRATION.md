@@ -10,7 +10,6 @@ The HAAnim project has been successfully configured to use **GitLab CI** as the 
 
 1. **`.gitlab-ci.yml`** - Comprehensive GitLab CI pipeline
    - Replaces basic security scanning with full CI/CD pipeline
-   - Multi-version testing (Python 3.11 and 3.12)
    - Parallel test and lint jobs
    - Coverage reporting with artifacts
    - Dependency caching for speed
@@ -37,9 +36,7 @@ The HAAnim project has been successfully configured to use **GitLab CI** as the 
 - **Security** - Secret detection
 
 #### Test Jobs
-- `test:python3.11` - Run tests on Python 3.11
-- `test:python3.12` - Run tests on Python 3.12
-- Both generate coverage reports in multiple formats
+- `test:python3.13` - Run tests on Python 3.13
 
 #### Lint Jobs
 - `lint:black` - Code formatting check (blocks MR if fails)
@@ -87,8 +84,7 @@ stages:
   - security # Security scans
 
 Jobs:
-  ├── test:python3.11 ─┐
-  ├── test:python3.12  ├─ Run in parallel
+  ├── test:python3.13 ─┐
   ├── lint:black      ─┤
   ├── lint:pylint      │
   ├── lint:flake8      │

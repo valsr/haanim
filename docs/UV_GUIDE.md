@@ -299,7 +299,7 @@ python --version
 ### GitLab CI (Current Platform)
 
 The project includes a comprehensive `.gitlab-ci.yml` that:
-- Tests on Python 3.11 and 3.12
+- Tests on Python 3.13
 - Runs all linting and formatting checks
 - Generates coverage reports
 - Caches dependencies for faster builds
