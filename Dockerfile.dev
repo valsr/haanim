@@ -1,7 +1,7 @@
 FROM docker.io/homeassistant/home-assistant:latest
 
 # Set environment variables
-ENV TZ=UTC
+ENV TZ=America/Toronto
 
 # Create necessary directories
 RUN mkdir -p /config/custom_components \

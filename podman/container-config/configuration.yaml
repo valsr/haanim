@@ -3,11 +3,13 @@
 # Configure Home Assistant
 homeassistant:
   name: HAAnim Development
-  latitude: 0
-  longitude: 0
-  elevation: 0
+  latitude: 43.6532
+  longitude: -79.3832
+  elevation: 76
   unit_system: metric
-  time_zone: UTC
+  time_zone: America/Toronto
+  country: CA
+  currency: CAD
   allowlist_external_dirs:
     - /config/custom_components
   # Bypass authentication for development
