@@ -11,10 +11,10 @@ import logging
 import re
 from abc import ABC, abstractmethod
 from datetime import datetime, time, timedelta
-from typing import Any, Callable
+from typing import Any
 
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers.sun import get_astral_event_next
 from homeassistant.util import dt as dt_util
 
@@ -24,9 +24,8 @@ from .const import (
     DECORATOR_STATE_TRIGGER,
     DECORATOR_TIME_ACTIVE,
     DECORATOR_TIME_TRIGGER,
-    EXEC_MODE_TRIGGER,
 )
-from .ha_state import StateManager, StateVal
+from .ha_state import StateManager
 from .ha_events import EventManager
 from .script_context import TriggerDefinition
 

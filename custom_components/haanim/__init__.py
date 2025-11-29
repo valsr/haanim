@@ -105,6 +105,11 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     from homeassistant.components import frontend
     from homeassistant.components.http import StaticPathConfig
 
+    # Check if panel is already registered
+    if DOMAIN in hass.data.get("frontend_panels", {}):
+        _LOGGER.debug("HAAnim panel already registered, skipping")
+        return
+
     # Get the path to the UI directory
     ui_dir = os.path.join(os.path.dirname(__file__), "ui")
 
@@ -125,6 +130,20 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     )
 
     _LOGGER.info("HAAnim panel registered successfully")
+
+
+async def _async_unregister_panel(hass: HomeAssistant) -> None:
+    """Unregister the HAAnim panel.
+
+    Args:
+        hass: Home Assistant instance.
+    """
+    from homeassistant.components import frontend
+
+    # Remove the panel if it exists
+    if DOMAIN in hass.data.get("frontend_panels", {}):
+        frontend.async_remove_panel(hass, DOMAIN)
+        _LOGGER.debug("HAAnim panel unregistered")
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -152,6 +171,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if "state_manager" in data:
         await data["state_manager"].async_teardown()
+
+    # Unregister the panel
+    await _async_unregister_panel(hass)
 
     # Unload platforms
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
