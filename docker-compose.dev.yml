@@ -15,3 +15,5 @@ services:
     volumes:
       # Mount HAAnim for live development
       - ./custom_components/haanim:/config/custom_components/haanim:z
+      # Mount HAAnim scripts folder
+      - ./podman/container-config/haanim:/config/haanim:z

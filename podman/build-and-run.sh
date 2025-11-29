@@ -39,6 +39,7 @@ $RUNNER run -d \
     -p 8123:8123 \
     --network host \
     -v ./custom_components/haanim:/config/custom_components/haanim:z \
+    -v ./podman/container-config/haanim:/config/haanim:z \
     haanim-dev:latest
 
 if [ $? -eq 0 ]; then
