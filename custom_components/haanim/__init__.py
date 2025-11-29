@@ -105,7 +105,7 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     from homeassistant.components import frontend
 
     # Get the path to the panel files
-    panel_dir = os.path.dirname(__file__)
+    panel_dir = os.path.join(os.path.dirname(__file__), "ui")
     panel_html_path = os.path.join(panel_dir, "panel.html")
     panel_css_path = os.path.join(panel_dir, "panel.css")
     panel_js_path = os.path.join(panel_dir, "panel.js")
