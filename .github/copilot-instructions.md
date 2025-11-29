@@ -1,9 +1,17 @@
 # GitHub Copilot Instructions for HAAnim
 
 ## Project Overview
-HAAnim is a Home Assistant Custom Component (HACS integration) that provides animation-related
-functionality for Home Assistant. This is a Python-based integration following Home Assistant's
-integration development guidelines.
+HAAnim is a Home Assistant Custom Component (HACS integration) that provides ability for end user to create
+and manage automation entities using python by loading and executing user defined python scripts. The aim of
+this integration is:
+1. Provide a flexible and powerful way for users to create complex automations using python (similar to
+    pyscript extension - https://github.com/custom-components/pyscript).
+2. Expose a simple and intuitive interface within Home Assistant for managing these automations - allowing
+    animations to be managed and executed.
+3. Ensure seamless integration with Home Assistant's core features, including state management, event handling,
+    and service calls.
+4. Allow animations to be easily shared and reused within the Home Assistant community via HACS.
+5. Provide robust error handling and logging to help users debug their scripts.
 
 ## Code Style and Standards
 
@@ -15,6 +23,7 @@ integration development guidelines.
 - Add comprehensive docstrings in Google format to all functions and classes
 - NEVER include "Attributes:" or "Methods:" sections in docstrings
 - Use async/await for all I/O operations
+- The integration should follow Home Assistant's best practices and coding standards to ensure compatibility
 
 ### Documentation Format
 When generating method or class documentation, always use Google format:

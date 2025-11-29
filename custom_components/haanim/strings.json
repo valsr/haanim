@@ -3,19 +3,81 @@
         "step": {
             "user": {
                 "title": "Set up HAAnim",
-                "description": "Configure your HAAnim integration",
+                "description": "Configure your HAAnim Python automation integration",
                 "data": {
-                    "name": "Name"
+                    "name": "Name",
+                    "script_folder": "Script Folder",
+                    "allow_all_imports": "Allow All Imports (Security Warning)"
+                },
+                "data_description": {
+                    "script_folder": "Folder path for automation scripts (relative to config or absolute)",
+                    "allow_all_imports": "If enabled, scripts can import any Python module. Use with caution!"
                 }
             }
         },
         "error": {
             "cannot_connect": "Failed to connect",
             "invalid_auth": "Invalid authentication",
+            "invalid_folder": "Invalid script folder path",
             "unknown": "Unexpected error occurred"
         },
         "abort": {
-            "already_configured": "Device is already configured"
+            "already_configured": "HAAnim is already configured"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "HAAnim Options",
+                "description": "Configure HAAnim settings. Default import allowlist: {default_allowlist}",
+                "data": {
+                    "script_folder": "Script Folder",
+                    "allow_all_imports": "Allow All Imports",
+                    "import_allowlist_str": "Import Allowlist (comma-separated)"
+                },
+                "data_description": {
+                    "script_folder": "Folder path for automation scripts",
+                    "allow_all_imports": "Allow scripts to import any module (security risk)",
+                    "import_allowlist_str": "Comma-separated list of allowed module names"
+                }
+            }
+        },
+        "error": {
+            "invalid_folder": "Invalid script folder path"
+        }
+    },
+    "services": {
+        "run_action": {
+            "name": "Run Action",
+            "description": "Manually run an action defined in a HAAnim script",
+            "fields": {
+                "script_name": {
+                    "name": "Script Name",
+                    "description": "Name of the script containing the action"
+                },
+                "action_name": {
+                    "name": "Action Name",
+                    "description": "Name of the action to run"
+                }
+            }
+        },
+        "reload_scripts": {
+            "name": "Reload Scripts",
+            "description": "Reload all HAAnim scripts from the script folder"
+        },
+        "list_scripts": {
+            "name": "List Scripts",
+            "description": "Get a list of all loaded scripts"
+        },
+        "list_actions": {
+            "name": "List Actions",
+            "description": "Get a list of all available actions",
+            "fields": {
+                "script_name": {
+                    "name": "Script Name",
+                    "description": "Optional: filter actions by script name"
+                }
+            }
         }
     }
 }
