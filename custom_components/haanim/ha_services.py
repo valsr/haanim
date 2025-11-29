@@ -79,6 +79,14 @@ class ServiceManager:
             ),
         )
 
+        # Register the get_config service
+        self.hass.services.async_register(
+            DOMAIN,
+            "get_config",
+            self._handle_get_config,
+            schema=vol.Schema({}),
+        )
+
         _LOGGER.debug("Service manager set up")
 
     async def async_teardown(self) -> None:
@@ -88,6 +96,7 @@ class ServiceManager:
         self.hass.services.async_remove(DOMAIN, "reload_scripts")
         self.hass.services.async_remove(DOMAIN, "list_scripts")
         self.hass.services.async_remove(DOMAIN, "list_actions")
+        self.hass.services.async_remove(DOMAIN, "get_config")
 
         # Unregister script services
         for service_name in list(self._registered_services.keys()):
@@ -190,6 +199,41 @@ class ServiceManager:
             )
 
         return {"actions": actions}
+
+    async def _handle_get_config(self, call: ServiceCall) -> dict[str, Any]:
+        """Handle the get_config service call.
+
+        Args:
+            call: The service call.
+
+        Returns:
+            Dictionary with configuration values.
+        """
+        from .const import (
+            CONF_ALLOW_ALL_IMPORTS,
+            CONF_IMPORT_ALLOWLIST,
+            CONF_SCRIPT_FOLDER,
+            DEFAULT_ALLOW_ALL_IMPORTS,
+            DEFAULT_IMPORT_ALLOWLIST,
+            DEFAULT_SCRIPT_FOLDER,
+            VERSION,
+        )
+
+        # Get the config entry data
+        config = {}
+        for entry_id, data in self.hass.data.get(DOMAIN, {}).items():
+            if isinstance(data, dict) and "entry" in data:
+                entry = data["entry"]
+                options = entry.options or {}
+                config = {
+                    "script_folder": options.get(CONF_SCRIPT_FOLDER, DEFAULT_SCRIPT_FOLDER),
+                    "allow_all_imports": options.get(CONF_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS),
+                    "import_allowlist": options.get(CONF_IMPORT_ALLOWLIST, DEFAULT_IMPORT_ALLOWLIST),
+                    "version": VERSION,
+                }
+                break
+
+        return config
 
     async def call(
         self,

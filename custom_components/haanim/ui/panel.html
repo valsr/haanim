@@ -9,9 +9,6 @@
 
     <body>
         <div class="header">
-            <div class="title-section">
-                <div class="version">HAAnim Version 0.1.0</div>
-            </div>
             <div class="button-section">
                 <button class="action-button reload-button" onclick="reloadScripts()">↻ Reload</button>
                 <button class="action-button add-button" onclick="openScriptFolder()">📁 Open Folder</button>
@@ -28,7 +25,7 @@
                 <div class="empty-state-icon">📝</div>
                 <div class="empty-state-text">No animation scripts yet</div>
                 <div class="empty-state-subtext">
-                    Add Python scripts to your <code>haanim/</code> folder to get started.
+                    Add Python scripts to your <code id="script-folder-path">haanim/</code> folder to get started.
                     <br>Scripts are automatically loaded and watched for changes.
                 </div>
             </div>

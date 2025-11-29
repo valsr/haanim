@@ -78,6 +78,10 @@
                     "description": "Optional: filter actions by script name"
                 }
             }
+        },
+        "get_config": {
+            "name": "Get Config",
+            "description": "Get the current HAAnim configuration"
         }
     }
 }

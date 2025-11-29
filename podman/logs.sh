@@ -3,4 +3,4 @@
 
 echo "Showing Home Assistant logs (Ctrl+C to exit)..."
 echo ""
-podman-compose logs -f
+podman logs -f haanim-dev

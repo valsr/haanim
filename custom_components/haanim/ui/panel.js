@@ -5,6 +5,7 @@
 
 let scriptsData = [];
 let hassConnection = null;
+let haanimConfig = null;
 
 /**
  * Detect and apply Home Assistant theme
@@ -108,6 +109,31 @@ async function fetchScripts() {
 }
 
 /**
+ * Fetch HAAnim configuration
+ */
+async function fetchConfig() {
+    try {
+        const response = await fetch('/api/services/haanim/get_config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({}),
+            credentials: 'same-origin'
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            return data;
+        }
+    } catch (e) {
+        console.log('Could not fetch config:', e);
+    }
+
+    return null;
+}
+
+/**
  * Load and display scripts
  */
 async function loadScripts() {
@@ -115,6 +141,10 @@ async function loadScripts() {
     hideError();
 
     try {
+        // Fetch config first
+        haanimConfig = await fetchConfig();
+        updateConfigDisplay();
+
         scriptsData = await fetchScripts();
         renderScripts();
     } catch (e) {
@@ -122,6 +152,18 @@ async function loadScripts() {
         showError('Could not load scripts. Make sure HAAnim is properly configured.');
     } finally {
         showLoading(false);
+    }
+}
+
+/**
+ * Update UI elements with config values
+ */
+function updateConfigDisplay() {
+    if (haanimConfig) {
+        const folderEl = document.getElementById('script-folder-path');
+        if (folderEl) {
+            folderEl.textContent = haanimConfig.script_folder + '/';
+        }
     }
 }
 
@@ -223,8 +265,9 @@ async function reloadScripts() {
  * Open the script folder (shows a message with the path)
  */
 function openScriptFolder() {
+    const folder = haanimConfig?.script_folder || 'haanim';
     showNotification(
-        'Scripts are located in: config/haanim/\nAdd .py files there and they will be auto-loaded.',
+        `Scripts are located in: config/${folder}/\nAdd .py files there and they will be auto-loaded.`,
         'info',
         5000
     );
