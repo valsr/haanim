@@ -8,4 +8,6 @@ if ! ./build-image.sh; then
     exit 1
 fi
 
+./stop.sh
+./clean.sh
 ./start.sh

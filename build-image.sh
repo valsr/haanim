@@ -13,9 +13,6 @@ if ! command -v podman &>/dev/null; then
     exit 1
 fi
 
-# Stop and remove existing container
-./stop.sh
-
 # Build the image
 echo "📦 Building image..."
 if podman build -t haanim-dev:latest -f Dockerfile .; then
