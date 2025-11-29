@@ -209,29 +209,21 @@ class ServiceManager:
         Returns:
             Dictionary with configuration values.
         """
-        from .const import (
-            CONF_ALLOW_ALL_IMPORTS,
-            CONF_IMPORT_ALLOWLIST,
-            CONF_SCRIPT_FOLDER,
-            DEFAULT_ALLOW_ALL_IMPORTS,
-            DEFAULT_IMPORT_ALLOWLIST,
-            DEFAULT_SCRIPT_FOLDER,
-            VERSION,
-        )
+        from .config_manager import get_config_manager
+        from .const import VERSION
+
+        config_mgr = get_config_manager()
 
         # Get the config entry data
-        config = {}
-        for entry_id, data in self.hass.data.get(DOMAIN, {}).items():
+        for _entry_id, data in self.hass.data.get(DOMAIN, {}).items():
             if isinstance(data, dict) and "entry" in data:
                 entry = data["entry"]
-                options = entry.options or {}
-                config = {
-                    "script_folder": options.get(CONF_SCRIPT_FOLDER, DEFAULT_SCRIPT_FOLDER),
-                    "allow_all_imports": options.get(CONF_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS),
-                    "import_allowlist": options.get(CONF_IMPORT_ALLOWLIST, DEFAULT_IMPORT_ALLOWLIST),
-                    "version": VERSION,
-                }
+                config_mgr.load_from_dict(entry.data, entry.options)
                 break
+
+        # Return all config values plus version
+        config = config_mgr.get_all()
+        config["version"] = VERSION
 
         return config
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 import voluptuous as vol
@@ -13,6 +12,7 @@ from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 
+from .config_manager import get_config_manager
 from .const import (
     CONF_ALLOW_ALL_IMPORTS,
     CONF_IMPORT_ALLOWLIST,
@@ -25,15 +25,6 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-# Configuration schema for user input
-STEP_USER_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required("name", default=DEFAULT_NAME): str,
-        vol.Required(CONF_SCRIPT_FOLDER, default=DEFAULT_SCRIPT_FOLDER): str,
-        vol.Required(CONF_ALLOW_ALL_IMPORTS, default=DEFAULT_ALLOW_ALL_IMPORTS): bool,
-    }
-)
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
@@ -49,18 +40,14 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     Raises:
         InvalidScriptFolder: If the script folder path is invalid.
     """
+    config_mgr = get_config_manager()
+    config_mgr.setup(hass)
+
     script_folder = data.get(CONF_SCRIPT_FOLDER, DEFAULT_SCRIPT_FOLDER)
+    is_valid, error = config_mgr.validate_script_folder(script_folder)
 
-    # Validate script folder path
-    if os.path.isabs(script_folder):
-        folder_path = script_folder
-    else:
-        folder_path = os.path.join(hass.config.config_dir, script_folder)
-
-    # Check if parent directory exists (folder will be created if needed)
-    parent_dir = os.path.dirname(folder_path)
-    if parent_dir and not os.path.exists(parent_dir):
-        raise InvalidScriptFolder(f"Parent directory does not exist: {parent_dir}")
+    if not is_valid:
+        raise InvalidScriptFolder(error)
 
     return {"title": data.get("name", DEFAULT_NAME)}
 
@@ -80,6 +67,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             The flow result showing the form or creating the entry.
         """
         errors: dict[str, str] = {}
+        config_mgr = get_config_manager()
+        config_mgr.setup(self.hass)
 
         # Only allow one instance
         await self.async_set_unique_id(DOMAIN)
@@ -94,17 +83,25 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
+                defaults = config_mgr.get_defaults()
                 return self.async_create_entry(
                     title=info["title"],
                     data={
-                        "name": user_input.get("name", DEFAULT_NAME),
-                        CONF_SCRIPT_FOLDER: user_input.get(CONF_SCRIPT_FOLDER, DEFAULT_SCRIPT_FOLDER),
-                        CONF_ALLOW_ALL_IMPORTS: user_input.get(CONF_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS),
-                        CONF_IMPORT_ALLOWLIST: DEFAULT_IMPORT_ALLOWLIST,
+                        "name": user_input.get("name", defaults.get("name", DEFAULT_NAME)),
+                        CONF_SCRIPT_FOLDER: user_input.get(
+                            CONF_SCRIPT_FOLDER, defaults.get("script_folder", DEFAULT_SCRIPT_FOLDER)
+                        ),
+                        CONF_ALLOW_ALL_IMPORTS: user_input.get(
+                            CONF_ALLOW_ALL_IMPORTS,
+                            defaults.get("allow_all_imports", DEFAULT_ALLOW_ALL_IMPORTS),
+                        ),
+                        CONF_IMPORT_ALLOWLIST: defaults.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST),
                     },
                 )
 
-        return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors)
+        # Generate schema from ConfigManager
+        setup_schema = config_mgr.generate_setup_schema()
+        return self.async_show_form(step_id="user", data_schema=setup_schema, errors=errors)
 
     @staticmethod
     @callback
@@ -141,17 +138,15 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             The flow result.
         """
         errors: dict[str, str] = {}
+        config_mgr = get_config_manager()
+        config_mgr.setup(self.hass)
 
         if user_input is not None:
-            # Validate script folder
+            # Validate script folder using ConfigManager
             script_folder = user_input.get(CONF_SCRIPT_FOLDER, DEFAULT_SCRIPT_FOLDER)
-            if os.path.isabs(script_folder):
-                folder_path = script_folder
-            else:
-                folder_path = os.path.join(self.hass.config.config_dir, script_folder)
+            is_valid, _error = config_mgr.validate_script_folder(script_folder)
 
-            parent_dir = os.path.dirname(folder_path)
-            if parent_dir and not os.path.exists(parent_dir):
+            if not is_valid:
                 errors[CONF_SCRIPT_FOLDER] = "invalid_folder"
             else:
                 # Parse import allowlist from comma-separated string
@@ -159,30 +154,26 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 if allowlist_str:
                     allowlist = [m.strip() for m in allowlist_str.split(",") if m.strip()]
                 else:
-                    allowlist = DEFAULT_IMPORT_ALLOWLIST
+                    allowlist = config_mgr.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
 
                 return self.async_create_entry(
                     title="",
                     data={
                         CONF_SCRIPT_FOLDER: script_folder,
-                        CONF_ALLOW_ALL_IMPORTS: user_input.get(CONF_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS),
+                        CONF_ALLOW_ALL_IMPORTS: user_input.get(
+                            CONF_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS
+                        ),
                         CONF_IMPORT_ALLOWLIST: allowlist,
                     },
                 )
 
+        # Load current values from entry
+        config_mgr.load_from_dict(self.config_entry.data, self.config_entry.options)
+
         # Get current values
-        current_folder = self.config_entry.options.get(
-            CONF_SCRIPT_FOLDER,
-            self.config_entry.data.get(CONF_SCRIPT_FOLDER, DEFAULT_SCRIPT_FOLDER),
-        )
-        current_allow_all = self.config_entry.options.get(
-            CONF_ALLOW_ALL_IMPORTS,
-            self.config_entry.data.get(CONF_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS),
-        )
-        current_allowlist = self.config_entry.options.get(
-            CONF_IMPORT_ALLOWLIST,
-            self.config_entry.data.get(CONF_IMPORT_ALLOWLIST, DEFAULT_IMPORT_ALLOWLIST),
-        )
+        current_folder = config_mgr.get("script_folder", DEFAULT_SCRIPT_FOLDER)
+        current_allow_all = config_mgr.get("allow_all_imports", DEFAULT_ALLOW_ALL_IMPORTS)
+        current_allowlist = config_mgr.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
 
         # Convert allowlist to comma-separated string for display
         allowlist_str = ", ".join(current_allowlist) if current_allowlist else ""
@@ -195,12 +186,16 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             }
         )
 
+        # Get defaults for description placeholder
+        defaults = config_mgr.get_defaults()
+        default_allowlist = defaults.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
+
         return self.async_show_form(
             step_id="init",
             data_schema=options_schema,
             errors=errors,
             description_placeholders={
-                "default_allowlist": ", ".join(DEFAULT_IMPORT_ALLOWLIST[:5]) + "...",
+                "default_allowlist": ", ".join(default_allowlist[:5]) + "...",
             },
         )
 
