@@ -103,37 +103,24 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
         hass: Home Assistant instance.
     """
     from homeassistant.components import frontend
+    from homeassistant.components.http import StaticPathConfig
 
-    # Get the path to the panel files
-    panel_dir = os.path.join(os.path.dirname(__file__), "ui")
-    panel_html_path = os.path.join(panel_dir, "panel.html")
-    panel_css_path = os.path.join(panel_dir, "panel.css")
-    panel_js_path = os.path.join(panel_dir, "panel.js")
+    # Get the path to the UI directory
+    ui_dir = os.path.join(os.path.dirname(__file__), "ui")
 
-    # Read the panel files
-    with open(panel_html_path, encoding="utf-8") as file:
-        panel_html = file.read()
+    # Register static path for serving UI assets
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(f"/{DOMAIN}/ui", ui_dir, cache_headers=False)]
+    )
 
-    with open(panel_css_path, encoding="utf-8") as file:
-        panel_css = file.read()
-
-    with open(panel_js_path, encoding="utf-8") as file:
-        panel_js = file.read()
-
-    # Inline CSS and JS into HTML
-    panel_html = panel_html.replace('<link rel="stylesheet" href="panel.css">', f"<style>{panel_css}</style>")
-    panel_html = panel_html.replace('<script src="panel.js"></script>', f"<script>{panel_js}</script>")
-
-    # Register as a custom panel with embedded HTML
+    # Register as a custom panel
     frontend.async_register_built_in_panel(
         hass,
         component_name="iframe",
         sidebar_title=NAME,
         sidebar_icon="mdi:animation",
         frontend_url_path=DOMAIN,
-        config={
-            "url": f"data:text/html;charset=utf-8,{panel_html.replace('#', '%23').replace('\n', '').replace('  ', '')}"
-        },
+        config={"url": f"/{DOMAIN}/ui/panel.html"},
         require_admin=False,
     )
 
