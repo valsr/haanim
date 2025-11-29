@@ -6,12 +6,13 @@ symbol tables, metadata, and lifecycle management.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 
@@ -174,6 +175,14 @@ class ScriptContext:
 
         self._global_symbols.set("sleep", asyncio.sleep)
 
+    def read_file(self, path: Path) -> str:
+        """Read the content of a file asynchronously.
+
+        Args:
+            path: The path to the file to read.
+        """
+        return path.read_text(encoding="utf-8")
+
     async def load(self) -> ScriptMetadata:
         """Load and parse the script file.
 
@@ -190,9 +199,12 @@ class ScriptContext:
 
         # Read the source
         try:
-            self._source = path.read_text(encoding="utf-8")
+            self._source = await self.hass.async_add_executor_job(self.read_file, path)
         except OSError as err:
             raise ScriptError(f"Failed to read script file: {err}") from err
+
+        if not self._source:
+            raise ScriptError(f"Failed to read script file: {self.script_path}")
 
         # Get file modification time
         stat = path.stat()
