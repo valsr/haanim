@@ -3,38 +3,15 @@
 
 set -e
 
-echo "=== HAAnim Development Container - Build & Run ==="
+echo "=== HAAnim Development Container - Run ==="
 echo ""
 
-# Check if podman is available
-if ! command -v podman &>/dev/null; then
-    echo "❌ Error: podman is not installed"
-    echo "Please install podman first: https://podman.io/getting-started/installation"
-    exit 1
-fi
-
-# Stop and remove existing container
-echo "🧹 Cleaning up existing container..."
-podman stop haanim-dev &>/dev/null || true
-podman rm haanim-dev &>/dev/null || true
-
-# Build the image
-echo ""
-echo "📦 Building development image..."
-if ! podman build -t haanim-dev:latest -f Dockerfile.dev .; then
-    echo "❌ Build failed"
-    exit 1
-fi
-
-# Run the container
-echo ""
 # Run the container
 echo ""
 echo "🚀 Starting container..."
 if podman run -d \
     --name haanim-dev \
     -p 8123:8123 \
-    -p 5678:5678 \
     --network host \
     -v ./custom_components/haanim:/config/custom_components/haanim:z \
     -v ./podman/container-config/haanim:/config/haanim:z \
@@ -43,7 +20,6 @@ if podman run -d \
     echo "✅ Container started successfully!"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "  🌐 URL: http://localhost:8123"
-    echo "  🐛 Debug: localhost:5678"
     echo "  👤 Username: admin"
     echo "  🔑 Password: admin"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -315,8 +315,8 @@ class ScriptManager:
 
         while not self._stop_event.is_set():
             try:
-                # Check for changes every 2 seconds
-                await asyncio.sleep(2)
+                # Check for changes every 5 seconds
+                await asyncio.sleep(5)
 
                 if not folder.exists():
                     continue

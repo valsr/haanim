@@ -2,6 +2,11 @@ FROM docker.io/homeassistant/home-assistant:2025.11.3
 
 # Set environment variables
 ENV TZ=America/Toronto
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV DEBUGPY_PORT=5678
+
+# Install debugpy for remote debugging
+RUN pip install --no-cache-dir debugpy
 
 # Create necessary directories
 RUN mkdir -p /config/custom_components \
@@ -27,12 +32,14 @@ COPY podman/container-config/.storage/frontend.user_data_admin_user_id_12345 /co
 # Set proper permissions
 RUN chown -R root:root /config
 
-# Expose port
+# Expose ports
 EXPOSE 8123
+EXPOSE 5678
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8123 || exit 1
 
-# Start Home Assistant
-CMD ["python", "-m", "homeassistant", "--config", "/config"]
+# Start Home Assistant with debugpy
+# debugpy listens on 5678 and waits for debugger to attach
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "-m", "homeassistant", "--config", "/config"]

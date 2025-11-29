@@ -4,7 +4,7 @@
     {
     "label": "Container: Build and Run",
       "type": "shell",
-    "command": "./podman/build-and-run.sh",
+    "command": "./build-and-run.sh",
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",
@@ -23,7 +23,7 @@
     {
     "label": "Container: Build Image",
       "type": "shell",
-    "command": "./podman/build-image.sh",
+    "command": "./build-image.sh",
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",
@@ -50,7 +50,7 @@
     {
     "label": "Container: Stop",
       "type": "shell",
-    "command": "./podman/stop.sh",
+    "command": "./stop.sh",
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",
@@ -61,7 +61,7 @@
     {
     "label": "Container: Restart",
       "type": "shell",
-    "command": "./podman/restart.sh",
+    "command": "./restart.sh",
     "problemMatcher": [],
       "presentation": {
         "reveal": "always",
@@ -72,7 +72,7 @@
     {
     "label": "Container: View Logs",
       "type": "shell",
-    "command": "./podman/logs.sh",
+    "command": "./logs.sh",
       "problemMatcher": [],
     "isBackground": true,
       "presentation": {
@@ -84,7 +84,7 @@
     {
     "label": "Container: Open Shell",
       "type": "shell",
-    "command": "./podman/shell.sh",
+    "command": "./shell.sh",
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",

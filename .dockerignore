@@ -36,20 +36,17 @@ docs/
 .github/
 
 # Dev environment
-podman/logs.sh
-podman/restart.sh
-podman/shell.sh
-podman/start.sh
-podman/stop.sh
+logs.sh
+restart.sh
+shell.sh
+stop.sh
+start.sh
 podman/*.md
 podman/config/
 
 # Docker
-docker-compose.yml
-docker-compose.*.yml
-!docker-compose.dev.yml
 Dockerfile
-!Dockerfile.dev
+
 
 # Tests
 tests/
