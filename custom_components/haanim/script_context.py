@@ -154,8 +154,23 @@ class ScriptContext:
         including decorators, logging, and Home Assistant access.
         """
         from . import decorators
+        from types import SimpleNamespace
 
-        # Add decorators to global scope
+        # Create a virtual 'haanim' module that scripts can import from
+        haanim_module = SimpleNamespace(
+            scene=decorators.scene,
+            state_trigger=decorators.state_trigger,
+            time_trigger=decorators.time_trigger,
+            event_trigger=decorators.event_trigger,
+            time_active=decorators.time_active,
+            state_active=decorators.state_active,
+            service=decorators.service,
+        )
+
+        # Register the virtual module with the import controller
+        self._import_controller.register_virtual_module("haanim", haanim_module)
+
+        # Add decorators to global scope (for direct use without import)
         self._global_symbols.set("scene", decorators.scene)
         self._global_symbols.set("state_trigger", decorators.state_trigger)
         self._global_symbols.set("time_trigger", decorators.time_trigger)
@@ -169,6 +184,9 @@ class ScriptContext:
         self._global_symbols.set("log_info", self._logger.info)
         self._global_symbols.set("log_warning", self._logger.warning)
         self._global_symbols.set("log_error", self._logger.error)
+
+        # Also expose the script's logger as 'log'
+        self._global_symbols.set("log", self._logger)
 
         # Add asyncio.sleep for delays
         import asyncio

@@ -97,6 +97,17 @@ class ImportController:
         self._allowlist = set(allowlist or DEFAULT_IMPORT_ALLOWLIST)
         self._allow_all = allow_all
         self._imported_modules: dict[str, Any] = {}
+        self._virtual_modules: dict[str, Any] = {}
+
+    def register_virtual_module(self, name: str, module: Any) -> None:
+        """Register a virtual module that can be imported by scripts.
+
+        Args:
+            name: The module name (e.g., 'haanim').
+            module: The module object or namespace to expose.
+        """
+        self._virtual_modules[name] = module
+        self._allowlist.add(name)
 
     def is_allowed(self, module_name: str) -> bool:
         """Check if a module is allowed to be imported.
@@ -127,6 +138,10 @@ class ImportController:
         Raises:
             ScriptSecurityError: If the module is not allowed.
         """
+        # Check for virtual modules first
+        if module_name in self._virtual_modules:
+            return self._virtual_modules[module_name]
+
         if not self.is_allowed(module_name):
             _LOGGER.error("Import blocked - module '%s' is not in allowlist", module_name)
             raise ScriptSecurityError(f"Import of module '{module_name}' is not allowed")

@@ -161,6 +161,22 @@
         "panel": "shared",
         "focus": true
       }
+    },
+    {
+      "label": "Generate HAAnim Stubs",
+      "type": "shell",
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "scripts/generate_stubs.py"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": false
+      }
     }
   ]
 }
