@@ -17,3 +17,20 @@ that logs a message every 10 minutes.
 #     """
 #     log.info("Hello World from HAAnim! 🎉")
 #     log.info("This message appears every 10 minutes.")
+
+import logging
+from haanim import scene
+
+log = logging.getLogger("haanim.hello_world")
+
+
+def hello_world():
+    """Log a hello world message.
+
+    This is a simple demonstration function.
+    """
+    log.info("Hello World from HAAnim! 🎉")
+    log.info("This is a basic automation script.")
+
+
+hello_world()

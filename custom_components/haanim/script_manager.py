@@ -181,6 +181,10 @@ class ScriptManager:
             except ScriptError as err:
                 results[str(script_path)] = str(err)
                 _LOGGER.error("Failed to load script %s: %s", script_path.name, err)
+            except Exception as err:
+                # Catch any unexpected errors that aren't ScriptError
+                results[str(script_path)] = str(err)
+                _LOGGER.exception("Unexpected error loading script %s: %s", script_path.name, err)
 
         _LOGGER.info(
             "Loaded %d scripts (%d failed)",
@@ -243,6 +247,9 @@ class ScriptManager:
         except ScriptError as err:
             # Track failed script
             self._failed_scripts[script_path] = str(err)
+
+            # Log the error with traceback for debugging
+            _LOGGER.exception("Script loading error for %s", script_path)
 
             # Fire error event
             self.hass.bus.async_fire(

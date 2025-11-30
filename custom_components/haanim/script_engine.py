@@ -128,6 +128,7 @@ class ImportController:
             ScriptSecurityError: If the module is not allowed.
         """
         if not self.is_allowed(module_name):
+            _LOGGER.error("Import blocked - module '%s' is not in allowlist", module_name)
             raise ScriptSecurityError(f"Import of module '{module_name}' is not allowed")
 
         import importlib
@@ -137,6 +138,7 @@ class ImportController:
             self._imported_modules[module_name] = module
             return module
         except ImportError as err:
+            _LOGGER.error("Failed to import module '%s': %s", module_name, err)
             raise ScriptRuntimeError(f"Failed to import module '{module_name}': {err}") from err
 
 
@@ -408,7 +410,9 @@ class AstEvaluator:
                 await self.aeval(node, self._global_symbols)
         except Exception as err:
             if isinstance(err, (ScriptError, ReturnValue, BreakLoop, ContinueLoop)):
+                self._logger.error("Script execution error: %s", err)
                 raise
+            self._logger.exception("Unexpected error during script execution")
             raise ScriptRuntimeError(f"Runtime error: {err}") from err
 
         return self._global_symbols.as_dict()
