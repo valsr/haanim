@@ -6,11 +6,11 @@
                 "description": "Configure your HAAnim Python automation integration",
                 "data": {
                     "name": "Name",
-                    "script_folder": "Script Folder",
+                    "script_path": "Script Path",
                     "allow_all_imports": "Allow All Imports (Security Warning)"
                 },
                 "data_description": {
-                    "script_folder": "Folder path for automation scripts (relative to config or absolute)",
+                    "script_path": "Absolute path for automation scripts (e.g., /config/haanim)",
                     "allow_all_imports": "If enabled, scripts can import any Python module. Use with caution!"
                 }
             }
@@ -18,7 +18,7 @@
         "error": {
             "cannot_connect": "Failed to connect",
             "invalid_auth": "Invalid authentication",
-            "invalid_folder": "Invalid script folder path",
+            "invalid_path": "Invalid script path",
             "unknown": "Unexpected error occurred"
         },
         "abort": {
@@ -31,19 +31,19 @@
                 "title": "HAAnim Options",
                 "description": "Configure HAAnim settings. Default import allowlist: {default_allowlist}",
                 "data": {
-                    "script_folder": "Script Folder",
+                    "script_path": "Script Path",
                     "allow_all_imports": "Allow All Imports",
                     "import_allowlist_str": "Import Allowlist (comma-separated)"
                 },
                 "data_description": {
-                    "script_folder": "Folder path for automation scripts",
+                    "script_path": "Absolute path for automation scripts",
                     "allow_all_imports": "Allow scripts to import any module (security risk)",
                     "import_allowlist_str": "Comma-separated list of allowed module names"
                 }
             }
         },
         "error": {
-            "invalid_folder": "Invalid script folder path"
+            "invalid_path": "Invalid script path"
         }
     },
     "services": {

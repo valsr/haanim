@@ -19,10 +19,10 @@ from homeassistant.core import Event, HomeAssistant, callback
 from .const import (
     CONF_ALLOW_ALL_IMPORTS,
     CONF_IMPORT_ALLOWLIST,
-    CONF_SCRIPT_FOLDER,
+    CONF_SCRIPT_PATH,
     DEFAULT_ALLOW_ALL_IMPORTS,
     DEFAULT_IMPORT_ALLOWLIST,
-    DEFAULT_SCRIPT_FOLDER,
+    DEFAULT_SCRIPT_PATH,
     DOMAIN,
     EVENT_SCRIPT_ERROR,
     EVENT_SCRIPT_LOADED,
@@ -59,9 +59,9 @@ class ScriptManager:
         self.entry = entry
 
         # Get configuration
-        self._script_folder = entry.options.get(
-            CONF_SCRIPT_FOLDER,
-            entry.data.get(CONF_SCRIPT_FOLDER, DEFAULT_SCRIPT_FOLDER),
+        self._script_path = entry.options.get(
+            CONF_SCRIPT_PATH,
+            entry.data.get(CONF_SCRIPT_PATH, DEFAULT_SCRIPT_PATH),
         )
         self._import_allowlist = entry.options.get(
             CONF_IMPORT_ALLOWLIST,
@@ -85,15 +85,15 @@ class ScriptManager:
         self._stop_event = asyncio.Event()
 
     @property
-    def script_folder_path(self) -> Path:
+    def script_path(self) -> Path:
         """Get the full path to the script folder.
 
         Returns:
             Path object for the script folder.
         """
-        if os.path.isabs(self._script_folder):
-            return Path(self._script_folder)
-        return Path(self.hass.config.config_dir) / self._script_folder
+        if os.path.isabs(self._script_path):
+            return Path(self._script_path)
+        return Path(self.hass.config.config_dir) / self._script_path
 
     async def async_setup(self) -> None:
         """Set up the script manager.
@@ -101,7 +101,7 @@ class ScriptManager:
         This should be called during integration setup.
         """
         # Ensure script folder exists
-        folder = self.script_folder_path
+        folder = self.script_path
         if not folder.exists():
             _LOGGER.info("Creating script folder: %s", folder)
             folder.mkdir(parents=True, exist_ok=True)
@@ -162,7 +162,7 @@ class ScriptManager:
         Returns:
             Dictionary mapping script paths to their metadata or error message.
         """
-        folder = self.script_folder_path
+        folder = self.script_path
         results: dict[str, ScriptMetadata | str] = {}
 
         if not folder.exists():
@@ -318,7 +318,7 @@ class ScriptManager:
 
     async def _watch_scripts(self) -> None:
         """Watch the script folder for changes and hot-reload scripts."""
-        folder = self.script_folder_path
+        folder = self.script_path
 
         while not self._stop_event.is_set():
             try:
@@ -468,13 +468,13 @@ class ScriptManager:
 
         return await context.run_action(action_name, *args, manual=manual, **kwargs)
 
-    def get_script_folder(self) -> str:
-        """Get the configured script folder.
+    def get_script_path(self) -> str:
+        """Get the configured script path.
 
         Returns:
-            The script folder path (relative or absolute).
+            The script path (relative or absolute).
         """
-        return self._script_folder
+        return self._script_path
 
     def get_import_allowlist(self) -> list[str]:
         """Get the configured import allowlist.

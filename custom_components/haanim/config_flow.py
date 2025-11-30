@@ -12,15 +12,15 @@ from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 
-from .config_manager import get_config_manager
+from .config import get_config_manager
 from .const import (
     CONF_ALLOW_ALL_IMPORTS,
     CONF_IMPORT_ALLOWLIST,
-    CONF_SCRIPT_FOLDER,
+    CONF_SCRIPT_PATH,
     DEFAULT_ALLOW_ALL_IMPORTS,
     DEFAULT_IMPORT_ALLOWLIST,
     DEFAULT_NAME,
-    DEFAULT_SCRIPT_FOLDER,
+    DEFAULT_SCRIPT_PATH,
     DOMAIN,
 )
 
@@ -38,16 +38,16 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         Dictionary containing the validated data.
 
     Raises:
-        InvalidScriptFolder: If the script folder path is invalid.
+        InvalidScriptPath: If the script path is invalid.
     """
     config_mgr = get_config_manager()
     config_mgr.setup(hass)
 
-    script_folder = data.get(CONF_SCRIPT_FOLDER, DEFAULT_SCRIPT_FOLDER)
-    is_valid, error = config_mgr.validate_script_folder(script_folder)
+    script_path = data.get(CONF_SCRIPT_PATH, DEFAULT_SCRIPT_PATH)
+    is_valid, error = config_mgr.validate_script_path(script_path)
 
     if not is_valid:
-        raise InvalidScriptFolder(error)
+        raise InvalidScriptPath(error)
 
     return {"title": data.get("name", DEFAULT_NAME)}
 
@@ -77,7 +77,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 info = await validate_input(self.hass, user_input)
-            except InvalidScriptFolder:
+            except InvalidScriptPath:
                 errors["base"] = "invalid_folder"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
@@ -88,8 +88,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title=info["title"],
                     data={
                         "name": user_input.get("name", defaults.get("name", DEFAULT_NAME)),
-                        CONF_SCRIPT_FOLDER: user_input.get(
-                            CONF_SCRIPT_FOLDER, defaults.get("script_folder", DEFAULT_SCRIPT_FOLDER)
+                        CONF_SCRIPT_PATH: user_input.get(
+                            CONF_SCRIPT_PATH, defaults.get("script_path", DEFAULT_SCRIPT_PATH)
                         ),
                         CONF_ALLOW_ALL_IMPORTS: user_input.get(
                             CONF_ALLOW_ALL_IMPORTS,
@@ -142,12 +142,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         config_mgr.setup(self.hass)
 
         if user_input is not None:
-            # Validate script folder using ConfigManager
-            script_folder = user_input.get(CONF_SCRIPT_FOLDER, DEFAULT_SCRIPT_FOLDER)
-            is_valid, _error = config_mgr.validate_script_folder(script_folder)
+            # Validate script path using ConfigManager
+            script_path = user_input.get(CONF_SCRIPT_PATH, DEFAULT_SCRIPT_PATH)
+            is_valid, _error = config_mgr.validate_script_path(script_path)
 
             if not is_valid:
-                errors[CONF_SCRIPT_FOLDER] = "invalid_folder"
+                errors[CONF_SCRIPT_PATH] = "invalid_path"
             else:
                 # Parse import allowlist from comma-separated string
                 allowlist_str = user_input.get("import_allowlist_str", "")
@@ -159,7 +159,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 return self.async_create_entry(
                     title="",
                     data={
-                        CONF_SCRIPT_FOLDER: script_folder,
+                        CONF_SCRIPT_PATH: script_path,
                         CONF_ALLOW_ALL_IMPORTS: user_input.get(
                             CONF_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS
                         ),
@@ -171,7 +171,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         config_mgr.load_from_dict(self.config_entry.data, self.config_entry.options)
 
         # Get current values
-        current_folder = config_mgr.get("script_folder", DEFAULT_SCRIPT_FOLDER)
+        current_path = config_mgr.get("script_path", DEFAULT_SCRIPT_PATH)
         current_allow_all = config_mgr.get("allow_all_imports", DEFAULT_ALLOW_ALL_IMPORTS)
         current_allowlist = config_mgr.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
 
@@ -180,7 +180,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
         options_schema = vol.Schema(
             {
-                vol.Required(CONF_SCRIPT_FOLDER, default=current_folder): str,
+                vol.Required(CONF_SCRIPT_PATH, default=current_path): str,
                 vol.Required(CONF_ALLOW_ALL_IMPORTS, default=current_allow_all): bool,
                 vol.Optional("import_allowlist_str", default=allowlist_str): str,
             }
@@ -200,8 +200,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
 
-class InvalidScriptFolder(HomeAssistantError):
-    """Error to indicate invalid script folder."""
+class InvalidScriptPath(HomeAssistantError):
+    """Error to indicate invalid script path."""
 
 
 class CannotConnect(HomeAssistantError):

@@ -1,7 +1,7 @@
 """Configuration manager for HAAnim.
 
-This module provides a centralized configuration manager that handles
-all configuration options, validation, and schema generation.
+This module provides the singleton ConfigManager that handles all configuration
+options, validation, and schema generation.
 """
 
 from __future__ import annotations
@@ -9,8 +9,6 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any
 
 import voluptuous as vol
@@ -18,66 +16,11 @@ import voluptuous as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
+from .config_group import ConfigGroup
+from .config_option import ConfigOption
+from .config_type import ConfigType
+
 _LOGGER = logging.getLogger(__name__)
-
-
-class ConfigType(Enum):
-    """Configuration value types."""
-
-    STRING = "string"
-    BOOLEAN = "boolean"
-    INTEGER = "integer"
-    FLOAT = "float"
-    LIST = "list"
-    SELECT = "select"
-
-
-@dataclass
-class ConfigOption:
-    """Represents a single configuration option.
-
-    Args:
-        key: The configuration key name.
-        config_type: The type of the configuration value.
-        default: The default value.
-        required: Whether the option is required.
-        description: Human-readable description.
-        label: Human-readable label for UI.
-        options: For SELECT type, list of valid options.
-        validator: Optional custom validator function.
-        show_in_options: Whether to show in options flow.
-        show_in_setup: Whether to show in initial setup.
-        sensitive: Whether this is a sensitive value (e.g., password).
-    """
-
-    key: str
-    config_type: ConfigType
-    default: Any
-    required: bool = True
-    description: str = ""
-    label: str = ""
-    options: list[Any] | None = None
-    validator: Any | None = None
-    show_in_options: bool = True
-    show_in_setup: bool = True
-    sensitive: bool = False
-
-
-@dataclass
-class ConfigGroup:
-    """A group of related configuration options.
-
-    Args:
-        name: Group name/identifier.
-        label: Human-readable label.
-        description: Human-readable description.
-        options: List of ConfigOption in this group.
-    """
-
-    name: str
-    label: str
-    description: str = ""
-    options: list[ConfigOption] = field(default_factory=list)
 
 
 class ConfigManager:
@@ -129,12 +72,12 @@ class ConfigManager:
                     show_in_options=False,
                 ),
                 ConfigOption(
-                    key="script_folder",
+                    key="script_path",
                     config_type=ConfigType.STRING,
-                    default="haanim",
+                    default="/config/haanim",
                     required=True,
-                    label="Script Folder",
-                    description="Folder path for automation scripts (relative to config or absolute)",
+                    label="Script Path",
+                    description="Path for automation scripts (absolute path)",
                 ),
             ],
         )
@@ -230,7 +173,7 @@ class ConfigManager:
         if not self._hass or not self._entry_id:
             return
 
-        from .const import DOMAIN
+        from ..const import DOMAIN
 
         data = self._hass.data.get(DOMAIN, {}).get(self._entry_id, {})
         if isinstance(data, dict) and "entry" in data:
@@ -430,11 +373,11 @@ class ConfigManager:
 
         return {key: validator}
 
-    def validate_script_folder(self, folder: str) -> tuple[bool, str | None]:
-        """Validate a script folder path.
+    def validate_script_path(self, path: str) -> tuple[bool, str | None]:
+        """Validate a script path.
 
         Args:
-            folder: The folder path to validate.
+            path: The path to validate.
 
         Returns:
             Tuple of (is_valid, error_message).
@@ -442,10 +385,10 @@ class ConfigManager:
         if not self._hass:
             return True, None
 
-        if os.path.isabs(folder):
-            folder_path = folder
+        if os.path.isabs(path):
+            folder_path = path
         else:
-            folder_path = os.path.join(self._hass.config.config_dir, folder)
+            folder_path = os.path.join(self._hass.config.config_dir, path)
 
         parent_dir = os.path.dirname(folder_path)
         if parent_dir and not os.path.exists(parent_dir):
@@ -453,21 +396,21 @@ class ConfigManager:
 
         return True, None
 
-    def get_script_folder_path(self) -> str:
+    def get_script_path(self) -> str:
         """Get the full path to the script folder.
 
         Returns:
             Absolute path to the script folder.
         """
-        folder = self.get("script_folder", "haanim")
+        path = self.get("script_path", "/config/haanim")
 
         if not self._hass:
-            return folder
+            return path
 
-        if os.path.isabs(folder):
-            return folder
+        if os.path.isabs(path):
+            return path
 
-        return os.path.join(self._hass.config.config_dir, folder)
+        return os.path.join(self._hass.config.config_dir, path)
 
 
 def get_config_manager() -> ConfigManager:

@@ -160,9 +160,9 @@ async function loadScripts() {
  */
 function updateConfigDisplay() {
     if (haanimConfig) {
-        const folderEl = document.getElementById('script-folder-path');
-        if (folderEl) {
-            folderEl.textContent = haanimConfig.script_folder + '/';
+        const pathEl = document.getElementById('script-folder-path');
+        if (pathEl) {
+            pathEl.textContent = haanimConfig.script_path + '/';
         }
     }
 }
@@ -265,9 +265,9 @@ async function reloadScripts() {
  * Open the script folder (shows a message with the path)
  */
 function openScriptFolder() {
-    const folder = haanimConfig?.script_folder || 'haanim';
+    const scriptPath = haanimConfig?.script_path || '/config/haanim';
     showNotification(
-        `Scripts are located in: config/${folder}/\nAdd .py files there and they will be auto-loaded.`,
+        `Scripts are located in: ${scriptPath}/\nAdd .py files there and they will be auto-loaded.`,
         'info',
         5000
     );

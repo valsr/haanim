@@ -10,12 +10,12 @@ VERSION: Final = "0.1.0"
 DEFAULT_NAME: Final = "HAAnim"
 
 # Configuration keys
-CONF_SCRIPT_FOLDER: Final = "script_folder"
+CONF_SCRIPT_PATH: Final = "script_path"
 CONF_IMPORT_ALLOWLIST: Final = "import_allowlist"
 CONF_ALLOW_ALL_IMPORTS: Final = "allow_all_imports"
 
 # Default configuration values
-DEFAULT_SCRIPT_FOLDER: Final = "haanim"
+DEFAULT_SCRIPT_PATH: Final = "/config/haanim"
 DEFAULT_ALLOW_ALL_IMPORTS: Final = False
 
 # Default import allowlist - safe modules for automation scripts

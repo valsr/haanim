@@ -209,7 +209,7 @@ class ServiceManager:
         Returns:
             Dictionary with configuration values.
         """
-        from .config_manager import get_config_manager
+        from .config import get_config_manager
         from .const import VERSION
 
         config_mgr = get_config_manager()
