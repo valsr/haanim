@@ -13,6 +13,7 @@ from typing import Any
 
 import voluptuous as vol
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
@@ -177,7 +178,10 @@ class ConfigManager:
 
         data = self._hass.data.get(DOMAIN, {}).get(self._entry_id, {})
         if isinstance(data, dict) and "entry" in data:
-            entry = data["entry"]
+            entry = data["entry"]  # type: ignore
+            if not isinstance(entry, ConfigEntry):
+                return
+
             # Load from options first, then data
             for key in self._options:
                 if key in entry.options:
@@ -229,7 +233,7 @@ class ConfigManager:
         Returns:
             Dictionary of all configuration values.
         """
-        result = {}
+        result: dict[str, Any] = {}
         for key, option in self._options.items():
             result[key] = self._values.get(key, option.default)
         return result
@@ -308,7 +312,7 @@ class ConfigManager:
         Returns:
             Schema for the setup flow.
         """
-        schema_dict = {}
+        schema_dict: dict[vol.Required | vol.Optional, Any] = {}
         for option in self._options.values():
             if not option.show_in_setup:
                 continue
@@ -325,7 +329,7 @@ class ConfigManager:
             Schema for the options flow.
         """
         values = current_values or self._values
-        schema_dict = {}
+        schema_dict: dict[vol.Required | vol.Optional, Any] = {}
         for option in self._options.values():
             if not option.show_in_options:
                 continue

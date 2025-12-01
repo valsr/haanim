@@ -17,9 +17,9 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT
 from homeassistant.core import Event, HomeAssistant, callback
 
 from .const import (
-    CONF_ALLOW_ALL_IMPORTS,
-    CONF_IMPORT_ALLOWLIST,
-    CONF_SCRIPT_PATH,
+    CONFIG_ALLOW_ALL_IMPORTS,
+    CONFIG_IMPORT_ALLOWLIST,
+    CONFIG_SCRIPT_PATH,
     DEFAULT_ALLOW_ALL_IMPORTS,
     DEFAULT_IMPORT_ALLOWLIST,
     DEFAULT_SCRIPT_PATH,
@@ -60,16 +60,16 @@ class ScriptManager:
 
         # Get configuration
         self._script_path = entry.options.get(
-            CONF_SCRIPT_PATH,
-            entry.data.get(CONF_SCRIPT_PATH, DEFAULT_SCRIPT_PATH),
+            CONFIG_SCRIPT_PATH,
+            entry.data.get(CONFIG_SCRIPT_PATH, DEFAULT_SCRIPT_PATH),
         )
         self._import_allowlist = entry.options.get(
-            CONF_IMPORT_ALLOWLIST,
-            entry.data.get(CONF_IMPORT_ALLOWLIST, DEFAULT_IMPORT_ALLOWLIST),
+            CONFIG_IMPORT_ALLOWLIST,
+            entry.data.get(CONFIG_IMPORT_ALLOWLIST, DEFAULT_IMPORT_ALLOWLIST),
         )
         self._allow_all_imports = entry.options.get(
-            CONF_ALLOW_ALL_IMPORTS,
-            entry.data.get(CONF_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS),
+            CONFIG_ALLOW_ALL_IMPORTS,
+            entry.data.get(CONFIG_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS),
         )
 
         # Script storage

@@ -14,9 +14,9 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .config import get_config_manager
 from .const import (
-    CONF_ALLOW_ALL_IMPORTS,
-    CONF_IMPORT_ALLOWLIST,
-    CONF_SCRIPT_PATH,
+    CONFIG_ALLOW_ALL_IMPORTS,
+    CONFIG_IMPORT_ALLOWLIST,
+    CONFIG_SCRIPT_PATH,
     DEFAULT_ALLOW_ALL_IMPORTS,
     DEFAULT_IMPORT_ALLOWLIST,
     DEFAULT_NAME,
@@ -40,11 +40,11 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     Raises:
         InvalidScriptPath: If the script path is invalid.
     """
-    config_mgr = get_config_manager()
-    config_mgr.setup(hass)
+    config_manager = get_config_manager()
+    config_manager.setup(hass)
 
-    script_path = data.get(CONF_SCRIPT_PATH, DEFAULT_SCRIPT_PATH)
-    is_valid, error = config_mgr.validate_script_path(script_path)
+    script_path = data.get(CONFIG_SCRIPT_PATH, DEFAULT_SCRIPT_PATH)
+    is_valid, error = config_manager.validate_script_path(script_path)
 
     if not is_valid:
         raise InvalidScriptPath(error)
@@ -57,6 +57,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def is_matching(self, other_flow: config_entries.ConfigFlow) -> bool:
+        """Return True if other_flow is matching this flow.
+
+        Args:
+            other_flow: Another config flow to compare against.
+
+        Returns:
+            False, as we handle uniqueness via async_set_unique_id.
+        """
+        return False
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial step.
 
@@ -67,8 +78,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             The flow result showing the form or creating the entry.
         """
         errors: dict[str, str] = {}
-        config_mgr = get_config_manager()
-        config_mgr.setup(self.hass)
+        config_manager = get_config_manager()
+        config_manager.setup(self.hass)
 
         # Only allow one instance
         await self.async_set_unique_id(DOMAIN)
@@ -83,24 +94,24 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
-                defaults = config_mgr.get_defaults()
+                defaults = config_manager.get_defaults()
                 return self.async_create_entry(
                     title=info["title"],
                     data={
                         "name": user_input.get("name", defaults.get("name", DEFAULT_NAME)),
-                        CONF_SCRIPT_PATH: user_input.get(
-                            CONF_SCRIPT_PATH, defaults.get("script_path", DEFAULT_SCRIPT_PATH)
+                        CONFIG_SCRIPT_PATH: user_input.get(
+                            CONFIG_SCRIPT_PATH, defaults.get("script_path", DEFAULT_SCRIPT_PATH)
                         ),
-                        CONF_ALLOW_ALL_IMPORTS: user_input.get(
-                            CONF_ALLOW_ALL_IMPORTS,
+                        CONFIG_ALLOW_ALL_IMPORTS: user_input.get(
+                            CONFIG_ALLOW_ALL_IMPORTS,
                             defaults.get("allow_all_imports", DEFAULT_ALLOW_ALL_IMPORTS),
                         ),
-                        CONF_IMPORT_ALLOWLIST: defaults.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST),
+                        CONFIG_IMPORT_ALLOWLIST: defaults.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST),
                     },
                 )
 
         # Generate schema from ConfigManager
-        setup_schema = config_mgr.generate_setup_schema()
+        setup_schema = config_manager.generate_setup_schema()
         return self.async_show_form(step_id="user", data_schema=setup_schema, errors=errors)
 
     @staticmethod
@@ -138,56 +149,56 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             The flow result.
         """
         errors: dict[str, str] = {}
-        config_mgr = get_config_manager()
-        config_mgr.setup(self.hass)
+        config_manager = get_config_manager()
+        config_manager.setup(self.hass)
 
         if user_input is not None:
             # Validate script path using ConfigManager
-            script_path = user_input.get(CONF_SCRIPT_PATH, DEFAULT_SCRIPT_PATH)
-            is_valid, _error = config_mgr.validate_script_path(script_path)
+            script_path = user_input.get(CONFIG_SCRIPT_PATH, DEFAULT_SCRIPT_PATH)
+            is_valid, _error = config_manager.validate_script_path(script_path)
 
             if not is_valid:
-                errors[CONF_SCRIPT_PATH] = "invalid_path"
+                errors[CONFIG_SCRIPT_PATH] = "invalid_path"
             else:
                 # Parse import allowlist from comma-separated string
                 allowlist_str = user_input.get("import_allowlist_str", "")
                 if allowlist_str:
                     allowlist = [m.strip() for m in allowlist_str.split(",") if m.strip()]
                 else:
-                    allowlist = config_mgr.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
+                    allowlist = config_manager.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
 
                 return self.async_create_entry(
                     title="",
                     data={
-                        CONF_SCRIPT_PATH: script_path,
-                        CONF_ALLOW_ALL_IMPORTS: user_input.get(
-                            CONF_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS
+                        CONFIG_SCRIPT_PATH: script_path,
+                        CONFIG_ALLOW_ALL_IMPORTS: user_input.get(
+                            CONFIG_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS
                         ),
-                        CONF_IMPORT_ALLOWLIST: allowlist,
+                        CONFIG_IMPORT_ALLOWLIST: allowlist,
                     },
                 )
 
         # Load current values from entry
-        config_mgr.load_from_dict(self.config_entry.data, self.config_entry.options)
+        config_manager.load_from_dict(self.config_entry.data, self.config_entry.options)
 
         # Get current values
-        current_path = config_mgr.get("script_path", DEFAULT_SCRIPT_PATH)
-        current_allow_all = config_mgr.get("allow_all_imports", DEFAULT_ALLOW_ALL_IMPORTS)
-        current_allowlist = config_mgr.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
+        current_path = config_manager.get("script_path", DEFAULT_SCRIPT_PATH)
+        current_allow_all = config_manager.get("allow_all_imports", DEFAULT_ALLOW_ALL_IMPORTS)
+        current_allowlist = config_manager.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
 
         # Convert allowlist to comma-separated string for display
         allowlist_str = ", ".join(current_allowlist) if current_allowlist else ""
 
         options_schema = vol.Schema(
             {
-                vol.Required(CONF_SCRIPT_PATH, default=current_path): str,
-                vol.Required(CONF_ALLOW_ALL_IMPORTS, default=current_allow_all): bool,
+                vol.Required(CONFIG_SCRIPT_PATH, default=current_path): str,
+                vol.Required(CONFIG_ALLOW_ALL_IMPORTS, default=current_allow_all): bool,
                 vol.Optional("import_allowlist_str", default=allowlist_str): str,
             }
         )
 
         # Get defaults for description placeholder
-        defaults = config_mgr.get_defaults()
+        defaults = config_manager.get_defaults()
         default_allowlist = defaults.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
 
         return self.async_show_form(

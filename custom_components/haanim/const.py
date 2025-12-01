@@ -2,62 +2,42 @@
 
 from typing import Final
 
+__all__ = [
+    # Core constants
+    "DOMAIN",
+    "NAME",
+    "VERSION",
+    # Decorator names
+    "DECORATOR_SCENE",
+    "DECORATOR_STATE_TRIGGER",
+    "DECORATOR_TIME_TRIGGER",
+    "DECORATOR_EVENT_TRIGGER",
+    "DECORATOR_TIME_ACTIVE",
+    "DECORATOR_STATE_ACTIVE",
+    "DECORATOR_SERVICE",
+    # Execution modes
+    "EXEC_MODE_MANUAL",
+    "EXEC_MODE_TRIGGER",
+    # Events
+    "EVENT_SCRIPT_LOADED",
+    "EVENT_SCRIPT_UNLOADED",
+    "EVENT_SCRIPT_ERROR",
+    "EVENT_SCRIPT_EXECUTED",
+    # Services
+    "SERVICE_RELOAD_SCRIPTS",
+    "SERVICE_RUN_ACTION",
+    "SERVICE_LIST_SCRIPTS",
+    "SERVICE_LIST_ACTIONS",
+    # Attributes
+    "ATTR_SCRIPT_NAME",
+    "ATTR_SCRIPT_PATH",
+    "ATTR_ACTION_NAME",
+    "ATTR_MANUAL",
+]
+
 DOMAIN: Final = "haanim"
 NAME: Final = "HAAnim"
 VERSION: Final = "0.1.0"
-
-# Default values
-DEFAULT_NAME: Final = "HAAnim"
-
-# Configuration keys
-CONF_SCRIPT_PATH: Final = "script_path"
-CONF_IMPORT_ALLOWLIST: Final = "import_allowlist"
-CONF_ALLOW_ALL_IMPORTS: Final = "allow_all_imports"
-
-# Default configuration values
-DEFAULT_SCRIPT_PATH: Final = "/config/haanim"
-DEFAULT_ALLOW_ALL_IMPORTS: Final = False
-
-# Default import allowlist - safe modules for automation scripts
-DEFAULT_IMPORT_ALLOWLIST: Final[list[str]] = [
-    "asyncio",
-    "datetime",
-    "json",
-    "logging",
-    "math",
-    "random",
-    "re",
-    "time",
-    "typing",
-    "collections",
-    "functools",
-    "itertools",
-    "operator",
-    "statistics",
-    "decimal",
-    "fractions",
-    "enum",
-    "dataclasses",
-]
-
-# Restricted builtins that should not be available in scripts
-RESTRICTED_BUILTINS: Final[set[str]] = {
-    "eval",
-    "exec",
-    "compile",
-    "open",
-    "input",
-    "__import__",
-    "breakpoint",
-    "memoryview",
-    "globals",
-    "locals",
-    "vars",
-    "dir",
-    "delattr",
-    "setattr",
-    "getattr",
-}
 
 # Decorator names
 DECORATOR_SCENE: Final = "scene"
