@@ -12,7 +12,8 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 
-from custom_components.haanim.const import DOMAIN, NAME
+from custom_components.haanim.api import async_register_api
+from custom_components.haanim.const import DOMAIN, NAME, VERSION
 from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.ha.services import ServiceManager
 from custom_components.haanim.ha.state import StateManager
@@ -80,6 +81,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "trigger_manager": trigger_manager,
     }
 
+    # Register API views for the frontend
+    async_register_api(hass)
+
     # Register the frontend panel
     await _async_register_panel(hass)
 
@@ -105,7 +109,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 async def _async_register_panel(hass: HomeAssistant) -> None:
-    """Register the HAAnim panel.
+    """Register the HAAnim panel as a Web Component.
 
     Args:
         hass: Home Assistant instance.
@@ -119,19 +123,27 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     # Get the path to the UI directory
     ui_dir = os.path.join(os.path.dirname(__file__), "ui")
 
-    # Register static path for serving UI assets
+    # Register static path for serving UI assets (includes the panel JS file)
     await hass.http.async_register_static_paths(
         [StaticPathConfig(f"/{DOMAIN}/ui", ui_dir, cache_headers=False)]
     )
 
-    # Register as a custom panel
+    # Register as a custom panel using Web Component
+    # The haanim-panel.js file defines the 'haanim-panel' custom element
     frontend.async_register_built_in_panel(
         hass,
-        component_name="iframe",
+        component_name="custom",
         sidebar_title=NAME,
         sidebar_icon="mdi:animation",
         frontend_url_path=DOMAIN,
-        config={"url": f"/{DOMAIN}/ui/panel.html"},
+        config={
+            "_panel_custom": {
+                "name": "haanim-panel",
+                "js_url": f"/{DOMAIN}/ui/haanim-panel.js?v={VERSION}",
+                "embed_iframe": False,
+                "trust_external": False,
+            }
+        },
         require_admin=False,
     )
 
