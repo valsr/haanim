@@ -4,11 +4,11 @@ This script demonstrates a simple time-triggered automation
 that logs a message every 10 minutes.
 """
 
-# from haanim import scene, time_trigger
+# from haanim import action, time_trigger
 
 
 # @time_trigger("cron(*/10 * * * *)")
-# @scene("Hello World Logger")
+# @action("Hello World Logger")
 # def hello_world():
 #     """Log a hello world message every 10 minutes.
 
@@ -19,12 +19,12 @@ that logs a message every 10 minutes.
 #     log.info("This message appears every 10 minutes.")
 
 import logging
-from haanim import scene, time_trigger
+from haanim import action, time_trigger
 
 log = logging.getLogger("haanim.hello_world")
 
 
-@scene("Hello World!")
+@action("Hello World!")
 @time_trigger("cron(*/10 * * * *)")
 def hello_world():
     """Log a hello world message.

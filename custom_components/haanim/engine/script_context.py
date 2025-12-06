@@ -158,7 +158,7 @@ class ScriptContext:
 
         # Create a virtual 'haanim' module that scripts can import from
         haanim_module = SimpleNamespace(
-            scene=decorators.scene,
+            action=decorators.action,
             state_trigger=decorators.state_trigger,
             time_trigger=decorators.time_trigger,
             event_trigger=decorators.event_trigger,
@@ -171,7 +171,7 @@ class ScriptContext:
         self._import_controller.register_virtual_module("haanim", haanim_module)
 
         # Add decorators to global scope (for direct use without import)
-        self._global_symbols.set("scene", decorators.scene)
+        self._global_symbols.set("action", decorators.action)
         self._global_symbols.set("state_trigger", decorators.state_trigger)
         self._global_symbols.set("time_trigger", decorators.time_trigger)
         self._global_symbols.set("event_trigger", decorators.event_trigger)
@@ -259,7 +259,7 @@ class ScriptContext:
         # Extract definitions from the global scope
         self._extract_definitions()
 
-        # Determine script name (from @scene decorator or filename)
+        # Determine script name (from @action decorator or filename)
         display_name = self._custom_name or self.script_name
 
         # Create metadata
@@ -328,7 +328,7 @@ class ScriptContext:
         if metadata.custom_name:
             self._custom_name = metadata.custom_name
 
-        # Process scenes (@scene)
+        # Process actions (@action)
         if metadata.is_action:
             action_info = metadata.action_info
             action_name = (action_info.name if action_info else None) or func_name

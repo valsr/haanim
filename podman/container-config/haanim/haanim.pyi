@@ -18,63 +18,58 @@ F = TypeVar("F", bound=Callable[..., Any])
 # Decorators
 # =============================================================================
 
-
 @overload
-def scene(func: F) -> F:
-    """Mark a function as a scene (no arguments)."""
+def action(func: F) -> F:
+    """Mark a function as an action (no arguments)."""
     ...
 
-
 @overload
-def scene(
+def action(
     name: str | None = None,
     *,
     description: str | None = None,
 ) -> Callable[[F], F]:
-    """Expose a function as a scene with configuration."""
+    """Expose a function as an action with configuration."""
     ...
 
-
-def scene(
+def action(
     name_or_func: str | F | None = None,
     *,
     description: str | None = None,
 ) -> F | Callable[[F], F]:
-    """Decorator to mark a function as a scene, manually executable from the UI.
+    """Decorator to mark a function as an action, manually executable from the UI.
 
-    When a function is decorated with @scene, it becomes available in the HAAnim
+    When a function is decorated with @action, it becomes available in the HAAnim
     UI for manual execution. Manual execution bypasses all trigger constraints.
 
     Args:
-        name_or_func: Optional display name for the scene, or the function if
+        name_or_func: Optional display name for the action, or the function if
             used without arguments.
-        description: Optional description of what the scene does.
+        description: Optional description of what the action does.
 
     Returns:
         Decorated function or decorator.
 
     Example:
-        @scene
+        @action
         def turn_on_lights():
             pass
 
-        @scene("Morning Routine")
+        @action("Morning Routine")
         def morning_routine():
             pass
 
-        @scene("Evening Scene", description="Activates evening lighting")
+        @action("Evening Action", description="Activates evening lighting")
         @time_trigger("sunset")
-        def evening_scene():
+        def evening_action():
             pass
     """
     ...
-
 
 @overload
 def service(func: F) -> F:
     """Mark a function as a service (no arguments)."""
     ...
-
 
 @overload
 def service(
@@ -85,7 +80,6 @@ def service(
 ) -> Callable[[F], F]:
     """Expose a function as a service with configuration."""
     ...
-
 
 def service(
     name_or_func: str | F | None = None,
@@ -113,7 +107,6 @@ def service(
             pass
     """
     ...
-
 
 def state_trigger(
     *trigger_exprs: str,
@@ -149,7 +142,6 @@ def state_trigger(
     """
     ...
 
-
 def time_trigger(
     *trigger_specs: str,
     **kwargs: Any,
@@ -179,7 +171,6 @@ def time_trigger(
     """
     ...
 
-
 def event_trigger(
     event_type: str,
     *,
@@ -203,7 +194,6 @@ def event_trigger(
     """
     ...
 
-
 def time_active(
     *time_specs: str,
     **kwargs: Any,
@@ -212,7 +202,7 @@ def time_active(
 
     This decorator adds time-based constraints. The function will only
     execute if the current time matches the specification. Does NOT
-    apply to manual execution via @scene.
+    apply to manual execution via @action.
 
     Args:
         time_specs: Time specifications for when the function is active.
@@ -230,7 +220,6 @@ def time_active(
     """
     ...
 
-
 def state_active(
     *state_exprs: str,
     **kwargs: Any,
@@ -239,7 +228,7 @@ def state_active(
 
     This decorator adds state-based constraints. The function will only
     execute if all state expressions evaluate to true. Does NOT apply
-    to manual execution via @scene.
+    to manual execution via @action.
 
     Args:
         state_exprs: State expressions that must be true.
@@ -256,9 +245,6 @@ def state_active(
             pass
     """
     ...
-
-
-
 
 # =============================================================================
 # Built-in globals available in HAAnim scripts

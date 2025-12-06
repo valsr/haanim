@@ -8,7 +8,7 @@ __all__ = [
     "NAME",
     "VERSION",
     # Decorator names
-    "DECORATOR_SCENE",
+    "DECORATOR_ACTION",
     "DECORATOR_STATE_TRIGGER",
     "DECORATOR_TIME_TRIGGER",
     "DECORATOR_EVENT_TRIGGER",
@@ -54,7 +54,7 @@ NAME: Final = "HAAnim"
 VERSION: Final = "0.1.0"
 
 # Decorator names
-DECORATOR_SCENE: Final = "scene"
+DECORATOR_ACTION: Final = "action"
 DECORATOR_STATE_TRIGGER: Final = "state_trigger"
 DECORATOR_TIME_TRIGGER: Final = "time_trigger"
 DECORATOR_EVENT_TRIGGER: Final = "event_trigger"

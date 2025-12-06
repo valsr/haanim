@@ -59,9 +59,9 @@ class FunctionMetadata:
     """Metadata collected from decorators on a function.
 
     Args:
-        custom_name: Custom name from @scene("name") decorator.
-        is_action: Whether function is marked as a scene (@scene).
-        action_info: Information about the scene if is_action is True.
+        custom_name: Custom name from @action("name") decorator.
+        is_action: Whether function is marked as an action (@action).
+        action_info: Information about the action if is_action is True.
         triggers: List of triggers attached to this function.
         constraints: List of constraints (time_active, state_active).
         is_service: Whether function should be exposed as HA service.
@@ -119,39 +119,39 @@ def has_metadata(func: Callable[..., Any]) -> bool:
     return hasattr(func, METADATA_ATTR)
 
 
-def scene(
+def action(
     name_or_func: str | F | None = None,
     *,
     description: str | None = None,
 ) -> F | Callable[[F], F]:
-    """Decorator to mark a function as a scene, manually executable from the UI.
+    """Decorator to mark a function as an action, manually executable from the UI.
 
-    When a function is decorated with @scene, it becomes available in the HAAnim
+    When a function is decorated with @action, it becomes available in the HAAnim
     UI for manual execution. Manual execution bypasses all trigger constraints.
 
     Args:
-        name_or_func: Optional display name for the scene, or the function if
+        name_or_func: Optional display name for the action, or the function if
             used without arguments.
-        description: Optional description of what the scene does.
+        description: Optional description of what the action does.
 
     Returns:
         Decorated function or decorator.
 
     Example:
-        @scene
+        @action
         def turn_on_lights():
             pass
 
-        @scene("Morning Routine")
+        @action("Morning Routine")
         def morning_routine():
             pass
 
-        @scene("Evening Scene", description="Activates evening lighting")
+        @action("Evening Action", description="Activates evening lighting")
         @time_trigger("sunset")
-        def evening_scene():
+        def evening_action():
             pass
     """
-    # Handle @scene without parentheses
+    # Handle @action without parentheses
     if callable(name_or_func):
         func = name_or_func
         metadata = _get_or_create_metadata(func)
@@ -159,7 +159,7 @@ def scene(
         metadata.action_info = ActionInfo(func=func)
         return func
 
-    # Handle @scene() or @scene("name") or @scene(description="...")
+    # Handle @action() or @action("name") or @action(description="...")
     def decorator(func: F) -> F:
         metadata = _get_or_create_metadata(func)
         metadata.is_action = True
@@ -312,7 +312,7 @@ def time_active(
 
     This decorator adds time-based constraints. The function will only
     execute if the current time matches the specification. Does NOT
-    apply to manual execution via @scene.
+    apply to manual execution via @action.
 
     Args:
         time_specs: Time specifications for when the function is active.
@@ -351,7 +351,7 @@ def state_active(
 
     This decorator adds state-based constraints. The function will only
     execute if all state expressions evaluate to true. Does NOT apply
-    to manual execution via @scene.
+    to manual execution via @action.
 
     Args:
         state_exprs: State expressions that must be true.
@@ -430,7 +430,7 @@ def service(
 
 # Export all decorators for use in scripts
 __all__ = [
-    "scene",
+    "action",
     "state_trigger",
     "time_trigger",
     "event_trigger",
