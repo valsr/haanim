@@ -16,9 +16,9 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-from .const import EXEC_MODE_MANUAL, EXEC_MODE_TRIGGER
-from .decorators import FunctionMetadata, get_metadata, has_metadata
-from .script_engine import (
+from custom_components.haanim.const import EXEC_MODE_MANUAL, EXEC_MODE_TRIGGER
+from custom_components.haanim.engine.decorators import FunctionMetadata, get_metadata, has_metadata
+from custom_components.haanim.engine import (
     AstEvaluator,
     ImportController,
     SafeBuiltins,
@@ -65,7 +65,7 @@ class TriggerDefinition:
     trigger_expr: str | list[str]
     func_name: str
     func: Callable[..., Any]
-    kwargs: dict[str, Any] = field(default_factory=dict)
+    kwargs: dict[str, Any] = field(default_factory=dict[str, Any])
     script_name: str | None = None
 
 
@@ -90,9 +90,9 @@ class ScriptMetadata:
     filename: str
     loaded_at: datetime = field(default_factory=datetime.now)
     modified_at: datetime | None = None
-    actions: list[ActionDefinition] = field(default_factory=list)
-    triggers: list[TriggerDefinition] = field(default_factory=list)
-    services: list[str] = field(default_factory=list)
+    actions: list[ActionDefinition] = field(default_factory=list[ActionDefinition])
+    triggers: list[TriggerDefinition] = field(default_factory=list[TriggerDefinition])
+    services: list[str] = field(default_factory=list[str])
     error: str | None = None
     enabled: bool = True
 
@@ -274,7 +274,12 @@ class ScriptContext:
             services=self._services,
         )
 
-        self._logger.info("Script loaded: %s (%d actions, %d triggers)", display_name, len(self._actions), len(self._triggers))
+        self._logger.info(
+            "Script loaded: %s (%d actions, %d triggers)",
+            display_name,
+            len(self._actions),
+            len(self._triggers),
+        )
 
         return self._metadata
 
@@ -290,6 +295,8 @@ class ScriptContext:
             # Check for HAAnim metadata
             if has_metadata(obj):
                 metadata = get_metadata(obj)
+                if not metadata:
+                    raise RuntimeError("Metadata expected but not found")
                 self._process_function_metadata(name, obj, metadata)
             elif hasattr(obj, "_haanim_metadata"):
                 # Also check wrapped functions
@@ -424,8 +431,8 @@ class ScriptContext:
 
             if asyncio.iscoroutinefunction(func):
                 return await func(*args, **kwargs)
-            else:
-                return await self.hass.async_add_executor_job(func, *args, **kwargs)
+
+            return await self.hass.async_add_executor_job(func, *args, **kwargs)
         except Exception as err:
             self._logger.error("Function '%s' failed: %s", func_name, err)
             raise ScriptError(f"Function '{func_name}' failed: {err}") from err

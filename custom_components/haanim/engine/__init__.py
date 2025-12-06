@@ -9,40 +9,21 @@ from __future__ import annotations
 import ast
 import asyncio
 import builtins
+import importlib
 import logging
-from typing import Any, Callable
+import sys
+from typing import Any
+from collections.abc import Callable
 
-from .const import DEFAULT_IMPORT_ALLOWLIST, RESTRICTED_BUILTINS
+from custom_components.haanim.const import DEFAULT_IMPORT_ALLOWLIST, RESTRICTED_BUILTINS
+from custom_components.haanim.engine.errors import (
+    ScriptError,
+    ScriptRuntimeError,
+    ScriptSecurityError,
+    ScriptSyntaxError,
+)
 
 _LOGGER = logging.getLogger(__name__)
-
-
-class ScriptError(Exception):
-    """Base exception for script execution errors."""
-
-    def __init__(self, message: str, lineno: int | None = None, col_offset: int | None = None) -> None:
-        """Initialize the script error.
-
-        Args:
-            message: Error message.
-            lineno: Line number where error occurred.
-            col_offset: Column offset where error occurred.
-        """
-        super().__init__(message)
-        self.lineno = lineno
-        self.col_offset = col_offset
-
-
-class ScriptSecurityError(ScriptError):
-    """Exception raised for security violations in scripts."""
-
-
-class ScriptSyntaxError(ScriptError):
-    """Exception raised for syntax errors in scripts."""
-
-
-class ScriptRuntimeError(ScriptError):
-    """Exception raised for runtime errors in scripts."""
 
 
 class SafeBuiltins:
@@ -125,7 +106,7 @@ class ImportController:
         top_level = module_name.split(".")[0]
         return top_level in self._allowlist
 
-    def safe_import(self, module_name: str, fromlist: list[str] | None = None) -> Any:
+    def safe_import(self, module_name: str, _: list[str] | None = None) -> Any:
         """Safely import a module if allowed.
 
         Args:
@@ -145,8 +126,6 @@ class ImportController:
         if not self.is_allowed(module_name):
             _LOGGER.error("Import blocked - module '%s' is not in allowlist", module_name)
             raise ScriptSecurityError(f"Import of module '{module_name}' is not allowed")
-
-        import importlib
 
         try:
             module = importlib.import_module(module_name)
@@ -241,7 +220,7 @@ class SymbolTable:
         Returns:
             Dictionary of all symbols in scope chain.
         """
-        result = {}
+        result: dict[str, Any] = {}
         if self._parent:
             result.update(self._parent.as_dict())
         result.update(self._symbols)
@@ -388,6 +367,62 @@ class AstEvaluator:
         for name, value in self._safe_builtins.get_builtins().items():
             self._global_symbols.set(name, value)
 
+        # Register evaluators
+        self._evaluators: dict[type[ast.AST], Callable[[Any, SymbolTable], Any]] = {
+            # Expression evaluators
+            ast.Constant: self._eval_constant,
+            ast.Num: self._eval_num,  # pyright: ignore[reportDeprecated]
+            ast.Str: self._eval_str,  # pyright: ignore[reportDeprecated]
+            ast.Index: self._eval_index,  # pyright: ignore[reportDeprecated]
+            ast.Name: self._eval_name,
+            ast.Attribute: self._eval_attribute,
+            ast.Subscript: self._eval_subscript,
+            ast.Slice: self._eval_slice,
+            ast.List: self._eval_list,
+            ast.Tuple: self._eval_tuple,
+            ast.Dict: self._eval_dict,
+            ast.Set: self._eval_set,
+            ast.BinOp: self._eval_binary_operation,
+            ast.BoolOp: self._eval_bool_operator,
+            ast.UnaryOp: self._eval_unary_operator,
+            ast.Compare: self._eval_compare,
+            ast.IfExp: self._eval_if_expression,
+            ast.Call: self._eval_call,
+            ast.Lambda: self._eval_lambda,
+            ast.ListComp: self._eval_list_comprehension,
+            ast.SetComp: self._eval_set_comprehension,
+            ast.DictComp: self._eval_dict_comprehension,
+            ast.JoinedStr: self._eval_joined_str,
+            ast.FormattedValue: self._eval_formatted_value,
+            ast.Module: self._eval_module,
+            ast.Expr: self._eval_expression,
+            ast.Assign: self._eval_assign,
+            ast.AnnAssign: self._eval_annotated_assignment,
+            ast.AugAssign: self._eval_augmented_assignment,
+            ast.If: self._eval_if,
+            ast.For: self._eval_for,
+            ast.While: self._eval_while,
+            ast.Break: self._eval_break,
+            ast.Continue: self._eval_continue,
+            ast.Return: self._eval_return,
+            ast.FunctionDef: self._eval_function_def,
+            ast.AsyncFunctionDef: self._eval_async_function_def,
+            ast.ClassDef: self._eval_class_def,
+            ast.Import: self._eval_import,
+            ast.ImportFrom: self._eval_import_from,
+            ast.Pass: self._eval_pass,
+            ast.Raise: self._eval_raise,
+            ast.Try: self._eval_try,
+            ast.With: self._eval_with,
+            ast.AsyncWith: self._eval_async_with,
+            ast.Await: self._eval_await,
+            ast.Assert: self._eval_assert,
+            ast.Delete: self._eval_delete,
+            ast.Global: self._eval_global,
+            ast.Nonlocal: self._eval_nonlocal,
+            ast.NamedExpr: self._eval_named_expression,
+        }
+
     def parse(self, source: str, filename: str = "<script>") -> None:
         """Parse Python source code into an AST.
 
@@ -442,8 +477,7 @@ class AstEvaluator:
         Returns:
             The result of evaluating the node.
         """
-        method_name = f"_eval_{node.__class__.__name__}"
-        method = getattr(self, method_name, None)
+        method: Callable[[Any, SymbolTable], Any] | None = self._evaluators.get(type(node), None)
 
         if method is None:
             raise ScriptRuntimeError(
@@ -456,59 +490,61 @@ class AstEvaluator:
     # -------------------------------------------------------------------------
     # Expression evaluators
     # -------------------------------------------------------------------------
-
-    async def _eval_Constant(self, node: ast.Constant, scope: SymbolTable) -> Any:
+    async def _eval_constant(self, node: ast.Constant, _: SymbolTable) -> Any:
         """Evaluate a constant value."""
         return node.value
 
-    async def _eval_Num(self, node: ast.Num, scope: SymbolTable) -> Any:
+    async def _eval_num(self, node: ast.Num, _: SymbolTable) -> Any:  # pyright: ignore[reportDeprecated]
         """Evaluate a number (Python 3.7 compatibility)."""
-        return node.n
+        return node.n  # pyright: ignore[reportDeprecated]
 
-    async def _eval_Str(self, node: ast.Str, scope: SymbolTable) -> Any:
+    async def _eval_str(self, node: ast.Str, _: SymbolTable) -> Any:  # pyright: ignore[reportDeprecated]
         """Evaluate a string (Python 3.7 compatibility)."""
-        return node.s
+        return node.s  # pyright: ignore[reportDeprecated]
 
-    async def _eval_Name(self, node: ast.Name, scope: SymbolTable) -> Any:
+    async def _eval_index(
+        self, node: ast.Index, scope: SymbolTable  # pyright: ignore[reportDeprecated]
+    ) -> Any:
+        """Evaluate an index (Python 3.8 compatibility)."""
+        return await self.aeval(node.value, scope)  # type: ignore
+
+    async def _eval_name(self, node: ast.Name, scope: SymbolTable) -> Any:
         """Evaluate a name reference."""
         name = node.id
         if scope.exists(name):
             return scope.get(name)
         raise ScriptRuntimeError(f"Name '{name}' is not defined", lineno=node.lineno)
 
-    async def _eval_Attribute(self, node: ast.Attribute, scope: SymbolTable) -> Any:
+    async def _eval_attribute(self, node: ast.Attribute, scope: SymbolTable) -> Any:
         """Evaluate an attribute access."""
         obj = await self.aeval(node.value, scope)
         return getattr(obj, node.attr)
 
-    async def _eval_Subscript(self, node: ast.Subscript, scope: SymbolTable) -> Any:
+    async def _eval_subscript(self, node: ast.Subscript, scope: SymbolTable) -> Any:
         """Evaluate a subscript operation."""
         obj = await self.aeval(node.value, scope)
         index = await self.aeval(node.slice, scope)
         return obj[index]
 
-    async def _eval_Index(self, node: ast.Index, scope: SymbolTable) -> Any:
-        """Evaluate an index (Python 3.8 compatibility)."""
-        return await self.aeval(node.value, scope)
-
-    async def _eval_Slice(self, node: ast.Slice, scope: SymbolTable) -> Any:
+    async def _eval_slice(self, node: ast.Slice, scope: SymbolTable) -> Any:
         """Evaluate a slice."""
         lower = await self.aeval(node.lower, scope) if node.lower else None
         upper = await self.aeval(node.upper, scope) if node.upper else None
         step = await self.aeval(node.step, scope) if node.step else None
         return slice(lower, upper, step)
 
-    async def _eval_List(self, node: ast.List, scope: SymbolTable) -> list[Any]:
+    async def _eval_list(self, node: ast.List, scope: SymbolTable) -> list[Any]:
         """Evaluate a list literal."""
         return [await self.aeval(elt, scope) for elt in node.elts]
 
-    async def _eval_Tuple(self, node: ast.Tuple, scope: SymbolTable) -> tuple[Any, ...]:
+    async def _eval_tuple(self, node: ast.Tuple, scope: SymbolTable) -> tuple[Any, ...]:
         """Evaluate a tuple literal."""
-        return tuple(await self.aeval(elt, scope) for elt in node.elts)
+        values = [await self.aeval(elt, scope) for elt in node.elts]
+        return tuple(values)
 
-    async def _eval_Dict(self, node: ast.Dict, scope: SymbolTable) -> dict[Any, Any]:
+    async def _eval_dict(self, node: ast.Dict, scope: SymbolTable) -> dict[Any, Any]:
         """Evaluate a dict literal."""
-        result = {}
+        result: dict[Any, Any] = {}
         for key, value in zip(node.keys, node.values):
             if key is None:
                 # Handle dict unpacking **d
@@ -520,16 +556,16 @@ class AstEvaluator:
                 result[k] = v
         return result
 
-    async def _eval_Set(self, node: ast.Set, scope: SymbolTable) -> set[Any]:
+    async def _eval_set(self, node: ast.Set, scope: SymbolTable) -> set[Any]:
         """Evaluate a set literal."""
         return {await self.aeval(elt, scope) for elt in node.elts}
 
-    async def _eval_BinOp(self, node: ast.BinOp, scope: SymbolTable) -> Any:
+    async def _eval_binary_operation(self, node: ast.BinOp, scope: SymbolTable) -> Any:
         """Evaluate a binary operation."""
         left = await self.aeval(node.left, scope)
         right = await self.aeval(node.right, scope)
 
-        ops = {
+        ops: dict[type[ast.operator], Callable[[Any, Any], Any]] = {
             ast.Add: lambda a, b: a + b,
             ast.Sub: lambda a, b: a - b,
             ast.Mult: lambda a, b: a * b,
@@ -550,11 +586,11 @@ class AstEvaluator:
             raise ScriptRuntimeError(f"Unsupported binary operator: {type(node.op).__name__}")
         return op_func(left, right)
 
-    async def _eval_UnaryOp(self, node: ast.UnaryOp, scope: SymbolTable) -> Any:
+    async def _eval_unary_operator(self, node: ast.UnaryOp, scope: SymbolTable) -> Any:
         """Evaluate a unary operation."""
         operand = await self.aeval(node.operand, scope)
 
-        ops = {
+        ops: dict[type[ast.unaryop], Callable[[Any], Any]] = {
             ast.UAdd: lambda a: +a,
             ast.USub: lambda a: -a,
             ast.Not: lambda a: not a,
@@ -566,26 +602,26 @@ class AstEvaluator:
             raise ScriptRuntimeError(f"Unsupported unary operator: {type(node.op).__name__}")
         return op_func(operand)
 
-    async def _eval_BoolOp(self, node: ast.BoolOp, scope: SymbolTable) -> Any:
+    async def _eval_bool_operator(self, node: ast.BoolOp, scope: SymbolTable) -> Any:
         """Evaluate a boolean operation (and/or)."""
         if isinstance(node.op, ast.And):
             for value in node.values:
-                result = await self.aeval(value, scope)
+                result: bool = await self.aeval(value, scope)
                 if not result:
-                    return result
-            return result
+                    return False
+            return True
         else:  # ast.Or
             for value in node.values:
                 result = await self.aeval(value, scope)
                 if result:
-                    return result
-            return result
+                    return True
+            return False
 
-    async def _eval_Compare(self, node: ast.Compare, scope: SymbolTable) -> bool:
+    async def _eval_compare(self, node: ast.Compare, scope: SymbolTable) -> bool:
         """Evaluate a comparison."""
         left = await self.aeval(node.left, scope)
 
-        ops = {
+        ops: dict[type[ast.cmpop], Callable[[Any, Any], bool]] = {
             ast.Eq: lambda a, b: a == b,
             ast.NotEq: lambda a, b: a != b,
             ast.Lt: lambda a, b: a < b,
@@ -609,20 +645,20 @@ class AstEvaluator:
 
         return True
 
-    async def _eval_IfExp(self, node: ast.IfExp, scope: SymbolTable) -> Any:
+    async def _eval_if_expression(self, node: ast.IfExp, scope: SymbolTable) -> Any:
         """Evaluate a conditional expression (ternary)."""
         test = await self.aeval(node.test, scope)
         if test:
             return await self.aeval(node.body, scope)
         return await self.aeval(node.orelse, scope)
 
-    async def _eval_Call(self, node: ast.Call, scope: SymbolTable) -> Any:
+    async def _eval_call(self, node: ast.Call, scope: SymbolTable) -> Any:
         """Evaluate a function call."""
         func = await self.aeval(node.func, scope)
 
         # Evaluate arguments
         args = [await self.aeval(arg, scope) for arg in node.args]
-        kwargs = {}
+        kwargs: dict[str, Any] = {}
         for keyword in node.keywords:
             if keyword.arg is None:
                 # **kwargs unpacking
@@ -635,8 +671,9 @@ class AstEvaluator:
             return await func(*args, **kwargs)
         return func(*args, **kwargs)
 
-    async def _eval_Lambda(self, node: ast.Lambda, scope: SymbolTable) -> Callable[..., Any]:
+    async def _eval_lambda(self, node: ast.Lambda, scope: SymbolTable) -> Callable[..., Any]:
         """Evaluate a lambda expression."""
+
         # Create a wrapper function for the lambda
         async def lambda_wrapper(*args: Any, **kwargs: Any) -> Any:
             local_scope = scope.create_child()
@@ -649,15 +686,15 @@ class AstEvaluator:
 
         return lambda_wrapper
 
-    async def _eval_ListComp(self, node: ast.ListComp, scope: SymbolTable) -> list[Any]:
+    async def _eval_list_comprehension(self, node: ast.ListComp, scope: SymbolTable) -> list[Any]:
         """Evaluate a list comprehension."""
         return await self._eval_comprehension(node, scope, list)
 
-    async def _eval_SetComp(self, node: ast.SetComp, scope: SymbolTable) -> set[Any]:
+    async def _eval_set_comprehension(self, node: ast.SetComp, scope: SymbolTable) -> set[Any]:
         """Evaluate a set comprehension."""
         return await self._eval_comprehension(node, scope, set)
 
-    async def _eval_DictComp(self, node: ast.DictComp, scope: SymbolTable) -> dict[Any, Any]:
+    async def _eval_dict_comprehension(self, node: ast.DictComp, scope: SymbolTable) -> dict[Any, Any]:
         """Evaluate a dict comprehension."""
         result: dict[Any, Any] = {}
 
@@ -721,14 +758,14 @@ class AstEvaluator:
         await process(node.generators, 0, scope)
         return container_type(results)
 
-    async def _eval_JoinedStr(self, node: ast.JoinedStr, scope: SymbolTable) -> str:
+    async def _eval_joined_str(self, node: ast.JoinedStr, scope: SymbolTable) -> str:
         """Evaluate an f-string."""
-        parts = []
+        parts: list[str] = []
         for value in node.values:
             parts.append(str(await self.aeval(value, scope)))
         return "".join(parts)
 
-    async def _eval_FormattedValue(self, node: ast.FormattedValue, scope: SymbolTable) -> str:
+    async def _eval_formatted_value(self, node: ast.FormattedValue, scope: SymbolTable) -> str:
         """Evaluate a formatted value in an f-string."""
         value = await self.aeval(node.value, scope)
         if node.format_spec:
@@ -740,34 +777,33 @@ class AstEvaluator:
     # Statement evaluators
     # -------------------------------------------------------------------------
 
-    async def _eval_Module(self, node: ast.Module, scope: SymbolTable) -> None:
+    async def _eval_module(self, node: ast.Module, scope: SymbolTable) -> None:
         """Evaluate a module."""
         for stmt in node.body:
             await self.aeval(stmt, scope)
 
-    async def _eval_Expr(self, node: ast.Expr, scope: SymbolTable) -> Any:
+    async def _eval_expression(self, node: ast.Expr, scope: SymbolTable) -> Any:
         """Evaluate an expression statement."""
         return await self.aeval(node.value, scope)
 
-    async def _eval_Assign(self, node: ast.Assign, scope: SymbolTable) -> None:
+    async def _eval_assign(self, node: ast.Assign, scope: SymbolTable) -> None:
         """Evaluate an assignment statement."""
         value = await self.aeval(node.value, scope)
         for target in node.targets:
             await self._assign_target(target, value, scope)
 
-    async def _eval_AnnAssign(self, node: ast.AnnAssign, scope: SymbolTable) -> None:
+    async def _eval_annotated_assignment(self, node: ast.AnnAssign, scope: SymbolTable) -> None:
         """Evaluate an annotated assignment."""
         if node.value is not None:
             value = await self.aeval(node.value, scope)
             await self._assign_target(node.target, value, scope)
 
-    async def _eval_AugAssign(self, node: ast.AugAssign, scope: SymbolTable) -> None:
+    async def _eval_augmented_assignment(self, node: ast.AugAssign, scope: SymbolTable) -> None:
         """Evaluate an augmented assignment (+=, -=, etc.)."""
-        target_name = node.target.id if isinstance(node.target, ast.Name) else None
         current = await self.aeval(node.target, scope)
         value = await self.aeval(node.value, scope)
 
-        ops = {
+        ops: dict[type[ast.operator], Callable[[Any, Any], Any]] = {
             ast.Add: lambda a, b: a + b,
             ast.Sub: lambda a, b: a - b,
             ast.Mult: lambda a, b: a * b,
@@ -816,7 +852,7 @@ class AstEvaluator:
         else:
             raise ScriptRuntimeError(f"Unsupported assignment target: {type(target).__name__}")
 
-    async def _eval_If(self, node: ast.If, scope: SymbolTable) -> Any:
+    async def _eval_if(self, node: ast.If, scope: SymbolTable) -> Any:
         """Evaluate an if statement."""
         test = await self.aeval(node.test, scope)
         if test:
@@ -831,7 +867,7 @@ class AstEvaluator:
                     return result
         return None
 
-    async def _eval_For(self, node: ast.For, scope: SymbolTable) -> Any:
+    async def _eval_for(self, node: ast.For, scope: SymbolTable) -> Any:
         """Evaluate a for loop."""
         iterable = await self.aeval(node.iter, scope)
         for item in iterable:
@@ -853,7 +889,7 @@ class AstEvaluator:
                     return result
         return None
 
-    async def _eval_While(self, node: ast.While, scope: SymbolTable) -> Any:
+    async def _eval_while(self, node: ast.While, scope: SymbolTable) -> Any:
         """Evaluate a while loop."""
         while await self.aeval(node.test, scope):
             try:
@@ -872,23 +908,23 @@ class AstEvaluator:
                     return result
         return None
 
-    async def _eval_Break(self, node: ast.Break, scope: SymbolTable) -> None:
+    async def _eval_break(self, node: ast.Break, scope: SymbolTable) -> None:
         """Evaluate a break statement."""
         raise BreakLoop()
 
-    async def _eval_Continue(self, node: ast.Continue, scope: SymbolTable) -> None:
+    async def _eval_continue(self, node: ast.Continue, scope: SymbolTable) -> None:
         """Evaluate a continue statement."""
         raise ContinueLoop()
 
-    async def _eval_Return(self, node: ast.Return, scope: SymbolTable) -> ReturnValue:
+    async def _eval_return(self, node: ast.Return, scope: SymbolTable) -> ReturnValue:
         """Evaluate a return statement."""
         value = await self.aeval(node.value, scope) if node.value else None
         raise ReturnValue(value)
 
-    async def _eval_FunctionDef(self, node: ast.FunctionDef, scope: SymbolTable) -> None:
+    async def _eval_function_def(self, node: ast.FunctionDef, scope: SymbolTable) -> None:
         """Evaluate a function definition."""
         # Evaluate decorators
-        decorators = []
+        decorators: list[Any] = []
         for decorator in node.decorator_list:
             dec = await self.aeval(decorator, scope)
             decorators.append(dec)
@@ -912,10 +948,10 @@ class AstEvaluator:
 
         scope.set(node.name, result)
 
-    async def _eval_AsyncFunctionDef(self, node: ast.AsyncFunctionDef, scope: SymbolTable) -> None:
+    async def _eval_async_function_def(self, node: ast.AsyncFunctionDef, scope: SymbolTable) -> None:
         """Evaluate an async function definition."""
         # Evaluate decorators
-        decorators = []
+        decorators: list[Any] = []
         for decorator in node.decorator_list:
             dec = await self.aeval(decorator, scope)
             decorators.append(dec)
@@ -939,7 +975,7 @@ class AstEvaluator:
 
         scope.set(node.name, result)
 
-    async def _eval_ClassDef(self, node: ast.ClassDef, scope: SymbolTable) -> None:
+    async def _eval_class_def(self, node: ast.ClassDef, scope: SymbolTable) -> None:
         """Evaluate a class definition."""
         # Evaluate bases
         bases = [await self.aeval(base, scope) for base in node.bases]
@@ -969,14 +1005,14 @@ class AstEvaluator:
 
         scope.set(node.name, cls)
 
-    async def _eval_Import(self, node: ast.Import, scope: SymbolTable) -> None:
+    async def _eval_import(self, node: ast.Import, scope: SymbolTable) -> None:
         """Evaluate an import statement."""
         for alias in node.names:
             module = self._import_controller.safe_import(alias.name)
             name = alias.asname or alias.name.split(".")[0]
             scope.set(name, module)
 
-    async def _eval_ImportFrom(self, node: ast.ImportFrom, scope: SymbolTable) -> None:
+    async def _eval_import_from(self, node: ast.ImportFrom, scope: SymbolTable) -> None:
         """Evaluate a from ... import statement."""
         module = self._import_controller.safe_import(node.module or "")
         for alias in node.names:
@@ -986,21 +1022,25 @@ class AstEvaluator:
             name = alias.asname or alias.name
             scope.set(name, obj)
 
-    async def _eval_Pass(self, node: ast.Pass, scope: SymbolTable) -> None:
+    async def _eval_pass(self, node: ast.Pass, scope: SymbolTable) -> None:
         """Evaluate a pass statement."""
         pass
 
-    async def _eval_Raise(self, node: ast.Raise, scope: SymbolTable) -> None:
+    async def _eval_raise(self, node: ast.Raise, scope: SymbolTable) -> None:
         """Evaluate a raise statement."""
         if node.exc is None:
-            raise  # Re-raise current exception
+            # Re-raise current exception - get it from sys.exc_info()
+            exc_info = sys.exc_info()
+            if exc_info[1] is not None:
+                raise exc_info[1].with_traceback(exc_info[2])
+            raise ScriptRuntimeError("No active exception to re-raise")
         exc = await self.aeval(node.exc, scope)
         if node.cause:
             cause = await self.aeval(node.cause, scope)
             raise exc from cause
         raise exc
 
-    async def _eval_Try(self, node: ast.Try, scope: SymbolTable) -> Any:
+    async def _eval_try(self, node: ast.Try, scope: SymbolTable) -> Any:
         """Evaluate a try statement."""
         try:
             for stmt in node.body:
@@ -1045,16 +1085,16 @@ class AstEvaluator:
 
         return None
 
-    async def _eval_With(self, node: ast.With, scope: SymbolTable) -> Any:
+    async def _eval_with(self, node: ast.With, scope: SymbolTable) -> Any:
         """Evaluate a with statement."""
         # Get context managers
-        cms = []
+        cms: list[tuple[Any, ast.expr | None]] = []
         for item in node.items:
             cm = await self.aeval(item.context_expr, scope)
             cms.append((cm, item.optional_vars))
 
         # Enter context managers
-        values = []
+        values: list[Any] = []
         try:
             for cm, _ in cms:
                 value = cm.__enter__()
@@ -1077,14 +1117,14 @@ class AstEvaluator:
 
         return None
 
-    async def _eval_AsyncWith(self, node: ast.AsyncWith, scope: SymbolTable) -> Any:
+    async def _eval_async_with(self, node: ast.AsyncWith, scope: SymbolTable) -> Any:
         """Evaluate an async with statement."""
-        cms = []
+        cms: list[tuple[Any, ast.expr | None]] = []
         for item in node.items:
             cm = await self.aeval(item.context_expr, scope)
             cms.append((cm, item.optional_vars))
 
-        values = []
+        values: list[Any] = []
         try:
             for cm, _ in cms:
                 value = await cm.__aenter__()
@@ -1104,21 +1144,21 @@ class AstEvaluator:
 
         return None
 
-    async def _eval_Await(self, node: ast.Await, scope: SymbolTable) -> Any:
+    async def _eval_await(self, node: ast.Await, scope: SymbolTable) -> Any:
         """Evaluate an await expression."""
         value = await self.aeval(node.value, scope)
         if asyncio.iscoroutine(value):
             return await value
         return value
 
-    async def _eval_Assert(self, node: ast.Assert, scope: SymbolTable) -> None:
+    async def _eval_assert(self, node: ast.Assert, scope: SymbolTable) -> None:
         """Evaluate an assert statement."""
         test = await self.aeval(node.test, scope)
         if not test:
             msg = await self.aeval(node.msg, scope) if node.msg else "Assertion failed"
             raise AssertionError(msg)
 
-    async def _eval_Delete(self, node: ast.Delete, scope: SymbolTable) -> None:
+    async def _eval_delete(self, node: ast.Delete, scope: SymbolTable) -> None:
         """Evaluate a delete statement."""
         for target in node.targets:
             if isinstance(target, ast.Name):
@@ -1131,17 +1171,17 @@ class AstEvaluator:
                 obj = await self.aeval(target.value, scope)
                 delattr(obj, target.attr)
 
-    async def _eval_Global(self, node: ast.Global, scope: SymbolTable) -> None:
+    async def _eval_global(self, _: ast.Global, __: SymbolTable) -> None:
         """Evaluate a global statement (marks names as global)."""
         # In our implementation, globals are handled via set_global
         pass
 
-    async def _eval_Nonlocal(self, node: ast.Nonlocal, scope: SymbolTable) -> None:
+    async def _eval_nonlocal(self, _: ast.Nonlocal, __: SymbolTable) -> None:
         """Evaluate a nonlocal statement."""
         # Handled by scope chain
         pass
 
-    async def _eval_NamedExpr(self, node: ast.NamedExpr, scope: SymbolTable) -> Any:
+    async def _eval_named_expression(self, node: ast.NamedExpr, scope: SymbolTable) -> Any:
         """Evaluate a walrus operator (:=)."""
         value = await self.aeval(node.value, scope)
         await self._assign_target(node.target, value, scope)

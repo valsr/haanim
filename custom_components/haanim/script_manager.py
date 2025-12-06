@@ -8,28 +8,23 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import Event, HomeAssistant
 
-from .const import (
-    CONFIG_ALLOW_ALL_IMPORTS,
-    CONFIG_IMPORT_ALLOWLIST,
-    CONFIG_SCRIPT_PATH,
-    DEFAULT_ALLOW_ALL_IMPORTS,
-    DEFAULT_IMPORT_ALLOWLIST,
-    DEFAULT_SCRIPT_PATH,
+from custom_components.haanim.config import ConfigManager, get_config_manager
+
+from custom_components.haanim.const import (
     DOMAIN,
     EVENT_SCRIPT_ERROR,
     EVENT_SCRIPT_LOADED,
     EVENT_SCRIPT_UNLOADED,
 )
-from .script_context import ActionDefinition, ScriptContext, ScriptMetadata
-from .script_engine import ScriptError
+from .engine.script_context import ActionDefinition, ScriptContext, ScriptMetadata
+from .engine import ScriptError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,41 +54,22 @@ class ScriptManager:
         self.entry = entry
 
         # Get configuration
-        self._script_path = entry.options.get(
-            CONFIG_SCRIPT_PATH,
-            entry.data.get(CONFIG_SCRIPT_PATH, DEFAULT_SCRIPT_PATH),
-        )
-        self._import_allowlist = entry.options.get(
-            CONFIG_IMPORT_ALLOWLIST,
-            entry.data.get(CONFIG_IMPORT_ALLOWLIST, DEFAULT_IMPORT_ALLOWLIST),
-        )
-        self._allow_all_imports = entry.options.get(
-            CONFIG_ALLOW_ALL_IMPORTS,
-            entry.data.get(CONFIG_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS),
-        )
+        self._config: ConfigManager = get_config_manager()
+        self._script_path = self._config.get_script_path()
+        self._import_allowlist = self._config.get_import_allowlist()
+        self._allow_all_imports = self._config.get_allow_all_imports()
 
         # Script storage
         self._contexts: dict[str, ScriptContext] = {}
         self._failed_scripts: dict[str, str] = {}  # path -> error message
 
         # File watcher
-        self._watcher_task: asyncio.Task | None = None
+        self._watcher_task: asyncio.Task[Any] | None = None
         self._file_mtimes: dict[str, float] = {}
 
         # State
         self._started = False
         self._stop_event = asyncio.Event()
-
-    @property
-    def script_path(self) -> Path:
-        """Get the full path to the script folder.
-
-        Returns:
-            Path object for the script folder.
-        """
-        if os.path.isabs(self._script_path):
-            return Path(self._script_path)
-        return Path(self.hass.config.config_dir) / self._script_path
 
     async def async_setup(self) -> None:
         """Set up the script manager.
@@ -101,7 +77,7 @@ class ScriptManager:
         This should be called during integration setup.
         """
         # Ensure script folder exists
-        folder = self.script_path
+        folder = Path(self._script_path)
         if not folder.exists():
             _LOGGER.info("Creating script folder: %s", folder)
             folder.mkdir(parents=True, exist_ok=True)
@@ -116,7 +92,7 @@ class ScriptManager:
             self._allow_all_imports,
         )
 
-    async def _on_ha_started(self, event: Event) -> None:
+    async def _on_ha_started(self, _: Event) -> None:
         """Handle Home Assistant started event.
 
         Args:
@@ -135,7 +111,7 @@ class ScriptManager:
 
         _LOGGER.info("Script manager started")
 
-    async def _on_ha_stop(self, event: Event) -> None:
+    async def _on_ha_stop(self, _: Event) -> None:
         """Handle Home Assistant stop event.
 
         Args:
@@ -162,7 +138,7 @@ class ScriptManager:
         Returns:
             Dictionary mapping script paths to their metadata or error message.
         """
-        folder = self.script_path
+        folder = Path(self._script_path)
         results: dict[str, ScriptMetadata | str] = {}
 
         if not folder.exists():
@@ -318,12 +294,12 @@ class ScriptManager:
 
     async def _watch_scripts(self) -> None:
         """Watch the script folder for changes and hot-reload scripts."""
-        folder = self.script_path
+        folder = Path(self._script_path)
 
         while not self._stop_event.is_set():
             try:
                 # Check for changes every 5 seconds
-                await asyncio.sleep(5)
+                await asyncio.sleep(self._config.get_script_refresh_interval())
 
                 if not folder.exists():
                     continue
@@ -418,7 +394,7 @@ class ScriptManager:
         Returns:
             List of all action definitions.
         """
-        actions = []
+        actions: list[ActionDefinition] = []
         for context in self._contexts.values():
             actions.extend(context.get_actions())
         return actions
@@ -429,7 +405,7 @@ class ScriptManager:
         Returns:
             List of ScriptMetadata for all loaded scripts.
         """
-        return [ctx.get_metadata() for ctx in self._contexts.values() if ctx.get_metadata()]
+        return [metadata for ctx in self._contexts.values() if (metadata := ctx.get_metadata()) is not None]
 
     def get_failed_scripts(self) -> dict[str, str]:
         """Get information about failed scripts.
@@ -468,30 +444,6 @@ class ScriptManager:
 
         return await context.run_action(action_name, *args, manual=manual, **kwargs)
 
-    def get_script_path(self) -> str:
-        """Get the configured script path.
-
-        Returns:
-            The script path (relative or absolute).
-        """
-        return self._script_path
-
-    def get_import_allowlist(self) -> list[str]:
-        """Get the configured import allowlist.
-
-        Returns:
-            List of allowed module names.
-        """
-        return self._import_allowlist
-
-    def is_allow_all_imports(self) -> bool:
-        """Check if all imports are allowed.
-
-        Returns:
-            True if all imports are allowed.
-        """
-        return self._allow_all_imports
-
 
 async def async_get_manager(hass: HomeAssistant) -> ScriptManager | None:
     """Get the script manager instance.
@@ -508,6 +460,9 @@ async def async_get_manager(hass: HomeAssistant) -> ScriptManager | None:
     data = hass.data[DOMAIN]
     for entry_data in data.values():
         if isinstance(entry_data, dict) and "manager" in entry_data:
-            return entry_data["manager"]
+            manager = entry_data["manager"]  # type: ignore
+            if isinstance(manager, ScriptManager):
+                return manager
+            return None
 
     return None

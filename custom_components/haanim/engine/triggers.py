@@ -18,16 +18,16 @@ from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers.sun import get_astral_event_next
 from homeassistant.util import dt as dt_util
 
-from .const import (
+from custom_components.haanim.const import (
     DECORATOR_EVENT_TRIGGER,
     DECORATOR_STATE_ACTIVE,
     DECORATOR_STATE_TRIGGER,
     DECORATOR_TIME_ACTIVE,
     DECORATOR_TIME_TRIGGER,
 )
-from .ha_state import StateManager
-from .ha_events import EventManager
-from .script_context import TriggerDefinition
+from custom_components.haanim.ha.state import StateManager, StateChangedEvent
+from custom_components.haanim.ha.events import EventManager, EventData
+from custom_components.haanim.engine.script_context import TriggerDefinition
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,12 +55,10 @@ class BaseTrigger(ABC):
         self.state_manager = state_manager
         self.event_manager = event_manager
 
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
         self._enabled = True
         self._constraints: list[dict[str, Any]] = []
-        self._logger = logging.getLogger(
-            f"{__name__}.{trigger_def.script_name}.{trigger_def.func_name}"
-        )
+        self._logger = logging.getLogger(f"{__name__}.{trigger_def.script_name}.{trigger_def.func_name}")
 
     @abstractmethod
     async def async_start(self) -> None:
@@ -229,6 +227,9 @@ class BaseTrigger(ABC):
                     return state.state != value
                 elif op_type in ("eq_num", "neq_num", "gt", "gte", "lt", "lte"):
                     try:
+                        if not state.state:
+                            _LOGGER.warning("State is not available for entity: %s", entity_id)
+                            return False
                         state_val = float(state.state)
                         compare_val = float(value)
 
@@ -290,11 +291,34 @@ class StateTrigger(BaseTrigger):
         """Initialize the state trigger."""
         super().__init__(hass, trigger_def, state_manager, event_manager)
 
-        self._state_hold = trigger_def.kwargs.get("state_hold")
+        # Validate state_hold is either None or a number
+        self._state_hold = self._get_state_hold_from_trigger(trigger_def)
         self._state_check_now = trigger_def.kwargs.get("state_check_now", False)
-        self._watch_entities = trigger_def.kwargs.get("watch") or []
-        self._queue: asyncio.Queue | None = None
-        self._hold_task: asyncio.Task | None = None
+        self._watch_entities: list[str] = trigger_def.kwargs.get("watch") or []
+        self._queue: asyncio.Queue[StateChangedEvent | None] | None = None
+        self._hold_task: asyncio.Task[None] | None = None
+
+    def _get_state_hold_from_trigger(self, trigger: TriggerDefinition) -> float | None:
+        state_hold = trigger.kwargs.get("state_hold")
+        if state_hold is None:
+            return state_hold
+
+        try:
+            state_hold = float(state_hold)
+            if state_hold < 0:
+                self._logger.warning(
+                    "state_hold must be a positive number, got %s. Setting to None.",
+                    state_hold,
+                )
+                return None
+            return state_hold
+        except (ValueError, TypeError):
+            self._logger.warning(
+                "state_hold must be a number, got %s (%s). Setting to None.",
+                state_hold,
+                type(state_hold).__name__,
+            )
+            return None
 
     async def async_start(self) -> None:
         """Start the state trigger."""
@@ -348,7 +372,7 @@ class StateTrigger(BaseTrigger):
             List of entity IDs found in the expression.
         """
         if isinstance(expr, list):
-            entities = []
+            entities: list[str] = []
             for e in expr:
                 entities.extend(self._extract_entities(e))
             return list(set(entities))
@@ -359,6 +383,9 @@ class StateTrigger(BaseTrigger):
 
     async def _watch_loop(self) -> None:
         """Watch for state changes."""
+        if self._queue is None:
+            return
+
         while True:
             try:
                 notification = await self._queue.get()
@@ -388,7 +415,7 @@ class StateTrigger(BaseTrigger):
             return any(self._evaluate_state_expr(e) for e in expr)
         return self._evaluate_state_expr(expr)
 
-    async def _handle_trigger_match(self, notification: dict[str, Any]) -> None:
+    async def _handle_trigger_match(self, notification: StateChangedEvent) -> None:
         """Handle a trigger match.
 
         Args:
@@ -405,27 +432,28 @@ class StateTrigger(BaseTrigger):
             )
         else:
             await self._execute_function(
-                var_name=notification.get("entity_id"),
-                value=notification.get("new_state"),
-                old_value=notification.get("old_state"),
+                var_name=notification.entity_id,
+                value=notification.new_state,
+                old_value=notification.old_state,
             )
 
-    async def _hold_and_execute(self, notification: dict[str, Any]) -> None:
+    async def _hold_and_execute(self, notification: StateChangedEvent) -> None:
         """Wait for hold period and execute if still true.
 
         Args:
             notification: State change notification.
         """
         try:
-            await asyncio.sleep(self._state_hold)
+            if self._state_hold:
+                await asyncio.sleep(self._state_hold)
 
             # Re-check trigger condition
             if self._evaluate_trigger():
                 if await self._check_constraints():
                     await self._execute_function(
-                        var_name=notification.get("entity_id"),
-                        value=notification.get("new_state"),
-                        old_value=notification.get("old_state"),
+                        var_name=notification.entity_id,
+                        value=notification.new_state,
+                        old_value=notification.old_state,
                     )
         except asyncio.CancelledError:
             pass
@@ -519,7 +547,7 @@ class TimeTrigger(BaseTrigger):
             Next trigger datetime, or None if no valid time found.
         """
         now = dt_util.now()
-        next_times = []
+        next_times: list[datetime] = []
 
         for spec in specs:
             next_time = self._parse_time_spec(spec, now)
@@ -560,7 +588,9 @@ class TimeTrigger(BaseTrigger):
             return target
 
         # Handle sunrise/sunset with optional offset
-        sun_match = re.match(r"(sunrise|sunset)\s*([+-]\s*\d+)?\s*(m|min|minutes?|h|hours?)?", spec, re.IGNORECASE)
+        sun_match = re.match(
+            r"(sunrise|sunset)\s*([+-]\s*\d+)?\s*(m|min|minutes?|h|hours?)?", spec, re.IGNORECASE
+        )
         if sun_match:
             event = sun_match.group(1).lower()
             offset_val = sun_match.group(2)
@@ -745,7 +775,7 @@ class EventTrigger(BaseTrigger):
 
         self._event_type = trigger_def.trigger_expr
         self._event_filter = trigger_def.kwargs.get("event_data")
-        self._queue: asyncio.Queue | None = None
+        self._queue: asyncio.Queue[EventData | None] | None = None
 
     async def async_start(self) -> None:
         """Start the event trigger."""
@@ -770,13 +800,17 @@ class EventTrigger(BaseTrigger):
             except asyncio.CancelledError:
                 pass
 
-        if self._queue:
-            self.event_manager.unsubscribe(self._queue, self._event_type)
-
     async def _event_loop(self) -> None:
         """Watch for events."""
+        if self._queue is None:
+            _LOGGER.warning("Event trigger queue is None. Exiting event loop.")
+            return
+
         while True:
             try:
+                notification = await self._queue.get()
+                if notification is None:
+                    break
                 notification = await self._queue.get()
                 if notification is None:
                     break
@@ -784,8 +818,8 @@ class EventTrigger(BaseTrigger):
                 # Check constraints and execute
                 if await self._check_constraints():
                     await self._execute_function(
-                        event_type=notification.get("event_type"),
-                        data=notification.get("data"),
+                        event_type=notification.event_type,
+                        data=notification.data,
                     )
 
             except asyncio.CancelledError:
@@ -922,10 +956,7 @@ class TriggerManager:
         Returns:
             Number of triggers unregistered.
         """
-        to_remove = [
-            tid for tid in self._triggers.keys()
-            if tid.startswith(f"{script_name}.")
-        ]
+        to_remove = [tid for tid in self._triggers.keys() if tid.startswith(f"{script_name}.")]
 
         for trigger_id in to_remove:
             await self.unregister_trigger(trigger_id)

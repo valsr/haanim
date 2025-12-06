@@ -28,11 +28,25 @@ __all__ = [
     "SERVICE_RUN_ACTION",
     "SERVICE_LIST_SCRIPTS",
     "SERVICE_LIST_ACTIONS",
+    "SERVICE_GET_CONFIG",
     # Attributes
-    "ATTR_SCRIPT_NAME",
+    "ATTRIBUTE_SCRIPT_NAME",
     "ATTR_SCRIPT_PATH",
-    "ATTR_ACTION_NAME",
+    "ATTRIBUTE_ACTION_NAME",
     "ATTR_MANUAL",
+    # Configuration keys
+    "CONFIG_SCRIPT_PATH",
+    "CONFIG_IMPORT_ALLOWLIST",
+    "CONFIG_ALLOW_ALL_IMPORTS",
+    "CONFIG_SCRIPT_REFRESH_INTERVAL",
+    # Default configuration values
+    "DEFAULT_NAME",
+    "DEFAULT_SCRIPT_PATH",
+    "DEFAULT_ALLOW_ALL_IMPORTS",
+    "DEFAULT_SCRIPT_REFRESH_INTERVAL",
+    "DEFAULT_IMPORT_ALLOWLIST",
+    # Security
+    "RESTRICTED_BUILTINS",
 ]
 
 DOMAIN: Final = "haanim"
@@ -63,9 +77,63 @@ SERVICE_RELOAD_SCRIPTS: Final = "reload_scripts"
 SERVICE_RUN_ACTION: Final = "run_action"
 SERVICE_LIST_SCRIPTS: Final = "list_scripts"
 SERVICE_LIST_ACTIONS: Final = "list_actions"
+SERVICE_GET_CONFIG: Final = "get_config"
 
 # Attributes for script metadata
-ATTR_SCRIPT_NAME: Final = "script_name"
+ATTRIBUTE_SCRIPT_NAME: Final = "script_name"
 ATTR_SCRIPT_PATH: Final = "script_path"
-ATTR_ACTION_NAME: Final = "action_name"
+ATTRIBUTE_ACTION_NAME: Final = "action_name"
 ATTR_MANUAL: Final = "manual"
+
+# Configuration keys
+CONFIG_SCRIPT_PATH: Final = "script_path"
+CONFIG_IMPORT_ALLOWLIST: Final = "import_allowlist"
+CONFIG_ALLOW_ALL_IMPORTS: Final = "allow_all_imports"
+CONFIG_SCRIPT_REFRESH_INTERVAL: Final = "script_refresh_interval"
+
+# Default configuration values
+DEFAULT_NAME: Final = "HAAnim"
+DEFAULT_SCRIPT_PATH: Final = "/config/haanim"
+DEFAULT_ALLOW_ALL_IMPORTS: Final = False
+DEFAULT_SCRIPT_REFRESH_INTERVAL: Final = 10
+
+# Default import allowlist - safe modules for automation scripts
+DEFAULT_IMPORT_ALLOWLIST: Final[list[str]] = [
+    "asyncio",
+    "datetime",
+    "json",
+    "logging",
+    "math",
+    "random",
+    "re",
+    "time",
+    "typing",
+    "collections",
+    "functools",
+    "itertools",
+    "operator",
+    "statistics",
+    "decimal",
+    "fractions",
+    "enum",
+    "dataclasses",
+]
+
+# Restricted builtins that should not be available in scripts
+RESTRICTED_BUILTINS: Final[set[str]] = {
+    "eval",
+    "exec",
+    "compile",
+    "open",
+    "input",
+    "__import__",
+    "breakpoint",
+    "memoryview",
+    "globals",
+    "locals",
+    "vars",
+    "dir",
+    "delattr",
+    "setattr",
+    "getattr",
+}

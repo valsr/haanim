@@ -1,20 +1,18 @@
 """Decorators for HAAnim automation scripts.
 
-This module provides decorators that users can use in their automation scripts
-to define triggers, actions, and metadata.
+This module provides decorators that users can use in their automation scripts to define triggers, actions,
+and metadata.
 """
 
 from __future__ import annotations
 
-import functools
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
+from collections.abc import Callable
 
-from .const import (
+from custom_components.haanim.const import (
     DECORATOR_EVENT_TRIGGER,
-    DECORATOR_SCENE,
-    DECORATOR_SERVICE,
     DECORATOR_STATE_ACTIVE,
     DECORATOR_STATE_TRIGGER,
     DECORATOR_TIME_ACTIVE,
@@ -38,7 +36,7 @@ class TriggerInfo:
 
     trigger_type: str
     trigger_expr: str | list[str]
-    kwargs: dict[str, Any] = field(default_factory=dict)
+    kwargs: dict[str, Any] = field(default_factory=dict[str, Any])
 
 
 @dataclass
@@ -73,8 +71,8 @@ class FunctionMetadata:
     custom_name: str | None = None
     is_action: bool = False
     action_info: ActionInfo | None = None
-    triggers: list[TriggerInfo] = field(default_factory=list)
-    constraints: list[dict[str, Any]] = field(default_factory=list)
+    triggers: list[TriggerInfo] = field(default_factory=list[TriggerInfo])
+    constraints: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
     is_service: bool = False
     service_schema: dict[str, Any] | None = None
 
@@ -83,7 +81,7 @@ class FunctionMetadata:
 METADATA_ATTR = "_haanim_metadata"
 
 
-def _get_or_create_metadata(func: F) -> FunctionMetadata:
+def _get_or_create_metadata(func: Callable[..., Any]) -> FunctionMetadata:
     """Get or create FunctionMetadata for a function.
 
     Args:
@@ -215,7 +213,7 @@ def state_trigger(
         metadata = _get_or_create_metadata(func)
         trigger_info = TriggerInfo(
             trigger_type=DECORATOR_STATE_TRIGGER,
-            trigger_expr=list(trigger_exprs) if len(trigger_exprs) > 1 else trigger_exprs[0],
+            trigger_expr=list(trigger_exprs) if len(trigger_exprs) != 1 else trigger_exprs[0],
             kwargs={
                 "state_hold": state_hold,
                 "state_check_now": state_check_now,
@@ -259,9 +257,10 @@ def time_trigger(
 
     def decorator(func: F) -> F:
         metadata = _get_or_create_metadata(func)
+        trigger_expr: str | list[str] = list(trigger_specs) if len(trigger_specs) != 1 else trigger_specs[0]
         trigger_info = TriggerInfo(
             trigger_type=DECORATOR_TIME_TRIGGER,
-            trigger_expr=list(trigger_specs) if len(trigger_specs) > 1 else trigger_specs[0],
+            trigger_expr=trigger_expr,
             kwargs=kwargs,
         )
         metadata.triggers.append(trigger_info)

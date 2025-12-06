@@ -1,0 +1,44 @@
+# Services for HAAnim integration
+
+run_action:
+  name: Run Action
+  description: Run a specific action from a HAAnim script.
+  fields:
+    script_name:
+      name: Script Name
+      description: The name of the script containing the action.
+      required: true
+      example: 'my_script'
+      selector:
+        text:
+    action_name:
+      name: Action Name
+      description: The name of the action to run.
+      required: true
+      example: 'my_action'
+      selector:
+        text:
+
+reload_scripts:
+  name: Reload Scripts
+  description: Reload all HAAnim automation scripts from the script directory.
+
+list_scripts:
+  name: List Scripts
+  description: Get a list of all loaded HAAnim scripts and their metadata.
+
+list_actions:
+  name: List Actions
+  description: Get a list of all available actions, optionally filtered by script.
+  fields:
+    script_name:
+      name: Script Name
+      description: Optional script name to filter actions.
+      required: false
+      example: 'my_script'
+      selector:
+        text:
+
+get_config:
+  name: Get Configuration
+  description: Get the current HAAnim configuration values.

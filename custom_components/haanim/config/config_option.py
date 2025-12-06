@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .config_type import ConfigType
+from custom_components.haanim.config.config_type import ConfigType
 
 
 @dataclass

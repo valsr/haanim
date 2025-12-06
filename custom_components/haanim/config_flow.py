@@ -12,8 +12,8 @@ from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 
-from .config import get_config_manager
-from .const import (
+from custom_components.haanim.config import get_config_manager
+from custom_components.haanim.const import (
     CONFIG_ALLOW_ALL_IMPORTS,
     CONFIG_IMPORT_ALLOWLIST,
     CONFIG_SCRIPT_PATH,
@@ -26,6 +26,8 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# FIXME: ConfigFlow doesn't seem to be working, check what needs to be done to be fixed (if we need to fix
+# it) - https://developers.home-assistant.io/docs/config_entries_config_flow_handler
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input.

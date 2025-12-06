@@ -6,11 +6,11 @@ option definitions, validation, and schema generation.
 
 from __future__ import annotations
 
-from .config_group import ConfigGroup
-from .config_manager import ConfigManager, get_config_manager
-from .config_option import ConfigOption
-from .config_type import ConfigType
-from .consts import (
+from custom_components.haanim.config.config_group import ConfigGroup
+from custom_components.haanim.config.config_manager import ConfigManager, get_config_manager
+from custom_components.haanim.config.config_option import ConfigOption
+from custom_components.haanim.config.config_type import ConfigType
+from custom_components.haanim.const import (
     CONFIG_ALLOW_ALL_IMPORTS,
     CONFIG_IMPORT_ALLOWLIST,
     CONFIG_SCRIPT_PATH,

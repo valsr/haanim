@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .config_option import ConfigOption
+from custom_components.haanim.config.config_option import ConfigOption
 
 
 @dataclass

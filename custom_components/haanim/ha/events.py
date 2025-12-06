@@ -1,18 +1,36 @@
 """Home Assistant event integration for HAAnim.
 
-This module provides event listening and firing capabilities
-for use within HAAnim scripts.
+This module provides event listening and firing capabilities for use within HAAnim scripts.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
 from homeassistant.core import Event, HomeAssistant, callback
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class EventData:
+    """Data class representing an event notification.
+
+    Used for strongly typed event notifications in queues.
+    """
+
+    event_type: str
+    data: dict[str, Any]
+    origin: str | None
+    time_fired: datetime
+    context_id: str
+    context_parent_id: str | None
+    context_user_id: str | None
 
 
 class EventManager:
@@ -29,8 +47,8 @@ class EventManager:
             hass: Home Assistant instance.
         """
         self.hass = hass
-        self._listeners: dict[str, list[asyncio.Queue]] = {}
-        self._global_listeners: list[asyncio.Queue] = []
+        self._listeners: dict[str, list[asyncio.Queue[EventData | None]]] = {}
+        self._global_listeners: list[asyncio.Queue[EventData | None]] = []
         self._unsub_callbacks: list[Callable[[], None]] = []
 
     async def async_setup(self) -> None:
@@ -39,6 +57,8 @@ class EventManager:
 
     async def async_teardown(self) -> None:
         """Tear down the event manager."""
+        _LOGGER.debug("Event manager tear down")
+
         # Unsubscribe all listeners
         for unsub in self._unsub_callbacks:
             unsub()
@@ -58,7 +78,7 @@ class EventManager:
         self,
         event_type: str | None = None,
         event_filter: dict[str, Any] | None = None,
-    ) -> asyncio.Queue:
+    ) -> asyncio.Queue[EventData | None]:
         """Subscribe to events.
 
         Args:
@@ -66,10 +86,12 @@ class EventManager:
             event_filter: Optional filter for event data fields.
 
         Returns:
-            Queue that receives event notifications.
+            Queue that receives event notifications (EventData or None on shutdown).
         """
-        queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+        queue: asyncio.Queue[EventData | None] = asyncio.Queue(maxsize=100)
 
+        # TODO: This seems to be erronious - the first event sub will register the filters, if another event
+        # by the same type is registered the filters will be ignore
         if event_type:
             if event_type not in self._listeners:
                 self._listeners[event_type] = []
@@ -86,7 +108,7 @@ class EventManager:
 
         return queue
 
-    def unsubscribe(self, queue: asyncio.Queue, event_type: str | None = None) -> None:
+    def unsubscribe(self, queue: asyncio.Queue[EventData | None], event_type: str | None = None) -> None:
         """Unsubscribe from events.
 
         Args:
@@ -107,7 +129,7 @@ class EventManager:
     @callback
     def _handle_event(
         self,
-        event: Event,
+        event: Event[Any],
         event_type: str,
         event_filter: dict[str, Any] | None,
     ) -> None:
@@ -124,17 +146,15 @@ class EventManager:
                 if event.data.get(key) != value:
                     return
 
-        notification = {
-            "event_type": event.event_type,
-            "data": dict(event.data),
-            "origin": event.origin.name if event.origin else None,
-            "time_fired": event.time_fired,
-            "context": {
-                "id": event.context.id,
-                "parent_id": event.context.parent_id,
-                "user_id": event.context.user_id,
-            },
-        }
+        notification = EventData(
+            event_type=str(event.event_type),
+            data=dict(event.data),
+            origin=event.origin.name if event.origin else None,
+            time_fired=event.time_fired,
+            context_id=event.context.id,
+            context_parent_id=event.context.parent_id,
+            context_user_id=event.context.user_id,
+        )
 
         # Notify type-specific listeners
         if event_type in self._listeners:

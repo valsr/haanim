@@ -17,9 +17,19 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
-from .config_group import ConfigGroup
-from .config_option import ConfigOption
-from .config_type import ConfigType
+from custom_components.haanim.config.config_group import ConfigGroup
+from custom_components.haanim.config.config_option import ConfigOption
+from custom_components.haanim.config.config_type import ConfigType
+from custom_components.haanim.const import (
+    CONFIG_ALLOW_ALL_IMPORTS,
+    CONFIG_IMPORT_ALLOWLIST,
+    CONFIG_SCRIPT_PATH,
+    CONFIG_SCRIPT_REFRESH_INTERVAL,
+    DEFAULT_ALLOW_ALL_IMPORTS,
+    DEFAULT_IMPORT_ALLOWLIST,
+    DEFAULT_SCRIPT_PATH,
+    DEFAULT_SCRIPT_REFRESH_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -136,12 +146,10 @@ class ConfigManager:
         Args:
             group: The configuration group to register.
         """
+        _LOGGER.debug("Registering config group: '%s' with %d options", group.name, len(group.options))
         self._groups[group.name] = group
         for option in group.options:
-            self._options[option.key] = option
-            # Set default value
-            if option.key not in self._values:
-                self._values[option.key] = option.default
+            self.register_option(group.name, option)
 
     def register_option(self, group_name: str, option: ConfigOption) -> None:
         """Register a single configuration option to a group.
@@ -150,13 +158,22 @@ class ConfigManager:
             group_name: The name of the group to add the option to.
             option: The configuration option to register.
         """
+        if option.key in self._options:
+            _LOGGER.warning("Configuration option '%s' is already registered, skipping", option.key)
+            return
+
         if group_name not in self._groups:
+            _LOGGER.debug("Creating new config group: '%s'", group_name)
             self._groups[group_name] = ConfigGroup(name=group_name, label=group_name.title())
 
-        self._groups[group_name].options.append(option)
+        if option not in self._groups[group_name].options:
+            self._groups[group_name].options.append(option)
+            _LOGGER.debug("Registered option '%s' in group '%s'", option.key, group_name)
+
         self._options[option.key] = option
         if option.key not in self._values:
             self._values[option.key] = option.default
+        _LOGGER.debug("Registered option '%s' in group '%s'", option.key, group_name)
 
     def setup(self, hass: HomeAssistant, entry_id: str | None = None) -> None:
         """Set up the configuration manager with Home Assistant instance.
@@ -165,29 +182,40 @@ class ConfigManager:
             hass: Home Assistant instance.
             entry_id: Optional config entry ID.
         """
+        _LOGGER.debug("Setting up ConfigManager with entry_id: %s", entry_id)
         self._hass = hass
         self._entry_id = entry_id
         self._load_from_entry()
+        _LOGGER.info("ConfigManager setup complete")
 
     def _load_from_entry(self) -> None:
         """Load configuration values from config entry."""
         if not self._hass or not self._entry_id:
+            _LOGGER.debug("Skipping _load_from_entry: hass=%s, entry_id=%s", self._hass, self._entry_id)
             return
 
         from ..const import DOMAIN
 
+        _LOGGER.debug("Loading configuration from entry: %s", self._entry_id)
         data = self._hass.data.get(DOMAIN, {}).get(self._entry_id, {})
         if isinstance(data, dict) and "entry" in data:
             entry = data["entry"]  # type: ignore
             if not isinstance(entry, ConfigEntry):
+                _LOGGER.warning("Invalid entry type in data: %s", type(entry))
                 return
 
             # Load from options first, then data
+            loaded_count = 0
             for key in self._options:
                 if key in entry.options:
                     self._values[key] = entry.options[key]
+                    loaded_count += 1
+                    _LOGGER.debug("Loaded option '%s' = %s (from options)", key, entry.options[key])
                 elif key in entry.data:
                     self._values[key] = entry.data[key]
+                    loaded_count += 1
+                    _LOGGER.debug("Loaded option '%s' = %s (from data)", key, entry.data[key])
+            _LOGGER.info("Loaded %d configuration values from entry", loaded_count)
 
     def load_from_dict(self, data: Mapping[str, Any], options: Mapping[str, Any] | None = None) -> None:
         """Load configuration values from dictionaries.
@@ -196,11 +224,18 @@ class ConfigManager:
             data: Configuration data dictionary.
             options: Optional options dictionary (takes precedence).
         """
+        _LOGGER.debug("Loading configuration from dict (options provided: %s)", options is not None)
+        loaded_count = 0
         for key in self._options:
             if options and key in options:
                 self._values[key] = options[key]
+                loaded_count += 1
+                _LOGGER.debug("Loaded option '%s' = %s (from options)", key, options[key])
             elif key in data:
                 self._values[key] = data[key]
+                loaded_count += 1
+                _LOGGER.debug("Loaded option '%s' = %s (from data)", key, data[key])
+        _LOGGER.info("Loaded %d configuration values from dict", loaded_count)
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value.
@@ -225,7 +260,12 @@ class ConfigManager:
             key: The configuration key.
             value: The value to set.
         """
+        old_value = self._values.get(key)
         self._values[key] = value
+        if old_value != value:
+            _LOGGER.debug("Configuration changed: '%s' = %s (was: %s)", key, value, old_value)
+        else:
+            _LOGGER.debug("Configuration set (unchanged): '%s' = %s", key, value)
 
     def get_all(self) -> dict[str, Any]:
         """Get all configuration values.
@@ -386,7 +426,9 @@ class ConfigManager:
         Returns:
             Tuple of (is_valid, error_message).
         """
+        _LOGGER.debug("Validating script path: %s", path)
         if not self._hass:
+            _LOGGER.debug("No hass instance, skipping validation")
             return True, None
 
         if os.path.isabs(path):
@@ -396,8 +438,10 @@ class ConfigManager:
 
         parent_dir = os.path.dirname(folder_path)
         if parent_dir and not os.path.exists(parent_dir):
+            _LOGGER.warning("Script path validation failed: parent directory does not exist: %s", parent_dir)
             return False, f"Parent directory does not exist: {parent_dir}"
 
+        _LOGGER.debug("Script path validated successfully: %s", folder_path)
         return True, None
 
     def get_script_path(self) -> str:
@@ -406,7 +450,7 @@ class ConfigManager:
         Returns:
             Absolute path to the script folder.
         """
-        path = self.get("script_path", "/config/haanim")
+        path = self.get(CONFIG_SCRIPT_PATH, DEFAULT_SCRIPT_PATH)
 
         if not self._hass:
             return path
@@ -415,6 +459,43 @@ class ConfigManager:
             return path
 
         return os.path.join(self._hass.config.config_dir, path)
+
+    def get_import_allowlist(self) -> list[str]:
+        """Get the list of allowed imports.
+
+        Returns:
+            List of allowed module names.
+        """
+        allowlist: Any = self.get(CONFIG_IMPORT_ALLOWLIST, DEFAULT_IMPORT_ALLOWLIST)
+        if not isinstance(allowlist, list):
+            _LOGGER.warning("Import allowlist is not a list, returning empty list")
+            return []
+        return [str(item) for item in allowlist]  # type: ignore[misc]
+
+    def get_allow_all_imports(self) -> bool:
+        """Check if all imports are allowed.
+
+        Returns:
+            True if all imports are allowed, False otherwise.
+        """
+        return bool(self.get(CONFIG_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS))
+
+    def get_script_refresh_interval(self) -> int:
+        """Get the script refresh interval in seconds.
+
+        Returns:
+            Refresh interval in seconds.
+        """
+        interval: Any = self.get(CONFIG_SCRIPT_REFRESH_INTERVAL, DEFAULT_SCRIPT_REFRESH_INTERVAL)
+        try:
+            return int(interval)
+        except (ValueError, TypeError):
+            _LOGGER.warning(
+                "Invalid script refresh interval: %s, defaulting to %d seconds",
+                interval,
+                DEFAULT_SCRIPT_REFRESH_INTERVAL,
+            )
+            return DEFAULT_SCRIPT_REFRESH_INTERVAL
 
 
 def get_config_manager() -> ConfigManager:

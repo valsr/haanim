@@ -8,14 +8,29 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from homeassistant.const import EVENT_STATE_CHANGED, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import Event, HomeAssistant, State as HAState, callback
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class StateChangedEvent:
+    """Data class representing a state changed event.
+
+    Used for strongly typed state change notifications in queues.
+    """
+
+    entity_id: str
+    old_state: StateVal | None
+    new_state: StateVal
 
 
 class StateVal:
@@ -208,8 +223,6 @@ class StateVal:
         Returns:
             State as datetime, or None if conversion fails.
         """
-        from homeassistant.util import dt as dt_util
-
         try:
             return dt_util.parse_datetime(self.state or "")
         except (ValueError, TypeError):
@@ -238,9 +251,9 @@ class StateManager:
             hass: Home Assistant instance.
         """
         self.hass = hass
-        self._listeners: dict[str, list[asyncio.Queue]] = {}
-        self._global_listeners: list[asyncio.Queue] = []
-        self._unsub_state_changed: callable | None = None
+        self._listeners: dict[str, list[asyncio.Queue[StateChangedEvent | None]]] = {}
+        self._global_listeners: list[asyncio.Queue[StateChangedEvent | None]] = []
+        self._unsub_state_changed: Callable[[], None] | None = None
 
     async def async_setup(self) -> None:
         """Set up state change listening."""
@@ -285,11 +298,11 @@ class StateManager:
         old_val = StateVal(old_state, entity_id) if old_state else None
         new_val = StateVal(new_state, entity_id)
 
-        notification = {
-            "entity_id": entity_id,
-            "old_state": old_val,
-            "new_state": new_val,
-        }
+        notification = StateChangedEvent(
+            entity_id=entity_id,
+            old_state=old_val,
+            new_state=new_val,
+        )
 
         # Notify entity-specific listeners
         if entity_id in self._listeners:
@@ -356,16 +369,16 @@ class StateManager:
             force_update=force_update,
         )
 
-    def subscribe(self, entity_id: str | None = None) -> asyncio.Queue:
+    def subscribe(self, entity_id: str | None = None) -> asyncio.Queue[StateChangedEvent | None]:
         """Subscribe to state changes for an entity or all entities.
 
         Args:
             entity_id: Entity ID to watch, or None for all entities.
 
         Returns:
-            Queue that receives state change notifications.
+            Queue that receives state change notifications (StateChangedEvent or None on shutdown).
         """
-        queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+        queue: asyncio.Queue[StateChangedEvent | None] = asyncio.Queue(maxsize=100)
 
         if entity_id:
             if entity_id not in self._listeners:
@@ -376,7 +389,9 @@ class StateManager:
 
         return queue
 
-    def unsubscribe(self, queue: asyncio.Queue, entity_id: str | None = None) -> None:
+    def unsubscribe(
+        self, queue: asyncio.Queue[StateChangedEvent | None], entity_id: str | None = None
+    ) -> None:
         """Unsubscribe from state changes.
 
         Args:

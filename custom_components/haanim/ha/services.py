@@ -12,10 +12,22 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 
-from .const import ATTR_ACTION_NAME, ATTR_MANUAL, ATTR_SCRIPT_NAME, DOMAIN
+from custom_components.haanim.const import (
+    ATTRIBUTE_ACTION_NAME,
+    ATTRIBUTE_SCRIPT_NAME,
+    DOMAIN,
+    SERVICE_GET_CONFIG,
+    SERVICE_LIST_ACTIONS,
+    SERVICE_LIST_SCRIPTS,
+    SERVICE_RELOAD_SCRIPTS,
+    SERVICE_RUN_ACTION,
+    VERSION,
+)
+from custom_components.haanim.script_manager import async_get_manager, get_config_manager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,12 +53,12 @@ class ServiceManager:
         # Register the run_action service
         self.hass.services.async_register(
             DOMAIN,
-            "run_action",
-            self._handle_run_action,
+            SERVICE_RUN_ACTION,
+            service_func=self._handle_run_action,
             schema=vol.Schema(
                 {
-                    vol.Required(ATTR_SCRIPT_NAME): cv.string,
-                    vol.Required(ATTR_ACTION_NAME): cv.string,
+                    vol.Required(ATTRIBUTE_SCRIPT_NAME): cv.string,
+                    vol.Required(ATTRIBUTE_ACTION_NAME): cv.string,
                 }
             ),
         )
@@ -54,15 +66,15 @@ class ServiceManager:
         # Register the reload_scripts service
         self.hass.services.async_register(
             DOMAIN,
-            "reload_scripts",
-            self._handle_reload_scripts,
+            SERVICE_RELOAD_SCRIPTS,
+            service_func=self._handle_reload_scripts,
             schema=vol.Schema({}),
         )
 
         # Register the list_scripts service
         self.hass.services.async_register(
             DOMAIN,
-            "list_scripts",
+            SERVICE_LIST_SCRIPTS,
             self._handle_list_scripts,
             schema=vol.Schema({}),
         )
@@ -70,11 +82,11 @@ class ServiceManager:
         # Register the list_actions service
         self.hass.services.async_register(
             DOMAIN,
-            "list_actions",
+            SERVICE_LIST_ACTIONS,
             self._handle_list_actions,
             schema=vol.Schema(
                 {
-                    vol.Optional(ATTR_SCRIPT_NAME): cv.string,
+                    vol.Optional(ATTRIBUTE_SCRIPT_NAME): cv.string,
                 }
             ),
         )
@@ -82,7 +94,7 @@ class ServiceManager:
         # Register the get_config service
         self.hass.services.async_register(
             DOMAIN,
-            "get_config",
+            SERVICE_GET_CONFIG,
             self._handle_get_config,
             schema=vol.Schema({}),
         )
@@ -92,11 +104,11 @@ class ServiceManager:
     async def async_teardown(self) -> None:
         """Tear down the service manager."""
         # Unregister core services
-        self.hass.services.async_remove(DOMAIN, "run_action")
-        self.hass.services.async_remove(DOMAIN, "reload_scripts")
-        self.hass.services.async_remove(DOMAIN, "list_scripts")
-        self.hass.services.async_remove(DOMAIN, "list_actions")
-        self.hass.services.async_remove(DOMAIN, "get_config")
+        self.hass.services.async_remove(DOMAIN, SERVICE_RUN_ACTION)
+        self.hass.services.async_remove(DOMAIN, SERVICE_RELOAD_SCRIPTS)
+        self.hass.services.async_remove(DOMAIN, SERVICE_LIST_SCRIPTS)
+        self.hass.services.async_remove(DOMAIN, SERVICE_LIST_ACTIONS)
+        self.hass.services.async_remove(DOMAIN, SERVICE_GET_CONFIG)
 
         # Unregister script services
         for service_name in list(self._registered_services.keys()):
@@ -108,10 +120,9 @@ class ServiceManager:
         Args:
             call: The service call.
         """
-        from .script_manager import async_get_manager
 
-        script_name = call.data[ATTR_SCRIPT_NAME]
-        action_name = call.data[ATTR_ACTION_NAME]
+        script_name = call.data[ATTRIBUTE_SCRIPT_NAME]
+        action_name = call.data[ATTRIBUTE_ACTION_NAME]
 
         manager = await async_get_manager(self.hass)
         if not manager:
@@ -123,14 +134,12 @@ class ServiceManager:
         except Exception as err:
             _LOGGER.error("Failed to run action %s.%s: %s", script_name, action_name, err)
 
-    async def _handle_reload_scripts(self, call: ServiceCall) -> None:
+    async def _handle_reload_scripts(self, _: ServiceCall) -> None:
         """Handle the reload_scripts service call.
 
         Args:
             call: The service call.
         """
-        from .script_manager import async_get_manager
-
         manager = await async_get_manager(self.hass)
         if not manager:
             _LOGGER.error("Script manager not available")
@@ -138,7 +147,7 @@ class ServiceManager:
 
         await manager.async_reload_all_scripts()
 
-    async def _handle_list_scripts(self, call: ServiceCall) -> dict[str, Any]:
+    async def _handle_list_scripts(self, _: ServiceCall) -> dict[str, Any]:
         """Handle the list_scripts service call.
 
         Args:
@@ -147,13 +156,11 @@ class ServiceManager:
         Returns:
             Dictionary with script information.
         """
-        from .script_manager import async_get_manager
-
         manager = await async_get_manager(self.hass)
         if not manager:
             return {"scripts": []}
 
-        scripts = []
+        scripts: list[dict[str, Any]] = []
         for metadata in manager.get_all_metadata():
             scripts.append(
                 {
@@ -176,15 +183,13 @@ class ServiceManager:
         Returns:
             Dictionary with action information.
         """
-        from .script_manager import async_get_manager
-
         manager = await async_get_manager(self.hass)
         if not manager:
             return {"actions": []}
 
-        script_name = call.data.get(ATTR_SCRIPT_NAME)
+        script_name = call.data.get(ATTRIBUTE_SCRIPT_NAME)
 
-        actions = []
+        actions: list[dict[str, Any]] = []
         for action in manager.get_all_actions():
             if script_name and action.script_name != script_name:
                 continue
@@ -200,7 +205,7 @@ class ServiceManager:
 
         return {"actions": actions}
 
-    async def _handle_get_config(self, call: ServiceCall) -> dict[str, Any]:
+    async def _handle_get_config(self, _: ServiceCall) -> dict[str, Any]:
         """Handle the get_config service call.
 
         Args:
@@ -209,20 +214,18 @@ class ServiceManager:
         Returns:
             Dictionary with configuration values.
         """
-        from .config import get_config_manager
-        from .const import VERSION
-
-        config_mgr = get_config_manager()
-
+        config_manager = get_config_manager()
         # Get the config entry data
-        for _entry_id, data in self.hass.data.get(DOMAIN, {}).items():
+        for _, data in self.hass.data.get(DOMAIN, {}).items():
             if isinstance(data, dict) and "entry" in data:
-                entry = data["entry"]
-                config_mgr.load_from_dict(entry.data, entry.options)
+                entry = data["entry"]  # type: ignore
+                if isinstance(entry, ConfigEntry):
+                    config_manager.load_from_dict(entry.data, entry.options)
+                    break
                 break
 
         # Return all config values plus version
-        config = config_mgr.get_all()
+        config = config_manager.get_all()
         config["version"] = VERSION
 
         return config
@@ -281,9 +284,7 @@ class ServiceManager:
             try:
                 if asyncio.iscoroutinefunction(handler):
                     return await handler(**call.data)
-                return await self.hass.async_add_executor_job(
-                    lambda: handler(**call.data)
-                )
+                return await self.hass.async_add_executor_job(lambda: handler(**call.data))
             except Exception as err:
                 _LOGGER.error("Service %s failed: %s", full_name, err)
                 raise

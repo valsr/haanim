@@ -9,20 +9,24 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.components import frontend
+from homeassistant.components.http import StaticPathConfig
 
-from .const import DOMAIN, NAME
-from .ha_events import EventManager
-from .ha_services import ServiceManager
-from .ha_state import StateManager
-from .script_manager import ScriptManager
-from .triggers import TriggerManager
+from custom_components.haanim.const import DOMAIN, NAME
+from custom_components.haanim.ha.events import EventManager
+from custom_components.haanim.ha.services import ServiceManager
+from custom_components.haanim.ha.state import StateManager
+from custom_components.haanim.script_manager import ScriptManager
+from custom_components.haanim.engine.triggers import TriggerManager
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = []  # Add platforms like Platform.SENSOR, Platform.SWITCH, etc.
 
+from .config import get_config_manager
 
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:  # noqa: ARG001
+
+async def async_setup(hass: HomeAssistant, _: ConfigType) -> bool:  # noqa: ARG001
     """Set up the HAAnim component from yaml configuration.
 
     Args:
@@ -47,6 +51,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         True if setup was successful.
     """
     hass.data.setdefault(DOMAIN, {})
+
+    # Initialize the config manager
+    config_manager = get_config_manager()
+    config_manager.setup(hass, entry.entry_id)
 
     # Initialize managers
     state_manager = StateManager(hass)
@@ -102,8 +110,6 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     Args:
         hass: Home Assistant instance.
     """
-    from homeassistant.components import frontend
-    from homeassistant.components.http import StaticPathConfig
 
     # Check if panel is already registered
     if DOMAIN in hass.data.get("frontend_panels", {}):
@@ -138,8 +144,6 @@ async def _async_unregister_panel(hass: HomeAssistant) -> None:
     Args:
         hass: Home Assistant instance.
     """
-    from homeassistant.components import frontend
-
     # Remove the panel if it exists
     if DOMAIN in hass.data.get("frontend_panels", {}):
         frontend.async_remove_panel(hass, DOMAIN)
