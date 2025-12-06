@@ -15,6 +15,8 @@ __all__ = [
     "DECORATOR_TIME_ACTIVE",
     "DECORATOR_STATE_ACTIVE",
     "DECORATOR_SERVICE",
+    "DECORATOR_STARTUP",
+    "DECORATOR_SHUTDOWN",
     # Execution modes
     "EXEC_MODE_MANUAL",
     "EXEC_MODE_TRIGGER",
@@ -45,6 +47,8 @@ __all__ = [
     "DEFAULT_ALLOW_ALL_IMPORTS",
     "DEFAULT_SCRIPT_REFRESH_INTERVAL",
     "DEFAULT_IMPORT_ALLOWLIST",
+    "DEFAULT_MAX_CONCURRENT_ACTIONS",
+    "DEFAULT_SHUTDOWN_TIMEOUT",
     # Security
     "RESTRICTED_BUILTINS",
 ]
@@ -61,6 +65,8 @@ DECORATOR_EVENT_TRIGGER: Final = "event_trigger"
 DECORATOR_TIME_ACTIVE: Final = "time_active"
 DECORATOR_STATE_ACTIVE: Final = "state_active"
 DECORATOR_SERVICE: Final = "service"
+DECORATOR_STARTUP: Final = "startup"
+DECORATOR_SHUTDOWN: Final = "shutdown"
 
 # Script execution modes
 EXEC_MODE_MANUAL: Final = "manual"
@@ -96,6 +102,8 @@ DEFAULT_NAME: Final = "HAAnim"
 DEFAULT_SCRIPT_PATH: Final = "/config/haanim"
 DEFAULT_ALLOW_ALL_IMPORTS: Final = False
 DEFAULT_SCRIPT_REFRESH_INTERVAL: Final = 10
+DEFAULT_MAX_CONCURRENT_ACTIONS: Final = 20
+DEFAULT_SHUTDOWN_TIMEOUT: Final = 0.2  # 200ms
 
 # Default import allowlist - safe modules for automation scripts
 DEFAULT_IMPORT_ALLOWLIST: Final[list[str]] = [

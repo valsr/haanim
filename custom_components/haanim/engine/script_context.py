@@ -39,6 +39,9 @@ class ActionDefinition:
         func: The callable function.
         description: Optional description.
         script_name: Name of the parent script.
+        queue: Whether to queue the action if the script is busy.
+        queue_timeout: Timeout in seconds for queued actions.
+        preempt: Whether to cancel any running action and run this one immediately.
     """
 
     name: str
@@ -46,6 +49,9 @@ class ActionDefinition:
     func: Callable[..., Any]
     description: str | None = None
     script_name: str | None = None
+    queue: bool = False
+    queue_timeout: float = 10.0
+    preempt: bool = False
 
 
 @dataclass
@@ -83,6 +89,8 @@ class ScriptMetadata:
         triggers: List of triggers defined in the script.
         services: List of services exposed by the script.
         error: Any error that occurred during loading.
+        has_startup: Whether the script has a startup handler.
+        has_shutdown: Whether the script has a shutdown handler.
     """
 
     name: str
@@ -95,6 +103,8 @@ class ScriptMetadata:
     services: list[str] = field(default_factory=list[str])
     error: str | None = None
     enabled: bool = True
+    has_startup: bool = False
+    has_shutdown: bool = False
 
 
 class ScriptContext:
@@ -147,6 +157,10 @@ class ScriptContext:
         self._services: list[str] = []
         self._functions: dict[str, Callable[..., Any]] = {}
 
+        # Lifecycle handlers
+        self._startup_func: Callable[..., Any] | None = None
+        self._shutdown_func: Callable[..., Any] | None = None
+
     def _setup_builtin_functions(self) -> None:
         """Set up built-in functions available to scripts.
 
@@ -154,7 +168,21 @@ class ScriptContext:
         including decorators, logging, and Home Assistant access.
         """
         from . import decorators
+        from .script_status import get_status_manager
         from types import SimpleNamespace
+
+        # Create the set_status function bound to this script
+        def set_status(message: str | None) -> None:
+            """Set a status message for this script.
+
+            This message is displayed in the UI when the script is running.
+            The status message is automatically cleared when the action completes.
+
+            Args:
+                message: The status message to display, or None to clear.
+            """
+            status_manager = get_status_manager()
+            status_manager.set_status_message(self.script_name, message)
 
         # Create a virtual 'haanim' module that scripts can import from
         haanim_module = SimpleNamespace(
@@ -165,6 +193,9 @@ class ScriptContext:
             time_active=decorators.time_active,
             state_active=decorators.state_active,
             service=decorators.service,
+            startup=decorators.startup,
+            shutdown=decorators.shutdown,
+            set_status=set_status,
         )
 
         # Register the virtual module with the import controller
@@ -178,6 +209,11 @@ class ScriptContext:
         self._global_symbols.set("time_active", decorators.time_active)
         self._global_symbols.set("state_active", decorators.state_active)
         self._global_symbols.set("service", decorators.service)
+        self._global_symbols.set("startup", decorators.startup)
+        self._global_symbols.set("shutdown", decorators.shutdown)
+
+        # Add set_status function to global scope
+        self._global_symbols.set("set_status", set_status)
 
         # Add logging functions
         self._global_symbols.set("log_debug", self._logger.debug)
@@ -272,13 +308,17 @@ class ScriptContext:
             actions=list(self._actions.values()),
             triggers=self._triggers,
             services=self._services,
+            has_startup=self._startup_func is not None,
+            has_shutdown=self._shutdown_func is not None,
         )
 
         self._logger.info(
-            "Script loaded: %s (%d actions, %d triggers)",
+            "Script loaded: %s (%d actions, %d triggers, startup=%s, shutdown=%s)",
             display_name,
             len(self._actions),
             len(self._triggers),
+            self._startup_func is not None,
+            self._shutdown_func is not None,
         )
 
         return self._metadata
@@ -339,6 +379,9 @@ class ScriptContext:
                 func=func,
                 description=action_info.description if action_info else None,
                 script_name=self.script_name,
+                queue=action_info.queue if action_info else False,
+                queue_timeout=action_info.queue_timeout if action_info else 10.0,
+                preempt=action_info.preempt if action_info else False,
             )
 
         # Process triggers
@@ -357,6 +400,25 @@ class ScriptContext:
         # Process services
         if metadata.is_service:
             self._services.append(func_name)
+
+        # Process lifecycle handlers
+        if metadata.is_startup:
+            if self._startup_func is not None:
+                self._logger.warning(
+                    "Multiple @startup handlers found in script '%s'. Only the last one will be used.",
+                    self.script_name,
+                )
+            self._startup_func = func
+            self._logger.debug("Registered startup handler: %s", func_name)
+
+        if metadata.is_shutdown:
+            if self._shutdown_func is not None:
+                self._logger.warning(
+                    "Multiple @shutdown handlers found in script '%s'. Only the last one will be used.",
+                    self.script_name,
+                )
+            self._shutdown_func = func
+            self._logger.debug("Registered shutdown handler: %s", func_name)
 
     async def run_action(
         self,
@@ -505,3 +567,29 @@ class ScriptContext:
     def source(self) -> str | None:
         """Get the script source code."""
         return self._source
+
+    @property
+    def has_startup(self) -> bool:
+        """Check if the script has a startup handler."""
+        return self._startup_func is not None
+
+    @property
+    def has_shutdown(self) -> bool:
+        """Check if the script has a shutdown handler."""
+        return self._shutdown_func is not None
+
+    def get_startup_func(self) -> Callable[..., Any] | None:
+        """Get the startup handler function.
+
+        Returns:
+            The startup function, or None if not defined.
+        """
+        return self._startup_func
+
+    def get_shutdown_func(self) -> Callable[..., Any] | None:
+        """Get the shutdown handler function.
+
+        Returns:
+            The shutdown function, or None if not defined.
+        """
+        return self._shutdown_func

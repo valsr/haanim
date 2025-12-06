@@ -47,11 +47,17 @@ class ActionInfo:
         name: Display name for the action.
         description: Optional description of what the action does.
         func: The decorated function.
+        queue: Whether to queue the action if the script is busy.
+        queue_timeout: Timeout in seconds for queued actions (0 = wait indefinitely).
+        preempt: Whether to cancel any running action and run this one immediately.
     """
 
     name: str | None = None
     description: str | None = None
     func: Callable[..., Any] | None = None
+    queue: bool = False
+    queue_timeout: float = 10.0
+    preempt: bool = False
 
 
 @dataclass
@@ -66,6 +72,8 @@ class FunctionMetadata:
         constraints: List of constraints (time_active, state_active).
         is_service: Whether function should be exposed as HA service.
         service_schema: Schema for service parameters if is_service.
+        is_startup: Whether function is a startup handler (@startup).
+        is_shutdown: Whether function is a shutdown handler (@shutdown).
     """
 
     custom_name: str | None = None
@@ -75,6 +83,8 @@ class FunctionMetadata:
     constraints: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
     is_service: bool = False
     service_schema: dict[str, Any] | None = None
+    is_startup: bool = False
+    is_shutdown: bool = False
 
 
 # Attribute name for storing metadata on decorated functions
@@ -123,6 +133,9 @@ def action(
     name_or_func: str | F | None = None,
     *,
     description: str | None = None,
+    queue: bool = False,
+    queue_timeout: float = 10.0,
+    preempt: bool = False,
 ) -> F | Callable[[F], F]:
     """Decorator to mark a function as an action, manually executable from the UI.
 
@@ -133,6 +146,13 @@ def action(
         name_or_func: Optional display name for the action, or the function if
             used without arguments.
         description: Optional description of what the action does.
+        queue: If True, queue the action when the script is busy instead of
+            raising an error. The action will run after the current action completes.
+        queue_timeout: Maximum time in seconds to wait in queue before the action
+            is discarded. Use 0 to wait indefinitely. Default is 10 seconds.
+        preempt: If True, cancel any currently running action and run this one
+            immediately. Takes precedence over queue. Use with caution as it
+            may leave the system in an unexpected state.
 
     Returns:
         Decorated function or decorator.
@@ -149,6 +169,21 @@ def action(
         @action("Evening Action", description="Activates evening lighting")
         @time_trigger("sunset")
         def evening_action():
+            pass
+
+        @action("Queued Action", queue=True, queue_timeout=30)
+        def my_queued_action():
+            # This action will wait up to 30 seconds if the script is busy
+            pass
+
+        @action(queue=True, queue_timeout=0)
+        def wait_forever_action():
+            # This action will wait indefinitely in the queue
+            pass
+
+        @action(preempt=True)
+        def emergency_stop():
+            # This action will cancel any running action and execute immediately
             pass
     """
     # Handle @action without parentheses
@@ -167,6 +202,9 @@ def action(
             name=name_or_func if isinstance(name_or_func, str) else None,
             description=description,
             func=func,
+            queue=queue,
+            queue_timeout=queue_timeout,
+            preempt=preempt,
         )
         # Also set custom_name for consistency
         if isinstance(name_or_func, str):
@@ -428,6 +466,79 @@ def service(
     return decorator
 
 
+def startup(func: F) -> F:
+    """Decorator to mark a function as a startup handler.
+
+    Functions decorated with @startup are called once when the script is loaded
+    and Home Assistant has started. Only one startup handler per script is allowed.
+    If multiple are defined, only the last one will be executed.
+
+    Startup handlers:
+    - Run after the script is fully loaded and parsed
+    - Are executed through the action worker pool (count toward concurrency limits)
+    - Should complete quickly to not delay loading of other scripts
+    - Cannot be triggered manually from the UI
+
+    Args:
+        func: The function to mark as a startup handler.
+
+    Returns:
+        The decorated function.
+
+    Example:
+        @startup
+        async def on_startup():
+            log_info("Script initialized!")
+            # Perform one-time setup tasks
+
+        @startup
+        def sync_startup():
+            # Sync functions are also supported
+            pass
+    """
+    metadata = _get_or_create_metadata(func)
+    metadata.is_startup = True
+    return func
+
+
+def shutdown(func: F) -> F:
+    """Decorator to mark a function as a shutdown handler.
+
+    Functions decorated with @shutdown are called when the script is being unloaded,
+    reloaded, or when Home Assistant is stopping. Only one shutdown handler per
+    script is allowed.
+
+    Shutdown handlers:
+    - Run when the script is unloaded, reloaded, or HA stops
+    - Have a strict timeout (200ms by default) - must complete quickly
+    - Will be forcefully terminated if they exceed the timeout
+    - If an action is running when shutdown is requested, it will be cancelled first
+    - Cannot be triggered manually from the UI
+    - Are executed through the action worker pool
+
+    Args:
+        func: The function to mark as a shutdown handler.
+
+    Returns:
+        The decorated function.
+
+    Example:
+        @shutdown
+        async def on_shutdown():
+            log_info("Script shutting down...")
+            # Clean up resources, save state, etc.
+            # Keep it fast! Max 200ms allowed
+
+        @shutdown
+        def sync_shutdown():
+            # Sync functions are also supported
+            pass
+    """
+    metadata = _get_or_create_metadata(func)
+    metadata.is_shutdown = True
+    return func
+
+
 # Export all decorators for use in scripts
 __all__ = [
     "action",
@@ -437,6 +548,8 @@ __all__ = [
     "time_active",
     "state_active",
     "service",
+    "startup",
+    "shutdown",
     "get_metadata",
     "has_metadata",
     "FunctionMetadata",

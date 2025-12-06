@@ -28,6 +28,8 @@ def action(
     name: str | None = None,
     *,
     description: str | None = None,
+    queue: bool = False,
+    queue_timeout: float = 10.0,
 ) -> Callable[[F], F]:
     """Expose a function as an action with configuration."""
     ...
@@ -36,6 +38,8 @@ def action(
     name_or_func: str | F | None = None,
     *,
     description: str | None = None,
+    queue: bool = False,
+    queue_timeout: float = 10.0,
 ) -> F | Callable[[F], F]:
     """Decorator to mark a function as an action, manually executable from the UI.
 
@@ -46,6 +50,12 @@ def action(
         name_or_func: Optional display name for the action, or the function if
             used without arguments.
         description: Optional description of what the action does.
+        queue: If True, queue the action when the script is busy instead of
+            raising ActionBusyError. The action will run after the current
+            action completes.
+        queue_timeout: Timeout in seconds for queued actions. If the action
+            is not processed within this time, it will be cancelled with
+            ActionQueueTimeoutError. Set to 0 to wait indefinitely.
 
     Returns:
         Decorated function or decorator.
@@ -62,6 +72,11 @@ def action(
         @action("Evening Action", description="Activates evening lighting")
         @time_trigger("sunset")
         def evening_action():
+            pass
+
+        @action(queue=True, queue_timeout=30.0)
+        def long_running_action():
+            # If called while script is busy, will wait up to 30s
             pass
     """
     ...

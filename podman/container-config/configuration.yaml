@@ -61,6 +61,7 @@ logger:
   default: info
   logs:
     custom_components.haanim: debug
+    haanim: debug
     custom_components.hacs: info
     homeassistant.components.http: warning
 

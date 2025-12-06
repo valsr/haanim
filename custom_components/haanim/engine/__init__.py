@@ -17,13 +17,51 @@ from collections.abc import Callable
 
 from custom_components.haanim.const import DEFAULT_IMPORT_ALLOWLIST, RESTRICTED_BUILTINS
 from custom_components.haanim.engine.errors import (
+    ActionBusyError,
+    ActionCancelledError,
+    ActionQueueTimeoutError,
+    PoolExhaustedError,
     ScriptError,
     ScriptRuntimeError,
     ScriptSecurityError,
     ScriptSyntaxError,
+    ShutdownTimeoutError,
+)
+from custom_components.haanim.engine.action_pool import ActionWorkerPool
+from custom_components.haanim.engine.script_status import (
+    ScriptRunState,
+    ScriptStatus,
+    ScriptStatusManager,
+    get_status_manager,
+    reset_status_manager,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+__all__ = [
+    # Error types
+    "ActionBusyError",
+    "ActionCancelledError",
+    "ActionQueueTimeoutError",
+    "PoolExhaustedError",
+    "ScriptError",
+    "ScriptRuntimeError",
+    "ScriptSecurityError",
+    "ScriptSyntaxError",
+    "ShutdownTimeoutError",
+    # Core components
+    "ActionWorkerPool",
+    "AstEvaluator",
+    "ImportController",
+    "SafeBuiltins",
+    "SymbolTable",
+    # Status tracking
+    "ScriptRunState",
+    "ScriptStatus",
+    "ScriptStatusManager",
+    "get_status_manager",
+    "reset_status_manager",
+]
 
 
 class SafeBuiltins:

@@ -18,13 +18,18 @@ from homeassistant.core import Event, HomeAssistant
 from custom_components.haanim.config import ConfigManager, get_config_manager
 
 from custom_components.haanim.const import (
+    DEFAULT_MAX_CONCURRENT_ACTIONS,
+    DEFAULT_SHUTDOWN_TIMEOUT,
     DOMAIN,
     EVENT_SCRIPT_ERROR,
     EVENT_SCRIPT_LOADED,
     EVENT_SCRIPT_UNLOADED,
 )
+from .engine.action_pool import ActionWorkerPool
 from .engine.script_context import ActionDefinition, ScriptContext, ScriptMetadata
+from .engine.script_status import ScriptStatus, get_status_manager
 from .engine import ScriptError
+from .engine.errors import ActionBusyError, ActionCancelledError, PoolExhaustedError, ShutdownTimeoutError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,6 +72,12 @@ class ScriptManager:
         self._watcher_task: asyncio.Task[Any] | None = None
         self._file_mtimes: dict[str, float] = {}
 
+        # Action worker pool for concurrent execution
+        self._action_pool = ActionWorkerPool(
+            max_workers=DEFAULT_MAX_CONCURRENT_ACTIONS,
+            shutdown_timeout=DEFAULT_SHUTDOWN_TIMEOUT,
+        )
+
         # State
         self._started = False
         self._stop_event = asyncio.Event()
@@ -103,6 +114,9 @@ class ScriptManager:
         # Load all scripts
         await self.async_load_all_scripts()
 
+        # Run startup actions for all loaded scripts
+        await self._run_all_startup_actions()
+
         # Start file watcher
         self._watcher_task = self.hass.async_create_task(
             self._watch_scripts(),
@@ -126,6 +140,12 @@ class ScriptManager:
                 await self._watcher_task
             except asyncio.CancelledError:
                 pass
+
+        # Run shutdown actions for all scripts (with timeout handling)
+        await self._run_all_shutdown_actions()
+
+        # Shutdown the worker pool
+        await self._action_pool.shutdown()
 
         # Unload all scripts
         await self.async_unload_all_scripts()
@@ -215,8 +235,14 @@ class ScriptManager:
                     "script_name": metadata.name,
                     "actions": [a.name for a in metadata.actions],
                     "triggers": len(metadata.triggers),
+                    "has_startup": metadata.has_startup,
+                    "has_shutdown": metadata.has_shutdown,
                 },
             )
+
+            # Run startup action if HA has already started (hot reload scenario)
+            if self._started:
+                await self._run_script_startup_action(context)
 
             return metadata
 
@@ -241,6 +267,9 @@ class ScriptManager:
     async def async_unload_script(self, script_path: str) -> bool:
         """Unload a script.
 
+        This will run the script's shutdown action (if defined) before unloading.
+        If an action is currently running for this script, it will be cancelled.
+
         Args:
             script_path: Path to the script file.
 
@@ -249,6 +278,11 @@ class ScriptManager:
         """
         if script_path not in self._contexts:
             return False
+
+        context = self._contexts.get(script_path)
+        if context:
+            # Run shutdown action before unloading
+            await self._run_script_shutdown_action(context)
 
         context = self._contexts.pop(script_path)
         self._file_mtimes.pop(script_path, None)
@@ -425,6 +459,10 @@ class ScriptManager:
     ) -> Any:
         """Run an action by script and action name.
 
+        This method uses the action worker pool to manage concurrent execution.
+        Only one action per script can run at a time, and the total number of
+        concurrent actions across all scripts is limited.
+
         Args:
             script_name: Name of the script.
             action_name: Name of the action.
@@ -436,13 +474,247 @@ class ScriptManager:
             The return value of the action.
 
         Raises:
-            ScriptError: If script or action not found, or execution fails.
+            ScriptError: If script or action not found.
+            ActionBusyError: If the script is already executing an action.
+            PoolExhaustedError: If no workers are available.
         """
         context = self.get_context_by_name(script_name)
         if not context:
             raise ScriptError(f"Script '{script_name}' not found")
 
-        return await context.run_action(action_name, *args, manual=manual, **kwargs)
+        # Get the action from the context
+        actions = {a.name: a for a in context.get_actions()}
+        if action_name not in actions:
+            # Also try by function name
+            actions_by_func = {a.func_name: a for a in context.get_actions()}
+            if action_name not in actions_by_func:
+                raise ScriptError(f"Action '{action_name}' not found in script '{script_name}'")
+            action = actions_by_func[action_name]
+        else:
+            action = actions[action_name]
+
+        # Add manual flag to kwargs
+        kwargs["manual"] = manual
+
+        # Submit to the worker pool with queue/preempt settings from action definition
+        return await self._action_pool.submit_action(
+            script_name=context.script_name,
+            action_name=action_name,
+            func=action.func,
+            *args,
+            queue=action.queue,
+            queue_timeout=action.queue_timeout,
+            preempt=action.preempt,
+            **kwargs,
+        )
+
+    async def _run_all_startup_actions(self) -> None:
+        """Run startup actions for all loaded scripts.
+
+        This is called after all scripts have been loaded. Each script's
+        @startup decorated function (if any) is executed through the worker pool.
+        """
+        startup_count = 0
+        error_count = 0
+
+        for context in self._contexts.values():
+            startup_func = context.get_startup_func()
+            if startup_func is None:
+                continue
+
+            try:
+                _LOGGER.debug("Running startup action for script '%s'", context.script_name)
+                await self._action_pool.run_startup_action(
+                    script_name=context.script_name,
+                    startup_func=startup_func,
+                )
+                startup_count += 1
+            except (ActionBusyError, PoolExhaustedError) as err:
+                _LOGGER.error(
+                    "Failed to run startup action for script '%s': %s",
+                    context.script_name,
+                    err,
+                )
+                error_count += 1
+            except ActionCancelledError:
+                _LOGGER.warning(
+                    "Startup action for script '%s' was cancelled",
+                    context.script_name,
+                )
+                error_count += 1
+            except Exception as err:
+                _LOGGER.exception(
+                    "Error in startup action for script '%s': %s",
+                    context.script_name,
+                    err,
+                )
+                error_count += 1
+
+        _LOGGER.info(
+            "Startup actions completed: %d successful, %d failed",
+            startup_count,
+            error_count,
+        )
+
+    async def _run_all_shutdown_actions(self) -> None:
+        """Run shutdown actions for all loaded scripts.
+
+        This is called when Home Assistant is stopping. Each script's
+        @shutdown decorated function (if any) is executed with a timeout.
+        If the shutdown action exceeds the timeout, it is forcefully terminated.
+        """
+        shutdown_count = 0
+        error_count = 0
+
+        for context in self._contexts.values():
+            shutdown_func = context.get_shutdown_func()
+            if shutdown_func is None:
+                continue
+
+            try:
+                _LOGGER.debug("Running shutdown action for script '%s'", context.script_name)
+                await self._action_pool.run_shutdown_action(
+                    script_name=context.script_name,
+                    shutdown_func=shutdown_func,
+                )
+                shutdown_count += 1
+            except ShutdownTimeoutError as err:
+                _LOGGER.error(
+                    "Shutdown action for script '%s' timed out: %s",
+                    context.script_name,
+                    err,
+                )
+                error_count += 1
+            except ActionCancelledError:
+                _LOGGER.warning(
+                    "Shutdown action for script '%s' was cancelled",
+                    context.script_name,
+                )
+                error_count += 1
+            except Exception as err:
+                _LOGGER.exception(
+                    "Error in shutdown action for script '%s': %s",
+                    context.script_name,
+                    err,
+                )
+                error_count += 1
+
+        _LOGGER.info(
+            "Shutdown actions completed: %d successful, %d failed",
+            shutdown_count,
+            error_count,
+        )
+
+    async def _run_script_shutdown_action(self, context: ScriptContext) -> None:
+        """Run the shutdown action for a single script.
+
+        This is called when a script is being unloaded or reloaded.
+
+        Args:
+            context: The script context to shut down.
+        """
+        shutdown_func = context.get_shutdown_func()
+        if shutdown_func is None:
+            return
+
+        try:
+            _LOGGER.debug("Running shutdown action for script '%s'", context.script_name)
+            await self._action_pool.run_shutdown_action(
+                script_name=context.script_name,
+                shutdown_func=shutdown_func,
+            )
+        except ShutdownTimeoutError as err:
+            _LOGGER.error(
+                "Shutdown action for script '%s' timed out: %s",
+                context.script_name,
+                err,
+            )
+        except ActionCancelledError:
+            _LOGGER.warning(
+                "Shutdown action for script '%s' was cancelled",
+                context.script_name,
+            )
+        except Exception as err:
+            _LOGGER.exception(
+                "Error in shutdown action for script '%s': %s",
+                context.script_name,
+                err,
+            )
+
+    async def _run_script_startup_action(self, context: ScriptContext) -> None:
+        """Run the startup action for a single script.
+
+        This is called when a new script is loaded (e.g., during hot reload).
+
+        Args:
+            context: The script context to start up.
+        """
+        startup_func = context.get_startup_func()
+        if startup_func is None:
+            return
+
+        try:
+            _LOGGER.debug("Running startup action for script '%s'", context.script_name)
+            await self._action_pool.run_startup_action(
+                script_name=context.script_name,
+                startup_func=startup_func,
+            )
+        except (ActionBusyError, PoolExhaustedError) as err:
+            _LOGGER.error(
+                "Failed to run startup action for script '%s': %s",
+                context.script_name,
+                err,
+            )
+        except ActionCancelledError:
+            _LOGGER.warning(
+                "Startup action for script '%s' was cancelled",
+                context.script_name,
+            )
+        except Exception as err:
+            _LOGGER.exception(
+                "Error in startup action for script '%s': %s",
+                context.script_name,
+                err,
+            )
+
+    @property
+    def action_pool(self) -> ActionWorkerPool:
+        """Get the action worker pool.
+
+        Returns:
+            The ActionWorkerPool instance.
+        """
+        return self._action_pool
+
+    def get_script_status(self, script_name: str) -> ScriptStatus:
+        """Get the current status of a script.
+
+        Args:
+            script_name: Name of the script.
+
+        Returns:
+            The ScriptStatus for the script.
+        """
+        return get_status_manager().get_status(script_name)
+
+    def get_all_script_statuses(self) -> dict[str, ScriptStatus]:
+        """Get the current status of all scripts.
+
+        Returns:
+            Dictionary mapping script names to their statuses.
+        """
+        return get_status_manager().get_all_statuses()
+
+    def get_script_status_display(self, script_name: str) -> str:
+        """Get the display status string for a script.
+
+        Args:
+            script_name: Name of the script.
+
+        Returns:
+            Formatted status string for UI display.
+        """
+        return get_status_manager().get_status(script_name).get_display_status()
 
 
 async def async_get_manager(hass: HomeAssistant) -> ScriptManager | None:

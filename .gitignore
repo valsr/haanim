@@ -81,6 +81,7 @@ dmypy.json
 *.swp
 *.swo
 *~
+/out
 
 # OS
 .DS_Store
