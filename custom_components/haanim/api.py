@@ -22,12 +22,12 @@ _LOGGER = logging.getLogger(__name__)
 class HAAnimAPIView(HomeAssistantView):
     """Base class for HAAnim API views.
 
-    Authentication is not required because these endpoints are only used by
-    the HAAnim panel iframe which is already behind Home Assistant's authentication.
-    The panel is only accessible to authenticated users.
+    All API endpoints require authentication. The Web Component panel receives
+    the hass object directly from Home Assistant, which includes the user's
+    authentication context for API calls.
     """
 
-    requires_auth = False
+    requires_auth = True
 
 
 class ScriptsListView(HAAnimAPIView):

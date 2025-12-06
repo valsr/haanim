@@ -343,9 +343,9 @@ class HAAnimPanel extends HTMLElement {
 
     async _fetchScripts() {
         try {
-            const response = await fetch('/api/haanim/scripts');
-            if (response.ok) {
-                const data = await response.json();
+            // Use hass.callApi for authenticated requests
+            if (this._hass) {
+                const data = await this._hass.callApi('GET', 'haanim/scripts');
                 return data.scripts || [];
             }
         } catch (e) {
@@ -356,9 +356,9 @@ class HAAnimPanel extends HTMLElement {
 
     async _fetchConfig() {
         try {
-            const response = await fetch('/api/haanim/config');
-            if (response.ok) {
-                return await response.json();
+            // Use hass.callApi for authenticated requests
+            if (this._hass) {
+                return await this._hass.callApi('GET', 'haanim/config');
             }
         } catch (e) {
             console.error('Failed to fetch config:', e);
@@ -455,22 +455,16 @@ class HAAnimPanel extends HTMLElement {
                 return;
             }
 
-            // Fallback to REST API
-            const response = await fetch('/api/haanim/run_action', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ script_name: scriptName, action_name: actionName })
+            // Fallback to REST API with hass.callApi
+            const data = await this._hass.callApi('POST', 'haanim/run_action', {
+                script_name: scriptName,
+                action_name: actionName
             });
 
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success) {
-                    this._showToast(`Action "${actionName}" executed successfully`, 'success');
-                } else {
-                    this._showToast(`Failed to run action: ${data.error}`, 'error');
-                }
+            if (data.success) {
+                this._showToast(`Action "${actionName}" executed successfully`, 'success');
             } else {
-                this._showToast(`Failed to run action: ${response.status}`, 'error');
+                this._showToast(`Failed to run action: ${data.error}`, 'error');
             }
         } catch (e) {
             console.error('Failed to run action:', e);
@@ -490,22 +484,14 @@ class HAAnimPanel extends HTMLElement {
                 return;
             }
 
-            // Fallback to REST API
-            const response = await fetch('/api/haanim/reload', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
+            // Fallback to REST API with hass.callApi
+            const data = await this._hass.callApi('POST', 'haanim/reload', {});
 
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success) {
-                    this._showToast('Scripts reloaded', 'success');
-                    setTimeout(() => this._loadData(), 1000);
-                } else {
-                    this._showToast(`Failed to reload: ${data.error}`, 'error');
-                }
+            if (data.success) {
+                this._showToast('Scripts reloaded', 'success');
+                setTimeout(() => this._loadData(), 1000);
             } else {
-                this._showToast(`Failed to reload: ${response.status}`, 'error');
+                this._showToast(`Failed to reload: ${data.error}`, 'error');
             }
         } catch (e) {
             console.error('Failed to reload:', e);
