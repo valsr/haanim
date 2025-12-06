@@ -4,5 +4,12 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"python.analysis.ignore": [
+			"stubs/**"
+		],
+		"python.linting.pylintArgs": [
+			"--ignore=stubs"
+		]
+	}
 }
