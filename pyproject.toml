@@ -28,6 +28,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-homeassistant-custom-component>=0.13.0",
     "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.5.0",
 ]
 
 [project.urls]
@@ -45,6 +46,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-homeassistant-custom-component>=0.13.0",
     "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.5.0",
 ]
 
 [tool.black]
@@ -98,11 +100,37 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=custom_components/haanim --cov-report=term-missing"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+    "-v",
+    "--strict-markers",
+    # Parallel execution - use 'auto' to detect CPU count, or specify number like '-n4'
+    "-n",
+    "auto",
+    "--dist",
+    "loadgroup",
+    "--cov=custom_components/haanim",
+    "--cov-report=term-missing",
+    "--cov-report=html:htmlcov",
+    "--cov-report=xml:coverage.xml",
+    # Target coverage is 80%, set to 0 during initial development
+    # TODO: Increase to 80 when sufficient tests are added
+    "--cov-fail-under=0",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
 
 [tool.coverage.run]
 source = ["custom_components/haanim"]
-omit = ["tests/*"]
+omit = [
+    "tests/*",
+    "*/__pycache__/*",
+    "*/conftest.py",
+]
+branch = true
+parallel = true
 
 [tool.coverage.report]
 exclude_lines = [
@@ -112,4 +140,14 @@ exclude_lines = [
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "@abc.abstractmethod",
 ]
+fail_under = 80
+show_missing = true
+skip_covered = false
+precision = 0
+
+[tool.coverage.html]
+directory = "htmlcov"
+title = "HAAnim Coverage Report"

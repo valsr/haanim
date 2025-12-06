@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock
 
 import pytest
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.haanim import (
-    DOMAIN,
-    async_reload_entry,
-    async_setup,
-    async_setup_entry,
-    async_unload_entry,
-)
+from custom_components.haanim import DOMAIN, async_setup
 
 
+@pytest.mark.asyncio
 async def test_async_setup(hass: HomeAssistant) -> None:
     """Test the component setup.
 
@@ -29,34 +25,87 @@ async def test_async_setup(hass: HomeAssistant) -> None:
     assert DOMAIN in hass.data
 
 
-async def test_async_setup_entry(hass: HomeAssistant, mock_config_entry: ConfigEntry) -> None:
+@pytest.mark.asyncio
+async def test_async_setup_entry(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_script_manager: MagicMock,  # noqa: ARG001 - fixture provides mocking
+) -> None:
     """Test config entry setup.
 
     Args:
         hass: Home Assistant instance.
         mock_config_entry: Mock configuration entry.
+        mock_script_manager: Mock ScriptManager.
     """
-    # TODO: Implement actual test when platforms are added
-    pass
+    # Initialize domain data
+    hass.data[DOMAIN] = {}
+
+    # Add the config entry to hass
+    mock_config_entry.add_to_hass(hass)
+
+    # Setup the entry through Home Assistant's config entry system
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert mock_config_entry.state == ConfigEntryState.LOADED
+    assert mock_config_entry.entry_id in hass.data[DOMAIN]
 
 
-async def test_async_unload_entry(hass: HomeAssistant, mock_config_entry: ConfigEntry) -> None:
+@pytest.mark.asyncio
+async def test_async_unload_entry(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_script_manager: MagicMock,  # noqa: ARG001 - fixture provides mocking
+) -> None:
     """Test config entry unload.
 
     Args:
         hass: Home Assistant instance.
         mock_config_entry: Mock configuration entry.
+        mock_script_manager: Mock ScriptManager.
     """
-    # TODO: Implement actual test when platforms are added
-    pass
+    # Initialize domain data
+    hass.data[DOMAIN] = {}
+
+    # Add the config entry to hass and set it up
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Now unload it
+    await hass.config_entries.async_unload(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert mock_config_entry.state == ConfigEntryState.NOT_LOADED
+    assert mock_config_entry.entry_id not in hass.data[DOMAIN]
 
 
-async def test_async_reload_entry(hass: HomeAssistant, mock_config_entry: ConfigEntry) -> None:
+@pytest.mark.asyncio
+async def test_async_reload_entry(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_script_manager: MagicMock,  # noqa: ARG001 - fixture provides mocking
+) -> None:
     """Test config entry reload.
 
     Args:
         hass: Home Assistant instance.
         mock_config_entry: Mock configuration entry.
+        mock_script_manager: Mock ScriptManager.
     """
-    # TODO: Implement actual test when platforms are added
-    pass
+    # Initialize domain data
+    hass.data[DOMAIN] = {}
+
+    # Add the config entry to hass and set it up
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Reload the entry
+    await hass.config_entries.async_reload(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Entry should still be loaded
+    assert mock_config_entry.state == ConfigEntryState.LOADED
+    assert mock_config_entry.entry_id in hass.data[DOMAIN]
