@@ -133,6 +133,7 @@ class ServiceManager:
             await manager.async_run_action(script_name, action_name, manual=True)
         except Exception as err:
             _LOGGER.error("Failed to run action %s.%s: %s", script_name, action_name, err)
+            raise
 
     async def _handle_reload_scripts(self, _: ServiceCall) -> None:
         """Handle the reload_scripts service call.
@@ -166,7 +167,7 @@ class ServiceManager:
                 {
                     "name": metadata.name,
                     "path": metadata.path,
-                    "actions": [a.name for a in metadata.actions],
+                    "actions": [{"name": a.name, "func_name": a.func_name} for a in metadata.actions],
                     "triggers": len(metadata.triggers),
                     "enabled": metadata.enabled,
                 }

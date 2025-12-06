@@ -407,8 +407,8 @@ class HAAnimPanel extends HTMLElement {
     _renderScriptCard(script) {
         const actionsHtml = script.actions && script.actions.length > 0
             ? script.actions.map(action => `
-                <button class="action-btn" data-script="${this._escapeHtml(script.name)}" data-action="${this._escapeHtml(action)}">
-                    ▶ ${this._escapeHtml(action)}
+                <button class="action-btn" data-script="${this._escapeHtml(script.name)}" data-action="${this._escapeHtml(action.func_name)}">
+                    ▶ ${this._escapeHtml(action.name)}
                 </button>
             `).join('')
             : '<span class="no-actions">No actions defined</span>';

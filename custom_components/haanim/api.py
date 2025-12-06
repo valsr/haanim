@@ -57,7 +57,7 @@ class ScriptsListView(HAAnimAPIView):
                 {
                     "name": metadata.name,
                     "path": metadata.path,
-                    "actions": [a.name for a in metadata.actions],
+                    "actions": [{"name": a.name, "func_name": a.func_name} for a in metadata.actions],
                     "triggers": len(metadata.triggers),
                     "enabled": metadata.enabled,
                 }
