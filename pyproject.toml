@@ -92,6 +92,8 @@ exclude = ["stubs/"]
 
 [tool.pyright]
 pythonVersion = "3.13"
+stubPath = "stubs"
+extraPaths = ["stubs", "podman/container-config/haanim"]
 exclude = [".venv", "venv", ".pytest_cache", "stubs/", "**/__pycache__"]
 ignore = ["stubs/"]
 
