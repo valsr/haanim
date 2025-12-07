@@ -1062,7 +1062,7 @@ class AstEvaluator:
 
     async def _eval_pass(self, node: ast.Pass, scope: SymbolTable) -> None:
         """Evaluate a pass statement."""
-        pass
+        pass  # pylint: disable=unnecessary-pass
 
     async def _eval_raise(self, node: ast.Raise, scope: SymbolTable) -> None:
         """Evaluate a raise statement."""
@@ -1085,7 +1085,7 @@ class AstEvaluator:
                 result = await self.aeval(stmt, scope)
                 if isinstance(result, ReturnValue):
                     return result
-        except Exception as err:
+        except Exception as err:  # pylint: disable=broad-exception-caught
             # Find matching handler
             handled = False
             for handler in node.handlers:
@@ -1212,12 +1212,12 @@ class AstEvaluator:
     async def _eval_global(self, _: ast.Global, __: SymbolTable) -> None:
         """Evaluate a global statement (marks names as global)."""
         # In our implementation, globals are handled via set_global
-        pass
+        pass  # pylint: disable=unnecessary-pass
 
     async def _eval_nonlocal(self, _: ast.Nonlocal, __: SymbolTable) -> None:
         """Evaluate a nonlocal statement."""
         # Handled by scope chain
-        pass
+        pass  # pylint: disable=unnecessary-pass
 
     async def _eval_named_expression(self, node: ast.NamedExpr, scope: SymbolTable) -> Any:
         """Evaluate a walrus operator (:=)."""

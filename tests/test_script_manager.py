@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from custom_components.haanim.const import DOMAIN
+from custom_components.haanim.engine import ScriptError
+from custom_components.haanim.engine.errors import ActionBusyError, ActionCancelledError, ShutdownTimeoutError
 from custom_components.haanim.script_manager import ScriptManager, async_get_manager
 
 
@@ -60,7 +61,7 @@ class TestScriptManager:
 
         assert manager.hass is mock_hass
         assert manager.entry is mock_entry
-        assert manager._contexts == {}
+        assert not manager._contexts
         assert manager._started is False
 
     @patch("custom_components.haanim.script_manager.get_config_manager")
@@ -133,7 +134,7 @@ class TestScriptManager:
         manager = ScriptManager(hass=mock_hass, entry=mock_entry)
         result = manager.get_all_actions()
 
-        assert result == []
+        assert not result
 
     @patch("custom_components.haanim.script_manager.get_config_manager")
     async def test_get_script_status(
@@ -614,8 +615,6 @@ class TestScriptManagerRunAction:
         mock_entry: MagicMock,
     ) -> None:
         """Test async_run_action raises error for non-existent script."""
-        from custom_components.haanim.engine import ScriptError
-
         mock_config = MagicMock()
         mock_config.get_script_path.return_value = "/tmp"
         mock_config.get_import_allowlist.return_value = []
@@ -635,8 +634,6 @@ class TestScriptManagerRunAction:
         mock_entry: MagicMock,
     ) -> None:
         """Test async_run_action raises error for non-existent action."""
-        from custom_components.haanim.engine import ScriptError
-
         mock_config = MagicMock()
         mock_config.get_script_path.return_value = "/tmp"
         mock_config.get_import_allowlist.return_value = []
@@ -867,8 +864,6 @@ class TestScriptManagerStartupShutdown:
         tmp_path: Any,
     ) -> None:
         """Test async_load_script with invalid script raises error."""
-        from custom_components.haanim.engine import ScriptError
-
         mock_config = MagicMock()
         mock_config.get_script_path.return_value = str(tmp_path)
         mock_config.get_import_allowlist.return_value = []
@@ -1265,7 +1260,6 @@ class TestAsyncGetManagerEdgeCases:
         mock_hass = MagicMock()
         mock_manager = MagicMock(spec=ScriptManager)
 
-        from custom_components.haanim.const import DOMAIN
         mock_hass.data = {DOMAIN: {"entry_id": {"manager": mock_manager}}}
 
         result = await async_get_manager(mock_hass)
@@ -1275,7 +1269,6 @@ class TestAsyncGetManagerEdgeCases:
         """Test async_get_manager returns None when no manager key."""
         mock_hass = MagicMock()
 
-        from custom_components.haanim.const import DOMAIN
         mock_hass.data = {DOMAIN: {"entry_id": {"other_key": "value"}}}
 
         result = await async_get_manager(mock_hass)
@@ -1285,7 +1278,6 @@ class TestAsyncGetManagerEdgeCases:
         """Test async_get_manager returns None when manager is wrong type."""
         mock_hass = MagicMock()
 
-        from custom_components.haanim.const import DOMAIN
         mock_hass.data = {DOMAIN: {"entry_id": {"manager": "not_a_manager"}}}
 
         result = await async_get_manager(mock_hass)
@@ -1451,8 +1443,6 @@ class TestScriptManagerStartupShutdownActions:
         mock_entry: MagicMock,
     ) -> None:
         """Test _run_script_shutdown_action handles timeout error."""
-        from custom_components.haanim.engine.errors import ShutdownTimeoutError
-
         mock_config = MagicMock()
         mock_config.get_script_path.return_value = "/tmp"
         mock_config.get_import_allowlist.return_value = []
@@ -1482,8 +1472,6 @@ class TestScriptManagerStartupShutdownActions:
         mock_entry: MagicMock,
     ) -> None:
         """Test _run_script_shutdown_action handles cancelled error."""
-        from custom_components.haanim.engine.errors import ActionCancelledError
-
         mock_config = MagicMock()
         mock_config.get_script_path.return_value = "/tmp"
         mock_config.get_import_allowlist.return_value = []
@@ -1540,8 +1528,6 @@ class TestScriptManagerStartupShutdownActions:
         mock_entry: MagicMock,
     ) -> None:
         """Test _run_script_startup_action handles busy error."""
-        from custom_components.haanim.engine.errors import ActionBusyError
-
         mock_config = MagicMock()
         mock_config.get_script_path.return_value = "/tmp"
         mock_config.get_import_allowlist.return_value = []
@@ -1570,8 +1556,6 @@ class TestScriptManagerStartupShutdownActions:
         mock_entry: MagicMock,
     ) -> None:
         """Test _run_script_startup_action handles cancelled error."""
-        from custom_components.haanim.engine.errors import ActionCancelledError
-
         mock_config = MagicMock()
         mock_config.get_script_path.return_value = "/tmp"
         mock_config.get_import_allowlist.return_value = []

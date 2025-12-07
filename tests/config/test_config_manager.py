@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,7 +13,7 @@ from custom_components.haanim.config.config_type import ConfigType
 
 
 @pytest.fixture
-def reset_config_manager() -> None:
+def reset_config_manager():
     """Reset the ConfigManager singleton before and after test."""
     # Reset before test
     ConfigManager._instance = None
@@ -34,7 +33,7 @@ class TestConfigManagerSingleton:
         manager2 = ConfigManager()
         assert manager1 is manager2
 
-    def test_get_config_manager(self, reset_config_manager: None) -> None:
+    def test_get_config_manager(self, reset_config_manager: None) -> None:  # noqa: ARG002
         """Test get_config_manager returns singleton."""
         manager1 = get_config_manager()
         manager2 = get_config_manager()
@@ -44,7 +43,7 @@ class TestConfigManagerSingleton:
 class TestConfigManagerDefaults:
     """Tests for ConfigManager default configuration."""
 
-    def test_has_default_groups(self, reset_config_manager: None) -> None:
+    def test_has_default_groups(self, reset_config_manager: None) -> None:  # noqa: ARG002
         """Test that default groups are registered."""
         manager = ConfigManager()
         groups = manager.get_groups()

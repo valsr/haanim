@@ -29,7 +29,7 @@ async def test_async_setup(hass: HomeAssistant) -> None:
 async def test_async_setup_entry(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
-    mock_script_manager: MagicMock,  # noqa: ARG001 - fixture provides mocking
+    mock_script_manager: MagicMock,
 ) -> None:
     """Test config entry setup.
 
@@ -38,6 +38,7 @@ async def test_async_setup_entry(
         mock_config_entry: Mock configuration entry.
         mock_script_manager: Mock ScriptManager.
     """
+    _ = mock_script_manager  # Fixture provides mocking
     # Initialize domain data
     hass.data[DOMAIN] = {}
 
@@ -56,7 +57,7 @@ async def test_async_setup_entry(
 async def test_async_unload_entry(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
-    mock_script_manager: MagicMock,  # noqa: ARG001 - fixture provides mocking
+    mock_script_manager: MagicMock,
 ) -> None:
     """Test config entry unload.
 
@@ -65,6 +66,7 @@ async def test_async_unload_entry(
         mock_config_entry: Mock configuration entry.
         mock_script_manager: Mock ScriptManager.
     """
+    _ = mock_script_manager  # Fixture provides mocking
     # Initialize domain data
     hass.data[DOMAIN] = {}
 
@@ -85,7 +87,7 @@ async def test_async_unload_entry(
 async def test_async_reload_entry(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
-    mock_script_manager: MagicMock,  # noqa: ARG001 - fixture provides mocking
+    mock_script_manager: MagicMock,
 ) -> None:
     """Test config entry reload.
 
@@ -94,6 +96,7 @@ async def test_async_reload_entry(
         mock_config_entry: Mock configuration entry.
         mock_script_manager: Mock ScriptManager.
     """
+    _ = mock_script_manager  # Fixture provides mocking
     # Initialize domain data
     hass.data[DOMAIN] = {}
 

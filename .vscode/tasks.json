@@ -163,6 +163,23 @@
       }
     },
     {
+      "label": "Run Linting Tests (Pylint)",
+      "type": "shell",
+      "command": "uv",
+      "args": [
+        "run",
+        "pylint",
+        "tests/",
+        "--rcfile=tests/.pylintrc"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      }
+    },
+    {
       "label": "Generate HAAnim Stubs",
       "type": "shell",
       "command": "uv",

@@ -6,19 +6,12 @@
     "--line-length=110"
   ],
   "python.linting.pylintArgs": [
-    "--ignore=stubs",
-    "--disable=import-error"
+    "--ignore=stubs"
   ],
   "python.analysis.stubPath": "stubs",
   "python.analysis.extraPaths": [
     "stubs",
     "podman/container-config/haanim"
-  ],
-  "python.analysis.diagnosticSeverityOverrides": {
-    "reportMissingModuleSource": "none"
-  },
-  "pylint.args": [
-    "--disable=import-error"
   ],
   "editor.formatOnSave": true,
   "editor.rulers": [110],

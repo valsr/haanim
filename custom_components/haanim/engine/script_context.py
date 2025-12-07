@@ -6,25 +6,29 @@ symbol tables, metadata, and lifecycle management.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import asyncio
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 
 from custom_components.haanim.const import EXEC_MODE_MANUAL, EXEC_MODE_TRIGGER
-from custom_components.haanim.engine.decorators import FunctionMetadata, get_metadata, has_metadata
 from custom_components.haanim.engine import (
     AstEvaluator,
     ImportController,
     SafeBuiltins,
     ScriptError,
     SymbolTable,
+    decorators,
 )
+from custom_components.haanim.engine.decorators import FunctionMetadata, get_metadata, has_metadata
+from custom_components.haanim.engine.script_status import get_status_manager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -167,9 +171,6 @@ class ScriptContext:
         This injects HAAnim-specific functions into the script's namespace,
         including decorators, logging, and Home Assistant access.
         """
-        from . import decorators
-        from .script_status import get_status_manager
-        from types import SimpleNamespace
 
         # Create the set_status function bound to this script
         def set_status(message: str | None) -> None:
@@ -223,10 +224,6 @@ class ScriptContext:
 
         # Also expose the script's logger as 'log'
         self._global_symbols.set("log", self._logger)
-
-        # Add asyncio.sleep for delays
-        import asyncio
-
         self._global_symbols.set("sleep", asyncio.sleep)
 
     def read_file(self, path: Path) -> str:
@@ -456,8 +453,6 @@ class ScriptContext:
         )
 
         try:
-            import asyncio
-
             if asyncio.iscoroutinefunction(action.func):
                 return await action.func(*args, **kwargs)
             else:
@@ -489,8 +484,6 @@ class ScriptContext:
         func = self._functions[func_name]
 
         try:
-            import asyncio
-
             if asyncio.iscoroutinefunction(func):
                 return await func(*args, **kwargs)
 

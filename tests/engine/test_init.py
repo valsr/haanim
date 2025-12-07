@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import ast
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -876,8 +874,6 @@ class TestAstEvaluatorAdvanced:
 
     async def test_execute_assert_fail(self, evaluator: AstEvaluator) -> None:
         """Test assert statement that fails."""
-        from custom_components.haanim.engine import ScriptRuntimeError
-
         evaluator.parse('assert False, "custom message"')
         with pytest.raises(ScriptRuntimeError, match="custom message"):
             await evaluator.execute()
@@ -908,8 +904,6 @@ del d['a']
 
     async def test_execute_raise(self, evaluator: AstEvaluator) -> None:
         """Test raise statement."""
-        from custom_components.haanim.engine import ScriptRuntimeError
-
         evaluator.parse('raise ValueError("test error")')
         with pytest.raises(ScriptRuntimeError, match="test error"):
             await evaluator.execute()

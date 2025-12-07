@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-from aiohttp import web
 
 from custom_components.haanim.api import (
     ActionsListView,
@@ -35,6 +31,7 @@ class TestScriptsListView:
     def test_url_and_name(self) -> None:
         """Test the URL and name are set correctly."""
         view = ScriptsListView()
+        assert view.url is not None
         assert f"/api/{DOMAIN}/scripts" in view.url
         assert DOMAIN in view.name
 
@@ -85,6 +82,7 @@ class TestActionsListView:
     def test_url_and_name(self) -> None:
         """Test the URL and name are set correctly."""
         view = ActionsListView()
+        assert view.url is not None
         assert f"/api/{DOMAIN}/actions" in view.url
         assert DOMAIN in view.name
 
@@ -162,6 +160,7 @@ class TestConfigView:
     def test_url_and_name(self) -> None:
         """Test the URL and name are set correctly."""
         view = ConfigView()
+        assert view.url is not None
         assert f"/api/{DOMAIN}/config" in view.url
         assert DOMAIN in view.name
 
@@ -191,11 +190,12 @@ class TestRunActionView:
     def test_url_and_name(self) -> None:
         """Test the URL and name are set correctly."""
         view = RunActionView()
+        assert view.url is not None
         assert f"/api/{DOMAIN}/run_action" in view.url
         assert DOMAIN in view.name
 
     @patch("custom_components.haanim.api.async_get_manager")
-    async def test_post_missing_params(self, mock_get_manager: MagicMock) -> None:
+    async def test_post_missing_params(self, _: MagicMock) -> None:
         """Test POST returns error when params missing."""
         view = RunActionView()
         request = MagicMock()
@@ -209,7 +209,7 @@ class TestRunActionView:
             assert "Missing" in call_args["error"]
 
     @patch("custom_components.haanim.api.async_get_manager")
-    async def test_post_invalid_json(self, mock_get_manager: MagicMock) -> None:
+    async def test_post_invalid_json(self, _: MagicMock) -> None:
         """Test POST handles invalid JSON."""
         view = RunActionView()
         request = MagicMock()
@@ -269,6 +269,7 @@ class TestReloadScriptsView:
     def test_url_and_name(self) -> None:
         """Test the URL and name are set correctly."""
         view = ReloadScriptsView()
+        assert view.url is not None
         assert f"/api/{DOMAIN}/reload" in view.url
         assert DOMAIN in view.name
 

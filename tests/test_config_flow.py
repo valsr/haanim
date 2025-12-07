@@ -11,7 +11,9 @@ from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.haanim.config_flow import OptionsFlowHandler
 from custom_components.haanim.const import DOMAIN
 
 
@@ -56,6 +58,7 @@ async def test_form(hass: HomeAssistant, mock_config_manager: MagicMock) -> None
         hass: Home Assistant instance.
         mock_config_manager: Mock config manager.
     """
+    _ = mock_config_manager  # Fixture provides mocking
     result: ConfigFlowResult = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -73,6 +76,7 @@ async def test_user_input_creates_entry(hass: HomeAssistant, mock_config_manager
         hass: Home Assistant instance.
         mock_config_manager: Mock config manager.
     """
+    _ = mock_config_manager  # Fixture provides mocking
     # Start the flow
     result: ConfigFlowResult = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -96,6 +100,7 @@ async def test_user_input_default_name(hass: HomeAssistant, mock_config_manager:
         hass: Home Assistant instance.
         mock_config_manager: Mock config manager.
     """
+    _ = mock_config_manager  # Fixture provides mocking
     # Start the flow
     result: ConfigFlowResult = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -147,8 +152,8 @@ async def test_single_instance_only(hass: HomeAssistant, mock_config_manager: Ma
     Args:
         hass: Home Assistant instance.
         mock_config_manager: Mock config manager.
+        mock_config_manager: Mock config manager.
     """
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     # Create an existing entry
     entry = MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN, data={"name": "Existing"})
@@ -170,8 +175,6 @@ async def test_options_flow_init(hass: HomeAssistant) -> None:
     Args:
         hass: Home Assistant instance.
     """
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
-    from custom_components.haanim.config_flow import OptionsFlowHandler
 
     # Create an entry with options
     entry = MockConfigEntry(
@@ -191,11 +194,12 @@ async def test_options_flow_init(hass: HomeAssistant) -> None:
         mock_manager = MagicMock()
         mock_manager.setup = MagicMock()
         mock_manager.load_from_dict = MagicMock()
-        mock_manager.get = MagicMock(side_effect=lambda key, default: {
+        test_data = {
             "script_path": "/config/haanim",
             "allow_all_imports": False,
             "import_allowlist": ["datetime", "math"],
-        }.get(key, default))
+        }
+        mock_manager.get = MagicMock(side_effect=test_data.get)
         mock_manager.get_defaults = MagicMock(return_value={
             "import_allowlist": ["datetime", "math", "json"],
         })
@@ -217,9 +221,6 @@ async def test_options_flow_submit_valid(hass: HomeAssistant) -> None:
     Args:
         hass: Home Assistant instance.
     """
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
-    from custom_components.haanim.config_flow import OptionsFlowHandler
-
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=DOMAIN,
@@ -255,8 +256,6 @@ async def test_options_flow_invalid_path(hass: HomeAssistant) -> None:
     Args:
         hass: Home Assistant instance.
     """
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
-    from custom_components.haanim.config_flow import OptionsFlowHandler
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -269,12 +268,12 @@ async def test_options_flow_invalid_path(hass: HomeAssistant) -> None:
         mock_manager = MagicMock()
         mock_manager.setup = MagicMock()
         mock_manager.validate_script_path = MagicMock(return_value=(False, "Invalid path"))
-        mock_manager.load_from_dict = MagicMock()
-        mock_manager.get = MagicMock(side_effect=lambda key, default: {
+        test_data = {
             "script_path": "/config/haanim",
             "allow_all_imports": False,
             "import_allowlist": [],
-        }.get(key, default))
+        }
+        mock_manager.get = MagicMock(side_effect=test_data.get)
         mock_manager.get_defaults = MagicMock(return_value={"import_allowlist": []})
         mock_get.return_value = mock_manager
 

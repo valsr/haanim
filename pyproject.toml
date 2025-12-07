@@ -79,6 +79,22 @@ disable = [
     "too-many-arguments",
 ]
 
+
+# Per-path configuration for tests
+# These warnings are acceptable in test code
+[tool.pylint."messages_control:tests/**"]
+disable = [
+    "protected-access",      # W0212: Tests often access private members
+    "redefined-outer-name",  # W0621: Pytest fixtures redefine outer names
+    "unused-argument",       # W0613: Fixtures injected but not directly used
+]
+
+# Per-path configuration for stubs
+[tool.pylint."messages_control:podman/**"]
+disable=[
+    "import-error",        # E0401: Stubs may reference modules not present at runtime
+]
+
 [tool.mypy]
 python_version = "3.13"
 ignore_missing_imports = true

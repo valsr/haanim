@@ -25,11 +25,16 @@ from custom_components.haanim.const import (
     EVENT_SCRIPT_LOADED,
     EVENT_SCRIPT_UNLOADED,
 )
-from .engine.action_pool import ActionWorkerPool
-from .engine.script_context import ActionDefinition, ScriptContext, ScriptMetadata
-from .engine.script_status import ScriptStatus, get_status_manager
-from .engine import ScriptError
-from .engine.errors import ActionBusyError, ActionCancelledError, PoolExhaustedError, ShutdownTimeoutError
+from custom_components.haanim.engine.action_pool import ActionWorkerPool
+from custom_components.haanim.engine.script_context import ActionDefinition, ScriptContext, ScriptMetadata
+from custom_components.haanim.engine.script_status import ScriptStatus, get_status_manager
+from custom_components.haanim.engine import ScriptError
+from custom_components.haanim.engine.errors import (
+    ActionBusyError,
+    ActionCancelledError,
+    PoolExhaustedError,
+    ShutdownTimeoutError,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -177,7 +182,7 @@ class ScriptManager:
             except ScriptError as err:
                 results[str(script_path)] = str(err)
                 _LOGGER.error("Failed to load script %s: %s", script_path.name, err)
-            except Exception as err:
+            except Exception as err:  # pylint: disable=broad-exception-caught
                 # Catch any unexpected errors that aren't ScriptError
                 results[str(script_path)] = str(err)
                 _LOGGER.exception("Unexpected error loading script %s: %s", script_path.name, err)
@@ -386,7 +391,7 @@ class ScriptManager:
 
             except asyncio.CancelledError:
                 break
-            except Exception as err:
+            except Exception as err:  # pylint: disable=broad-exception-caught
                 _LOGGER.error("Error in script watcher: %s", err)
 
     def get_context(self, script_path: str) -> ScriptContext | None:
@@ -591,7 +596,7 @@ class ScriptManager:
                     context.script_name,
                 )
                 error_count += 1
-            except Exception as err:
+            except Exception as err:  # pylint: disable=broad-exception-caught
                 _LOGGER.exception(
                     "Error in shutdown action for script '%s': %s",
                     context.script_name,
@@ -634,7 +639,7 @@ class ScriptManager:
                 "Shutdown action for script '%s' was cancelled",
                 context.script_name,
             )
-        except Exception as err:
+        except Exception as err:  # pylint: disable=broad-exception-caught
             _LOGGER.exception(
                 "Error in shutdown action for script '%s': %s",
                 context.script_name,
@@ -670,7 +675,7 @@ class ScriptManager:
                 "Startup action for script '%s' was cancelled",
                 context.script_name,
             )
-        except Exception as err:
+        except Exception as err:  # pylint: disable=broad-exception-caught
             _LOGGER.exception(
                 "Error in startup action for script '%s': %s",
                 context.script_name,

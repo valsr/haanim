@@ -695,7 +695,7 @@ class TimeTrigger(BaseTrigger):
             and self._cron_field_matches(dt.weekday(), weekday, 0, 6)
         )
 
-    def _cron_field_matches(self, value: int, field: str, min_val: int, max_val: int) -> bool:
+    def _cron_field_matches(self, value: int, field: str, _: int, __: int) -> bool:
         """Check if value matches a cron field.
 
         Args:
@@ -858,7 +858,7 @@ class TriggerManager:
             self._on_ha_started,
         )
 
-    async def _on_ha_started(self, event: Event) -> None:
+    async def _on_ha_started(self, _: Event) -> None:
         """Handle Home Assistant started event."""
         self._started = True
 

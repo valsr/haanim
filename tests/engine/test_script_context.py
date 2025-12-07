@@ -120,7 +120,7 @@ class TestScriptMetadata:
                 script_name="test",
             )
         ]
-        services = [{"name": "my_service"}]
+        services: list[str] = ["my_service"]
 
         metadata = ScriptMetadata(
             name="Test Script",

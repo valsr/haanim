@@ -6,7 +6,13 @@ that logs a message every 10 minutes.
 
 import asyncio
 import logging
-from haanim import action, time_trigger, startup, shutdown, set_status
+from haanim import (
+    action,
+    time_trigger,
+    startup,
+    shutdown,
+    set_status,
+)
 
 log = logging.getLogger("haanim.hello_world")
 
