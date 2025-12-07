@@ -13,7 +13,7 @@ this integration is:
 4. Allow animations to be easily shared and reused within the Home Assistant community via HACS.
 5. Provide robust error handling and logging to help users debug their scripts.
 
-## Code Style and Standards
+## Code Guidlines
 
 ### Python Style
 - Follow PEP 8 guidelines strictly
@@ -44,6 +44,10 @@ def example_function(param1: str, param2: int) -> bool:
         ExceptionType: When and why this exception is raised.
     """
 ```
+
+### Code Modification
+- When updating method code, update the method documentation if necessary to reflect the changes made
+- When updating class code, update the class documentation if necessary to reflect the changes made
 
 ### Home Assistant Specific
 - Import from `homeassistant.*` packages (not `hass.*`)
@@ -130,7 +134,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN
+from custom_components.haanim.const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 ```
@@ -151,4 +155,4 @@ _LOGGER = logging.getLogger(__name__)
 ## Documentation
 
 - Place documentation files in the `docs/` fodler
-    - Excpetion: README.md, CHANGELOG.md, CONTRIBUTING.md, LICENSE
+    - Exception: README.md, CHANGELOG.md, CONTRIBUTING.md, LICENSE
