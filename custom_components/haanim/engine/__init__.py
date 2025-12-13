@@ -17,9 +17,7 @@ from collections.abc import Callable
 
 from custom_components.haanim.const import DEFAULT_IMPORT_ALLOWLIST, RESTRICTED_BUILTINS
 from custom_components.haanim.engine.errors import (
-    ActionBusyError,
     ActionCancelledError,
-    ActionQueueTimeoutError,
     PoolExhaustedError,
     ScriptError,
     ScriptRuntimeError,
@@ -40,9 +38,7 @@ _LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     # Error types
-    "ActionBusyError",
     "ActionCancelledError",
-    "ActionQueueTimeoutError",
     "PoolExhaustedError",
     "ScriptError",
     "ScriptRuntimeError",

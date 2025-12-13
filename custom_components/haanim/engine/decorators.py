@@ -36,17 +36,11 @@ class ActionInfo:
         name: Display name for the action.
         description: Optional description of what the action does.
         func: The decorated function.
-        queue: Whether to queue the action if the script is busy.
-        queue_timeout: Timeout in seconds for queued actions (0 = wait indefinitely).
-        preempt: Whether to cancel any running action and run this one immediately.
     """
 
     name: str | None = None
     description: str | None = None
     func: Callable[..., Any] | None = None
-    queue: bool = False
-    queue_timeout: float = 10.0
-    preempt: bool = False
 
 
 @dataclass
@@ -123,32 +117,20 @@ def action(
     name_or_func: str | F | None = None,
     *,
     description: str | None = None,
-    queue: bool = False,
-    queue_timeout: float = 10.0,
-    preempt: bool = False,
 ) -> F | Callable[[F], F]:
-    """Decorator to mark a function as an action and add metadata/flow control.
+    """Decorator to mark a function as an action and add metadata.
 
     Functions with triggers are automatically actions and callable from the UI.
     The @action decorator is optional but allows you to:
     - Provide a custom display name and description
-    - Configure queuing behavior for busy scripts
-    - Enable preemption to cancel running actions
 
     Note: Functions with only triggers (no @action) are still callable from the UI
-    but use default settings (no queue, no preempt, function name as display name).
+    but use default settings (function name as display name).
 
     Args:
         name_or_func: Optional display name for the action, or the function if
             used without arguments.
         description: Optional description of what the action does.
-        queue: If True, queue the action when the script is busy instead of
-            raising an error. The action will run after the current action completes.
-        queue_timeout: Maximum time in seconds to wait in queue before the action
-            is discarded. Use 0 to wait indefinitely. Default is 10 seconds.
-        preempt: If True, cancel any currently running action and run this one
-            immediately. Takes precedence over queue. Use with caution as it
-            may leave the system in an unexpected state.
 
     Returns:
         Decorated function or decorator.
@@ -169,17 +151,6 @@ def action(
         @time_trigger("sunset")
         def evening_action():
             pass
-
-        # Triggered with queue behavior
-        @action(queue=True, queue_timeout=30)
-        @state_trigger("sensor.motion == 'on'")
-        def motion_action():
-            pass
-
-        # Emergency action with preemption
-        @action(preempt=True)
-        def emergency_stop():
-            pass
     """
     # Handle @action without parentheses
     if callable(name_or_func):
@@ -197,9 +168,6 @@ def action(
             name=name_or_func if isinstance(name_or_func, str) else None,
             description=description,
             func=func,
-            queue=queue,
-            queue_timeout=queue_timeout,
-            preempt=preempt,
         )
         # Also set custom_name for consistency
         if isinstance(name_or_func, str):

@@ -12,10 +12,8 @@ from custom_components.haanim.engine.action_pool import (
     ActionExecution,
     ActionState,
     ActionWorkerPool,
-    QueuedAction,
 )
 from custom_components.haanim.engine.errors import (
-    ActionBusyError,
     ActionCancelledError,
     PoolExhaustedError,
 )
@@ -58,85 +56,7 @@ class TestActionExecution:
         assert execution.is_lifecycle is False
 
 
-class TestQueuedAction:
-    """Tests for QueuedAction dataclass."""
-
-    def test_defaults(self) -> None:
-        """Test default values."""
-
-        async def dummy() -> None:
-            pass
-
-        queued = QueuedAction(
-            script_name="script",
-            action_name="action",
-            func=dummy,
-        )
-        assert queued.script_name == "script"
-        assert queued.action_name == "action"
-        assert queued.timeout == 10.0
-        assert queued.future is None
-
-    def test_is_expired_no_timeout(self) -> None:
-        """Test is_expired with timeout=0 (indefinite)."""
-
-        async def dummy() -> None:
-            pass
-
-        queued = QueuedAction(
-            script_name="script",
-            action_name="action",
-            func=dummy,
-            timeout=0,
-        )
-        # Set queued_at to far in the past
-        queued.queued_at = datetime.now() - timedelta(hours=1)
-        assert queued.is_expired() is False
-
-    def test_is_expired_not_expired(self) -> None:
-        """Test is_expired when not expired."""
-
-        async def dummy() -> None:
-            pass
-
-        queued = QueuedAction(
-            script_name="script",
-            action_name="action",
-            func=dummy,
-            timeout=60.0,
-        )
-        assert queued.is_expired() is False
-
-    def test_is_expired_expired(self) -> None:
-        """Test is_expired when expired."""
-
-        async def dummy() -> None:
-            pass
-
-        queued = QueuedAction(
-            script_name="script",
-            action_name="action",
-            func=dummy,
-            timeout=10.0,
-        )
-        queued.queued_at = datetime.now() - timedelta(seconds=15)
-        assert queued.is_expired() is True
-
-    def test_get_wait_time(self) -> None:
-        """Test get_wait_time calculation."""
-
-        async def dummy() -> None:
-            pass
-
-        queued = QueuedAction(
-            script_name="script",
-            action_name="action",
-            func=dummy,
-        )
-        queued.queued_at = datetime.now() - timedelta(seconds=5)
-        wait_time = queued.get_wait_time()
-        assert 4.9 < wait_time < 5.5
-
+# class TestQueuedAction - REMOVED (queue functionality removed)
 
 class TestActionWorkerPool:
     """Tests for ActionWorkerPool."""
@@ -158,20 +78,10 @@ class TestActionWorkerPool:
     def test_is_script_busy_not_busy(self) -> None:
         """Test is_script_busy when script is not busy."""
         pool = ActionWorkerPool()
-        assert pool.is_script_busy("some_script") is False
-
-    def test_is_script_shutting_down_not_shutting_down(self) -> None:
-        """Test is_script_shutting_down when script is not shutting down."""
-        pool = ActionWorkerPool()
         assert pool.is_script_shutting_down("some_script") is False
 
     def test_get_active_action_none(self) -> None:
         """Test get_active_action when no action is active."""
-        pool = ActionWorkerPool()
-        assert pool.get_active_action("script") is None
-
-    def test_get_all_active_actions_empty(self) -> None:
-        """Test get_all_active_actions when empty."""
         pool = ActionWorkerPool()
         assert pool.get_all_active_actions() == []
 
@@ -611,101 +521,7 @@ class TestActionWorkerPoolAdvanced:
             await task2
 
 
-class TestActionWorkerPoolQueue:
-    """Tests for ActionWorkerPool queue functionality."""
-
-    @pytest.mark.asyncio
-    async def test_queue_action_when_busy(self) -> None:
-        """Test queuing an action when script is busy."""
-        pool = ActionWorkerPool()
-        started = asyncio.Event()
-        finish = asyncio.Event()
-
-        async def first_action() -> str:
-            started.set()
-            await finish.wait()
-            return "first"
-
-        async def second_action() -> str:
-            return "second"
-
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
-            # Start first action
-            task1 = asyncio.create_task(pool.submit_action("script", "action1", first_action))
-            await started.wait()
-
-            # Queue second action
-            task2 = asyncio.create_task(
-                pool.submit_action("script", "action2", second_action, queue=True, queue_timeout=10)
-            )
-            # Give it a moment to queue
-            await asyncio.sleep(0.05)
-
-            # Finish first action
-            finish.set()
-            result1 = await task1
-            result2 = await task2
-
-            assert result1 == "first"
-            assert result2 == "second"
-
-    @pytest.mark.asyncio
-    async def test_preempt_action(self) -> None:
-        """Test preempting a running action."""
-        pool = ActionWorkerPool()
-        started = asyncio.Event()
-        cancelled = False
-
-        async def first_action() -> str:
-            nonlocal cancelled
-            started.set()
-            try:
-                await asyncio.sleep(100)
-                return "first"
-            except asyncio.CancelledError:
-                cancelled = True
-                raise
-
-        async def second_action() -> str:
-            return "second"
-
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
-            # Start first action
-            task1 = asyncio.create_task(pool.submit_action("script", "action1", first_action))
-            await started.wait()
-
-            # Preempt with second action
-            result = await pool.submit_action("script", "action2", second_action, preempt=True)
-            assert result == "second"
-
-            # First action should have been cancelled
-            with pytest.raises(ActionCancelledError):
-                await task1
-
-    @pytest.mark.asyncio
-    async def test_busy_error_no_queue_no_preempt(self) -> None:
-        """Test ActionBusyError when queue=False and preempt=False."""
-        pool = ActionWorkerPool()
-        started = asyncio.Event()
-        finish = asyncio.Event()
-
-        async def blocking_action() -> None:
-            started.set()
-            await finish.wait()
-
-        async def second_action() -> None:
-            pass
-
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
-            task = asyncio.create_task(pool.submit_action("script", "action1", blocking_action))
-            await started.wait()
-
-            with pytest.raises(ActionBusyError):
-                await pool.submit_action("script", "action2", second_action, queue=False, preempt=False)
-
-            finish.set()
-            await task
-
+# class TestActionWorkerPoolQueue - REMOVED (queue functionality removed)
 
 class TestActionWorkerPoolLifecycle:
     """Tests for ActionWorkerPool lifecycle actions."""

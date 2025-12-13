@@ -32,9 +32,6 @@ def action(
     name: str | None = None,
     *,
     description: str | None = None,
-    queue: bool = False,
-    queue_timeout: float = 10.0,
-    preempt: bool = False,
 ) -> Callable[[F], F]:
     """Expose a function as an action with configuration."""
     ...
@@ -43,34 +40,20 @@ def action(
     name_or_func: str | F | None = None,
     *,
     description: str | None = None,
-    queue: bool = False,
-    queue_timeout: float = 10.0,
-    preempt: bool = False,
 ) -> F | Callable[[F], F]:
-    """Decorator to add metadata and flow control to actions.
+    """Decorator to mark a function as an action and add metadata.
 
     Functions with triggers are automatically actions and callable from the UI.
-    The @action decorator is optional but allows you to:
-    - Provide a custom display name and description
-    - Configure queuing behavior for busy scripts
-    - Enable preemption to cancel running actions
+    The @action decorator is optional but allows you to provide a custom
+    display name and description.
 
     Note: Functions with only triggers (no @action) are still callable from the UI
-    but use default settings (no queue, no preempt, function name as display name).
+    but use default settings (function name as display name).
 
     Args:
         name_or_func: Optional display name for the action, or the function if
             used without arguments.
         description: Optional description of what the action does.
-        queue: If True, queue the action when the script is busy instead of
-            raising ActionBusyError. The action will run after the current
-            action completes.
-        queue_timeout: Timeout in seconds for queued actions. If the action
-            is not processed within this time, it will be cancelled with
-            ActionQueueTimeoutError. Set to 0 to wait indefinitely.
-        preempt: If True, cancel any currently running action and run this one
-            immediately. Takes precedence over queue. Use with caution as it
-            may leave the system in an unexpected state.
 
     Returns:
         Decorated function or decorator.
@@ -90,12 +73,6 @@ def action(
         @action("Evening Scene", description="Activates evening lighting")
         @time_trigger("sunset")
         def evening_action():
-            pass
-
-        # Triggered with queue behavior
-        @action(queue=True, queue_timeout=30.0)
-        @state_trigger("sensor.motion == 'on'")
-        def motion_action():
             pass
 
         # Emergency action with preemption

@@ -5,9 +5,7 @@ from __future__ import annotations
 import pytest
 
 from custom_components.haanim.engine.errors import (
-    ActionBusyError,
     ActionCancelledError,
-    ActionQueueTimeoutError,
     PoolExhaustedError,
     ScriptError,
     ScriptRuntimeError,
@@ -66,19 +64,6 @@ class TestScriptRuntimeError:
         assert isinstance(error, ScriptError)
 
 
-class TestActionBusyError:
-    """Tests for ActionBusyError."""
-
-    def test_init(self) -> None:
-        """Test ActionBusyError initialization."""
-        error = ActionBusyError("test_script", "running_action")
-        assert error.script_name == "test_script"
-        assert error.current_action == "running_action"
-        assert "test_script" in str(error)
-        assert "running_action" in str(error)
-        assert "busy" in str(error).lower()
-
-
 class TestPoolExhaustedError:
     """Tests for PoolExhaustedError."""
 
@@ -125,17 +110,3 @@ class TestShutdownTimeoutError:
         assert error.timeout == 0.2
         assert "my_script" in str(error)
         assert "200ms" in str(error)
-
-
-class TestActionQueueTimeoutError:
-    """Tests for ActionQueueTimeoutError."""
-
-    def test_init(self) -> None:
-        """Test ActionQueueTimeoutError initialization."""
-        error = ActionQueueTimeoutError("script", "action", 30.0)
-        assert error.script_name == "script"
-        assert error.action_name == "action"
-        assert error.timeout == 30.0
-        assert "script" in str(error)
-        assert "action" in str(error)
-        assert "30.0" in str(error)

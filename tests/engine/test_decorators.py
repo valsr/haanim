@@ -49,24 +49,15 @@ class TestActionInfo:
         assert info.name is None
         assert info.description is None
         assert info.func is None
-        assert info.queue is False
-        assert info.queue_timeout == 10.0
-        assert info.preempt is False
 
     def test_with_values(self) -> None:
         """Test ActionInfo with custom values."""
         info = ActionInfo(
             name="My Action",
             description="Does something",
-            queue=True,
-            queue_timeout=30.0,
-            preempt=True,
         )
         assert info.name == "My Action"
         assert info.description == "Does something"
-        assert info.queue is True
-        assert info.queue_timeout == 30.0
-        assert info.preempt is True
 
 
 class TestFunctionMetadata:
@@ -128,35 +119,10 @@ class TestActionDecorator:
         assert meta.action_info is not None
         assert meta.action_info.description == "This is a test action"
 
-    def test_action_with_queue(self) -> None:
-        """Test @action with queue options."""
-
-        @action(queue=True, queue_timeout=30.0)
-        def queued_action() -> None:
-            pass
-
-        meta = get_metadata(queued_action)
-        assert meta is not None
-        assert meta.action_info is not None
-        assert meta.action_info.queue is True
-        assert meta.action_info.queue_timeout == 30.0
-
-    def test_action_with_preempt(self) -> None:
-        """Test @action with preempt option."""
-
-        @action(preempt=True)
-        def preemptive_action() -> None:
-            pass
-
-        meta = get_metadata(preemptive_action)
-        assert meta is not None
-        assert meta.action_info is not None
-        assert meta.action_info.preempt is True
-
     def test_action_with_all_options(self) -> None:
         """Test @action with all options combined."""
 
-        @action("Full Action", description="Full test", queue=True, queue_timeout=60, preempt=True)
+        @action("Full Action", description="Full test")
         def full_action() -> None:
             pass
 
@@ -165,9 +131,6 @@ class TestActionDecorator:
         assert meta.action_info is not None
         assert meta.action_info.name == "Full Action"
         assert meta.action_info.description == "Full test"
-        assert meta.action_info.queue is True
-        assert meta.action_info.queue_timeout == 60
-        assert meta.action_info.preempt is True
 
 
 class TestStateTriggerDecorator:

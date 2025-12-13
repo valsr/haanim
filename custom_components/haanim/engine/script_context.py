@@ -43,9 +43,6 @@ class ActionDefinition:
         func: The callable function.
         description: Optional description.
         script_name: Name of the parent script.
-        queue: Whether to queue the action if the script is busy.
-        queue_timeout: Timeout in seconds for queued actions.
-        preempt: Whether to cancel any running action and run this one immediately.
     """
 
     name: str
@@ -53,9 +50,6 @@ class ActionDefinition:
     func: Callable[..., Any]
     description: str | None = None
     script_name: str | None = None
-    queue: bool = False
-    queue_timeout: float = 10.0
-    preempt: bool = False
 
 
 @dataclass
@@ -377,9 +371,6 @@ class ScriptContext:
                 func=func,
                 description=action_info.description if action_info else None,
                 script_name=self.script_name,
-                queue=action_info.queue if action_info else False,
-                queue_timeout=action_info.queue_timeout if action_info else 10.0,
-                preempt=action_info.preempt if action_info else False,
             )
 
         # Process triggers

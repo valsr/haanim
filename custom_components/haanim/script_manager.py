@@ -30,7 +30,6 @@ from custom_components.haanim.engine.script_context import ActionDefinition, Scr
 from custom_components.haanim.engine.script_status import ScriptStatus, get_status_manager
 from custom_components.haanim.engine import ScriptError
 from custom_components.haanim.engine.errors import (
-    ActionBusyError,
     ActionCancelledError,
     PoolExhaustedError,
     ShutdownTimeoutError,
@@ -465,8 +464,8 @@ class ScriptManager:
         """Run an action by script and action name.
 
         This method uses the action worker pool to manage concurrent execution.
-        Only one action per script can run at a time, and the total number of
-        concurrent actions across all scripts is limited.
+        Multiple actions from the same script can run concurrently, limited only
+        by the global worker pool size.
 
         Args:
             script_name: Name of the script.
@@ -480,7 +479,6 @@ class ScriptManager:
 
         Raises:
             ScriptError: If script or action not found.
-            ActionBusyError: If the script is already executing an action.
             PoolExhaustedError: If no workers are available.
         """
         context = self.get_context_by_name(script_name)
@@ -501,15 +499,12 @@ class ScriptManager:
         # Add manual flag to kwargs
         kwargs["manual"] = manual
 
-        # Submit to the worker pool with queue/preempt settings from action definition
+        # Submit to the worker pool
         return await self._action_pool.submit_action(
             script_name=context.script_name,
             action_name=action_name,
             func=action.func,
             *args,
-            queue=action.queue,
-            queue_timeout=action.queue_timeout,
-            preempt=action.preempt,
             **kwargs,
         )
 
@@ -534,7 +529,7 @@ class ScriptManager:
                     startup_func=startup_func,
                 )
                 startup_count += 1
-            except (ActionBusyError, PoolExhaustedError) as err:
+            except PoolExhaustedError as err:
                 _LOGGER.error(
                     "Failed to run startup action for script '%s': %s",
                     context.script_name,
@@ -664,7 +659,7 @@ class ScriptManager:
                 script_name=context.script_name,
                 startup_func=startup_func,
             )
-        except (ActionBusyError, PoolExhaustedError) as err:
+        except PoolExhaustedError as err:
             _LOGGER.error(
                 "Failed to run startup action for script '%s': %s",
                 context.script_name,

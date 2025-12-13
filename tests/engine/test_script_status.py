@@ -23,8 +23,8 @@ class TestScriptRunState:
         """Test all enum values exist."""
         assert ScriptRunState.IDLE.value == "idle"
         assert ScriptRunState.RUNNING.value == "running"
-        assert ScriptRunState.STARTING.value == "starting"
-        assert ScriptRunState.STOPPING.value == "stopping"
+        assert ScriptRunState.STARTUP.value == "starting"
+        assert ScriptRunState.SHUTDOWN.value == "stopping"
 
 
 class TestScriptStatus:
@@ -97,7 +97,7 @@ class TestScriptStatus:
         """Test display status running without action name."""
         status = ScriptStatus(
             script_name="test",
-            run_state=ScriptRunState.STARTING,
+            run_state=ScriptRunState.STARTUP,
         )
         display = status.get_display_status()
         assert "Starting" in display
@@ -166,8 +166,8 @@ class TestScriptStatusManager:
         ("is_startup", "is_shutdown", "expected_state"),
         [
             (False, False, ScriptRunState.RUNNING),
-            (True, False, ScriptRunState.STARTING),
-            (False, True, ScriptRunState.STOPPING),
+            (True, False, ScriptRunState.STARTUP),
+            (False, True, ScriptRunState.SHUTDOWN),
         ],
     )
     def test_set_running(

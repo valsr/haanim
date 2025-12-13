@@ -9,7 +9,7 @@ import pytest
 
 from custom_components.haanim.const import DOMAIN
 from custom_components.haanim.engine import ScriptError
-from custom_components.haanim.engine.errors import ActionBusyError, ActionCancelledError, ShutdownTimeoutError
+from custom_components.haanim.engine.errors import ActionCancelledError, ShutdownTimeoutError
 from custom_components.haanim.script_manager import ScriptManager, async_get_manager
 
 
