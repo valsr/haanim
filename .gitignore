@@ -105,3 +105,6 @@ dev/config/.HA_VERSION
 dev/config/deps/
 dev/config/tts/
 dev/config/blueprints/
+
+# Misc
+_*.md
