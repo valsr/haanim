@@ -1,7 +1,14 @@
 """Decorators for HAAnim automation scripts.
 
 This module provides decorators that users can use in their automation scripts to define triggers, actions,
-and metadata.
+and metadata. Trigger-specific decorators are implemented in their own modules under engine/triggers/ and
+re-exported here for convenience.
+
+Decorator Categories:
+- Triggers: @state_trigger, @time_trigger, @event_trigger (from engine/triggers/)
+- Constraints: @state_active, @time_active (from engine/triggers/)
+- Actions: @action, @service, @startup, @shutdown (defined here)
+- Metadata: FunctionMetadata, TriggerInfo, ActionInfo (defined here)
 """
 
 from __future__ import annotations
@@ -11,32 +18,14 @@ from dataclasses import dataclass, field
 from typing import Any, TypeVar
 from collections.abc import Callable
 
-from custom_components.haanim.const import (
-    DECORATOR_EVENT_TRIGGER,
-    DECORATOR_STATE_ACTIVE,
-    DECORATOR_STATE_TRIGGER,
-    DECORATOR_TIME_ACTIVE,
-    DECORATOR_TIME_TRIGGER,
-)
-
 _LOGGER = logging.getLogger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-@dataclass
-class TriggerInfo:
-    """Information about a trigger attached to a function.
-
-    Args:
-        trigger_type: The type of trigger (state_trigger, time_trigger, event_trigger).
-        trigger_expr: The trigger expression or configuration.
-        kwargs: Additional keyword arguments for the trigger.
-    """
-
-    trigger_type: str
-    trigger_expr: str | list[str]
-    kwargs: dict[str, Any] = field(default_factory=dict[str, Any])
+# =============================================================================
+# Metadata Classes
+# =============================================================================
 
 
 @dataclass
@@ -79,7 +68,7 @@ class FunctionMetadata:
     custom_name: str | None = None
     is_action: bool = False
     action_info: ActionInfo | None = None
-    triggers: list[TriggerInfo] = field(default_factory=list[TriggerInfo])
+    triggers: list[Any] = field(default_factory=list)  # TriggerInfo from triggers.base
     constraints: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
     is_service: bool = False
     service_schema: dict[str, Any] | None = None
@@ -214,210 +203,9 @@ def action(
     return decorator
 
 
-def state_trigger(
-    *trigger_exprs: str,
-    state_hold: float | None = None,
-    state_check_now: bool = False,
-    watch: list[str] | None = None,
-    **kwargs: Any,
-) -> Callable[[F], F]:
-    """Decorator to trigger a function when state conditions are met.
-
-    Args:
-        trigger_exprs: One or more state expressions that trigger the function.
-            Examples: "sensor.temperature > 25", "binary_sensor.motion == 'on'"
-        state_hold: Optional seconds the condition must remain true before triggering.
-        state_check_now: If True, check the condition immediately on script load.
-        watch: Optional list of entity IDs to watch for changes.
-        **kwargs: Additional trigger configuration.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @state_trigger("sensor.temperature > 25", state_hold=60)
-        def handle_high_temp():
-            pass
-
-        @state_trigger(
-            "binary_sensor.motion == 'on'",
-            "binary_sensor.door == 'open'",
-        )
-        def handle_activity():
-            pass
-    """
-
-    def decorator(func: F) -> F:
-        metadata = _get_or_create_metadata(func)
-        trigger_info = TriggerInfo(
-            trigger_type=DECORATOR_STATE_TRIGGER,
-            trigger_expr=list(trigger_exprs) if len(trigger_exprs) != 1 else trigger_exprs[0],
-            kwargs={
-                "state_hold": state_hold,
-                "state_check_now": state_check_now,
-                "watch": watch,
-                **kwargs,
-            },
-        )
-        metadata.triggers.append(trigger_info)
-        return func
-
-    return decorator
-
-
-def time_trigger(
-    *trigger_specs: str,
-    **kwargs: Any,
-) -> Callable[[F], F]:
-    """Decorator to trigger a function at specific times.
-
-    Args:
-        trigger_specs: One or more time specifications. Supports:
-            - Cron expressions: "cron(0 8 * * *)" (8 AM daily)
-            - Time of day: "time(08:00:00)"
-            - Periods: "period(0:00, 1 hour)" (every hour)
-            - Sunrise/sunset: "sunrise", "sunset", "sunrise + 30m"
-            - Startup: "startup" (run when HA starts)
-        **kwargs: Additional trigger configuration.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @time_trigger("cron(0 8 * * *)")  # 8 AM daily
-        def morning_routine():
-            pass
-
-        @time_trigger("sunrise + 30m", "sunset - 15m")
-        def lighting_automation():
-            pass
-    """
-
-    def decorator(func: F) -> F:
-        metadata = _get_or_create_metadata(func)
-        trigger_expr: str | list[str] = list(trigger_specs) if len(trigger_specs) != 1 else trigger_specs[0]
-        trigger_info = TriggerInfo(
-            trigger_type=DECORATOR_TIME_TRIGGER,
-            trigger_expr=trigger_expr,
-            kwargs=kwargs,
-        )
-        metadata.triggers.append(trigger_info)
-        return func
-
-    return decorator
-
-
-def event_trigger(
-    event_type: str,
-    *,
-    event_data: dict[str, Any] | None = None,
-    **kwargs: Any,
-) -> Callable[[F], F]:
-    """Decorator to trigger a function when a Home Assistant event fires.
-
-    Args:
-        event_type: The event type to listen for (e.g., "state_changed", "call_service").
-        event_data: Optional filter for event data fields.
-        **kwargs: Additional trigger configuration.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @event_trigger("custom_event", event_data={"action": "button_press"})
-        def handle_button():
-            pass
-    """
-
-    def decorator(func: F) -> F:
-        metadata = _get_or_create_metadata(func)
-        trigger_info = TriggerInfo(
-            trigger_type=DECORATOR_EVENT_TRIGGER,
-            trigger_expr=event_type,
-            kwargs={"event_data": event_data, **kwargs},
-        )
-        metadata.triggers.append(trigger_info)
-        return func
-
-    return decorator
-
-
-def time_active(
-    *time_specs: str,
-    **kwargs: Any,
-) -> Callable[[F], F]:
-    """Decorator to constrain when a triggered function can run.
-
-    This decorator adds time-based constraints. The function will only
-    execute if the current time matches the specification. Does NOT
-    apply to manual execution via @action.
-
-    Args:
-        time_specs: Time specifications for when the function is active.
-            Examples: "range(sunrise, sunset)", "range(08:00, 17:00)"
-        **kwargs: Additional configuration.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @time_active("range(sunset, sunrise)")
-        @state_trigger("binary_sensor.motion == 'on'")
-        def night_motion_light():
-            pass
-    """
-
-    def decorator(func: F) -> F:
-        metadata = _get_or_create_metadata(func)
-        metadata.constraints.append(
-            {
-                "type": DECORATOR_TIME_ACTIVE,
-                "specs": list(time_specs),
-                **kwargs,
-            }
-        )
-        return func
-
-    return decorator
-
-
-def state_active(
-    *state_exprs: str,
-    **kwargs: Any,
-) -> Callable[[F], F]:
-    """Decorator to constrain when a triggered function can run based on state.
-
-    This decorator adds state-based constraints. The function will only
-    execute if all state expressions evaluate to true. Does NOT apply
-    to manual execution via @action.
-
-    Args:
-        state_exprs: State expressions that must be true.
-            Examples: "input_boolean.automation_enabled == 'on'"
-        **kwargs: Additional configuration.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @state_active("input_boolean.night_mode == 'on'")
-        @state_trigger("binary_sensor.motion == 'on'")
-        def night_only_automation():
-            pass
-    """
-
-    def decorator(func: F) -> F:
-        metadata = _get_or_create_metadata(func)
-        metadata.constraints.append(
-            {
-                "type": DECORATOR_STATE_ACTIVE,
-                "exprs": list(state_exprs),
-                **kwargs,
-            }
-        )
-        return func
-
-    return decorator
+# =============================================================================
+# Lifecycle Decorators
+# =============================================================================
 
 
 def service(
@@ -539,20 +327,39 @@ def shutdown(func: F) -> F:
     return func
 
 
+# =============================================================================
+# Re-export Trigger Decorators from engine/triggers/
+# =============================================================================
+
+# Import trigger decorators from their respective modules
+# These are the primary interface for user scripts
+from custom_components.haanim.engine.triggers.base import TriggerInfo
+from custom_components.haanim.engine.triggers.state_trigger import state_trigger, state_active
+from custom_components.haanim.engine.triggers.time_trigger import time_trigger, time_active
+from custom_components.haanim.engine.triggers.event_trigger import event_trigger
+
+
 # Export all decorators for use in scripts
 __all__ = [
+    # Action decorators
     "action",
-    "state_trigger",
-    "time_trigger",
-    "event_trigger",
-    "time_active",
-    "state_active",
     "service",
     "startup",
     "shutdown",
+    # Trigger decorators (re-exported from engine/triggers/)
+    "state_trigger",
+    "time_trigger",
+    "event_trigger",
+    # Constraint decorators (re-exported from engine/triggers/)
+    "state_active",
+    "time_active",
+    # Metadata utilities
     "get_metadata",
     "has_metadata",
+    "_get_or_create_metadata",
+    # Metadata classes
     "FunctionMetadata",
     "TriggerInfo",
     "ActionInfo",
+    "METADATA_ATTR",
 ]

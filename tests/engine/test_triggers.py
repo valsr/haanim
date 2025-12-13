@@ -772,7 +772,7 @@ class TestTimeTriggerParsing:
         """Test calculating next trigger time."""
         specs = ["time(10:00)", "time(15:00)"]
         # At 8:00, next should be 10:00
-        with patch("custom_components.haanim.engine.triggers.dt_util") as mock_dt:
+        with patch("custom_components.haanim.engine.triggers.time_trigger.dt_util") as mock_dt:
             mock_dt.now.return_value = datetime(2024, 6, 15, 8, 0, 0)
             result = time_trigger._calculate_next_trigger(specs)
             assert result is not None
@@ -1460,7 +1460,7 @@ class TestTimeConstraintEvaluation:
     def test_parse_time_value_sunrise(self, trigger: StateTrigger) -> None:
         """Test parsing sunrise returns time."""
         now = datetime.now()
-        with patch("custom_components.haanim.engine.triggers.get_astral_event_next") as mock_sun:
+        with patch("custom_components.haanim.engine.triggers.base.get_astral_event_next") as mock_sun:
             mock_sun.return_value = datetime(2024, 1, 15, 7, 30, 0)
             result = trigger._parse_time_value("sunrise", now)
             assert result == time(7, 30, 0)
@@ -1469,7 +1469,7 @@ class TestTimeConstraintEvaluation:
     def test_parse_time_value_sunset(self, trigger: StateTrigger) -> None:
         """Test parsing sunset returns time."""
         now = datetime.now()
-        with patch("custom_components.haanim.engine.triggers.get_astral_event_next") as mock_sun:
+        with patch("custom_components.haanim.engine.triggers.base.get_astral_event_next") as mock_sun:
             mock_sun.return_value = datetime(2024, 1, 15, 18, 45, 0)
             result = trigger._parse_time_value("sunset", now)
             assert result == time(18, 45, 0)
@@ -1478,7 +1478,7 @@ class TestTimeConstraintEvaluation:
     def test_parse_time_value_sunrise_none(self, trigger: StateTrigger) -> None:
         """Test parsing sunrise returns None when sun data unavailable."""
         now = datetime.now()
-        with patch("custom_components.haanim.engine.triggers.get_astral_event_next") as mock_sun:
+        with patch("custom_components.haanim.engine.triggers.base.get_astral_event_next") as mock_sun:
             mock_sun.return_value = None
             result = trigger._parse_time_value("sunrise", now)
             assert result is None
@@ -1486,7 +1486,7 @@ class TestTimeConstraintEvaluation:
     def test_parse_time_value_sunset_none(self, trigger: StateTrigger) -> None:
         """Test parsing sunset returns None when sun data unavailable."""
         now = datetime.now()
-        with patch("custom_components.haanim.engine.triggers.get_astral_event_next") as mock_sun:
+        with patch("custom_components.haanim.engine.triggers.base.get_astral_event_next") as mock_sun:
             mock_sun.return_value = None
             result = trigger._parse_time_value("sunset", now)
             assert result is None
@@ -1494,7 +1494,7 @@ class TestTimeConstraintEvaluation:
     async def test_check_time_constraint_range_normal(self, trigger: StateTrigger) -> None:
         """Test evaluating time spec for normal range."""
         # Mock a specific current time
-        with patch("custom_components.haanim.engine.triggers.dt_util") as mock_dt:
+        with patch("custom_components.haanim.engine.triggers.base.dt_util") as mock_dt:
             current = datetime(2024, 1, 15, 14, 30, 0)
             mock_dt.now.return_value = current
             # Create constraint that includes 14:30
@@ -1504,7 +1504,7 @@ class TestTimeConstraintEvaluation:
 
     async def test_check_time_constraint_range_outside(self, trigger: StateTrigger) -> None:
         """Test evaluating time spec when outside range."""
-        with patch("custom_components.haanim.engine.triggers.dt_util") as mock_dt:
+        with patch("custom_components.haanim.engine.triggers.base.dt_util") as mock_dt:
             current = datetime(2024, 1, 15, 20, 30, 0)
             mock_dt.now.return_value = current
             # Create constraint that does not include 20:30
@@ -1514,7 +1514,7 @@ class TestTimeConstraintEvaluation:
 
     async def test_check_time_constraint_overnight_range(self, trigger: StateTrigger) -> None:
         """Test evaluating overnight time range."""
-        with patch("custom_components.haanim.engine.triggers.dt_util") as mock_dt:
+        with patch("custom_components.haanim.engine.triggers.base.dt_util") as mock_dt:
             current = datetime(2024, 1, 15, 23, 30, 0)
             mock_dt.now.return_value = current
             # Overnight range from 22:00 to 06:00
@@ -1524,7 +1524,7 @@ class TestTimeConstraintEvaluation:
 
     async def test_check_time_constraint_overnight_morning(self, trigger: StateTrigger) -> None:
         """Test evaluating overnight time range in morning."""
-        with patch("custom_components.haanim.engine.triggers.dt_util") as mock_dt:
+        with patch("custom_components.haanim.engine.triggers.base.dt_util") as mock_dt:
             current = datetime(2024, 1, 15, 4, 30, 0)
             mock_dt.now.return_value = current
             # Overnight range from 22:00 to 06:00
