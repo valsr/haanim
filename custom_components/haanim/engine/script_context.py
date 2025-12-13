@@ -365,8 +365,9 @@ class ScriptContext:
         if metadata.custom_name:
             self._custom_name = metadata.custom_name
 
-        # Process actions (@action)
-        if metadata.is_action:
+        # Process actions (@action) OR functions with triggers (implicit action)
+        # Any function with triggers is automatically callable as an action
+        if metadata.is_action or metadata.triggers:
             action_info = metadata.action_info
             action_name = (action_info.name if action_info else None) or func_name
 

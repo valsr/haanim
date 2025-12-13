@@ -55,9 +55,10 @@ class FunctionMetadata:
 
     Args:
         custom_name: Custom name from @action("name") decorator.
-        is_action: Whether function is marked as an action (@action).
-        action_info: Information about the action if is_action is True.
-        triggers: List of triggers attached to this function.
+        is_action: Whether function is explicitly marked with @action decorator.
+        action_info: Information about the action (name, description, queue settings).
+        triggers: List of triggers attached to this function. Functions with triggers
+            are automatically callable as actions, even without @action decorator.
         constraints: List of constraints (time_active, state_active).
         is_service: Whether function should be exposed as HA service.
         service_schema: Schema for service parameters if is_service.
@@ -126,10 +127,16 @@ def action(
     queue_timeout: float = 10.0,
     preempt: bool = False,
 ) -> F | Callable[[F], F]:
-    """Decorator to mark a function as an action, manually executable from the UI.
+    """Decorator to mark a function as an action and add metadata/flow control.
 
-    When a function is decorated with @action, it becomes available in the HAAnim
-    UI for manual execution. Manual execution bypasses all trigger constraints.
+    Functions with triggers are automatically actions and callable from the UI.
+    The @action decorator is optional but allows you to:
+    - Provide a custom display name and description
+    - Configure queuing behavior for busy scripts
+    - Enable preemption to cancel running actions
+
+    Note: Functions with only triggers (no @action) are still callable from the UI
+    but use default settings (no queue, no preempt, function name as display name).
 
     Args:
         name_or_func: Optional display name for the action, or the function if
@@ -147,32 +154,31 @@ def action(
         Decorated function or decorator.
 
     Example:
+        # Triggered function (automatically an action)
+        @time_trigger("sunset")
+        def evening_lights():
+            pass
+
+        # Manual action only (no triggers)
         @action
         def turn_on_lights():
             pass
 
-        @action("Morning Routine")
-        def morning_routine():
-            pass
-
-        @action("Evening Action", description="Activates evening lighting")
+        # Triggered with custom metadata
+        @action("Evening Scene", description="Activates evening lighting")
         @time_trigger("sunset")
         def evening_action():
             pass
 
-        @action("Queued Action", queue=True, queue_timeout=30)
-        def my_queued_action():
-            # This action will wait up to 30 seconds if the script is busy
+        # Triggered with queue behavior
+        @action(queue=True, queue_timeout=30)
+        @state_trigger("sensor.motion == 'on'")
+        def motion_action():
             pass
 
-        @action(queue=True, queue_timeout=0)
-        def wait_forever_action():
-            # This action will wait indefinitely in the queue
-            pass
-
+        # Emergency action with preemption
         @action(preempt=True)
         def emergency_stop():
-            # This action will cancel any running action and execute immediately
             pass
     """
     # Handle @action without parentheses

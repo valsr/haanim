@@ -532,3 +532,153 @@ def do_something():
         await context.load()
 
         assert context.get_shutdown_func() is None
+
+
+class TestTriggersAsActions:
+    """Tests for triggers automatically being actions."""
+
+    @pytest.fixture
+    def mock_hass(self) -> MagicMock:
+        """Create a mock Home Assistant instance."""
+        hass = MagicMock()
+        hass.async_add_executor_job = AsyncMock(
+            side_effect=lambda func, *args, **kwargs: func(*args, **kwargs)
+        )
+        return hass
+
+    async def test_triggered_function_is_action(self, mock_hass: MagicMock, tmp_path: Any) -> None:
+        """Test that a function with triggers is automatically an action."""
+        script_path = tmp_path / "trigger_script.py"
+        script_path.write_text(
+            """
+@state_trigger("sensor.test > 50")
+def on_high():
+    pass
+"""
+        )
+
+        context = ScriptContext(hass=mock_hass, script_path=str(script_path))
+        metadata = await context.load()
+
+        # Should have both a trigger and an action
+        assert len(metadata.triggers) == 1
+        assert len(metadata.actions) == 1
+        assert metadata.actions[0].func_name == "on_high"
+
+    async def test_multiple_triggers_single_action(self, mock_hass: MagicMock, tmp_path: Any) -> None:
+        """Test that multiple triggers on one function still creates one action."""
+        script_path = tmp_path / "multi_trigger.py"
+        script_path.write_text(
+            """
+@state_trigger("sensor.a > 10")
+@state_trigger("sensor.b < 5")
+@time_trigger("cron(0 8 * * *)")
+def multi_trigger():
+    pass
+"""
+        )
+
+        context = ScriptContext(hass=mock_hass, script_path=str(script_path))
+        metadata = await context.load()
+
+        # Should have 3 triggers but only 1 action
+        assert len(metadata.triggers) == 3
+        assert len(metadata.actions) == 1
+        assert metadata.actions[0].func_name == "multi_trigger"
+
+    async def test_triggered_action_with_metadata(self, mock_hass: MagicMock, tmp_path: Any) -> None:
+        """Test that triggered function with @action decorator gets metadata."""
+        script_path = tmp_path / "trigger_with_action.py"
+        script_path.write_text(
+            """
+@action("Custom Name", description="Custom description", queue=True)
+@state_trigger("sensor.test > 50")
+def custom_action():
+    pass
+"""
+        )
+
+        context = ScriptContext(hass=mock_hass, script_path=str(script_path))
+        metadata = await context.load()
+
+        # Should have trigger and action with custom metadata
+        assert len(metadata.triggers) == 1
+        assert len(metadata.actions) == 1
+        action = metadata.actions[0]
+        assert action.name == "Custom Name"
+        assert action.description == "Custom description"
+        assert action.queue is True
+
+    async def test_triggered_action_default_settings(self, mock_hass: MagicMock, tmp_path: Any) -> None:
+        """Test that triggered function without @action gets default settings."""
+        script_path = tmp_path / "trigger_only.py"
+        script_path.write_text(
+            """
+@time_trigger("sunset")
+def evening_lights():
+    pass
+"""
+        )
+
+        context = ScriptContext(hass=mock_hass, script_path=str(script_path))
+        metadata = await context.load()
+
+        # Should have action with default settings
+        assert len(metadata.actions) == 1
+        action = metadata.actions[0]
+        assert action.name == "evening_lights"  # Uses function name
+        assert action.description is None
+        assert action.queue is False
+        assert action.queue_timeout == 10.0
+        assert action.preempt is False
+
+    async def test_action_without_trigger(self, mock_hass: MagicMock, tmp_path: Any) -> None:
+        """Test that @action without triggers still works."""
+        script_path = tmp_path / "action_only.py"
+        script_path.write_text(
+            """
+@action("Manual Action")
+def manual_only():
+    pass
+"""
+        )
+
+        context = ScriptContext(hass=mock_hass, script_path=str(script_path))
+        metadata = await context.load()
+
+        # Should have action but no triggers
+        assert len(metadata.actions) == 1
+        assert len(metadata.triggers) == 0
+        assert metadata.actions[0].name == "Manual Action"
+
+    async def test_mixed_actions_and_triggers(self, mock_hass: MagicMock, tmp_path: Any) -> None:
+        """Test script with mix of actions, triggers, and combined."""
+        script_path = tmp_path / "mixed.py"
+        script_path.write_text(
+            """
+@action("Manual Only")
+def manual():
+    pass
+
+@state_trigger("sensor.a > 10")
+def auto_only():
+    pass
+
+@action("Both", description="Has both")
+@time_trigger("sunset")
+def both():
+    pass
+"""
+        )
+
+        context = ScriptContext(hass=mock_hass, script_path=str(script_path))
+        metadata = await context.load()
+
+        # Should have 3 actions (all callable) and 2 triggers
+        assert len(metadata.actions) == 3
+        assert len(metadata.triggers) == 2
+
+        action_names = {a.name for a in metadata.actions}
+        assert "Manual Only" in action_names
+        assert "auto_only" in action_names  # Default name
+        assert "Both" in action_names

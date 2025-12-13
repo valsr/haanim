@@ -47,10 +47,16 @@ def action(
     queue_timeout: float = 10.0,
     preempt: bool = False,
 ) -> F | Callable[[F], F]:
-    """Decorator to mark a function as an action, manually executable from the UI.
+    """Decorator to add metadata and flow control to actions.
 
-    When a function is decorated with @action, it becomes available in the HAAnim
-    UI for manual execution. Manual execution bypasses all trigger constraints.
+    Functions with triggers are automatically actions and callable from the UI.
+    The @action decorator is optional but allows you to:
+    - Provide a custom display name and description
+    - Configure queuing behavior for busy scripts
+    - Enable preemption to cancel running actions
+
+    Note: Functions with only triggers (no @action) are still callable from the UI
+    but use default settings (no queue, no preempt, function name as display name).
 
     Args:
         name_or_func: Optional display name for the action, or the function if
@@ -70,27 +76,31 @@ def action(
         Decorated function or decorator.
 
     Example:
+        # Triggered function (automatically an action)
+        @time_trigger("sunset")
+        def evening_lights():
+            pass
+
+        # Manual action only (no triggers)
         @action
         def turn_on_lights():
             pass
 
-        @action("Morning Routine")
-        def morning_routine():
-            pass
-
-        @action("Evening Action", description="Activates evening lighting")
+        # Triggered with custom metadata
+        @action("Evening Scene", description="Activates evening lighting")
         @time_trigger("sunset")
         def evening_action():
             pass
 
+        # Triggered with queue behavior
         @action(queue=True, queue_timeout=30.0)
-        def long_running_action():
-            # If called while script is busy, will wait up to 30s
+        @state_trigger("sensor.motion == 'on'")
+        def motion_action():
             pass
 
+        # Emergency action with preemption
         @action(preempt=True)
         def emergency_stop():
-            # This action will cancel any running action and execute immediately
             pass
     """
     ...
