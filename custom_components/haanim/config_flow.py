@@ -19,7 +19,7 @@ from custom_components.haanim.const import (
     CONFIG_SCRIPT_PATH,
     DEFAULT_ALLOW_ALL_IMPORTS,
     DEFAULT_IMPORT_ALLOWLIST,
-    DEFAULT_NAME,
+    NAME,
     DEFAULT_SCRIPT_PATH,
     DOMAIN,
 )
@@ -28,6 +28,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # FIXME: ConfigFlow doesn't seem to be working, check what needs to be done to be fixed (if we need to fix
 # it) - https://developers.home-assistant.io/docs/config_entries_config_flow_handler
+
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input.
@@ -51,7 +52,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     if not is_valid:
         raise InvalidScriptPath(error)
 
-    return {"title": data.get("name", DEFAULT_NAME)}
+    return {"title": data.get("name", NAME)}
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):

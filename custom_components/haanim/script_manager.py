@@ -19,7 +19,7 @@ from custom_components.haanim.config import ConfigManager, get_config_manager
 
 from custom_components.haanim.const import (
     DEFAULT_MAX_CONCURRENT_ACTIONS,
-    DEFAULT_SHUTDOWN_TIMEOUT,
+    DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
     DOMAIN,
     EVENT_SCRIPT_ERROR,
     EVENT_SCRIPT_LOADED,
@@ -28,10 +28,10 @@ from custom_components.haanim.const import (
 from custom_components.haanim.engine.action_pool import ActionWorkerPool
 from custom_components.haanim.engine.script_context import ActionDefinition, ScriptContext, ScriptMetadata
 from custom_components.haanim.engine.script_status import ScriptStatus, get_status_manager
-from custom_components.haanim.engine import ScriptError
 from custom_components.haanim.engine.errors import (
     ActionCancelledError,
     PoolExhaustedError,
+    ScriptError,
     ShutdownTimeoutError,
 )
 
@@ -79,7 +79,7 @@ class ScriptManager:
         # Action worker pool for concurrent execution
         self._action_pool = ActionWorkerPool(
             max_workers=DEFAULT_MAX_CONCURRENT_ACTIONS,
-            shutdown_timeout=DEFAULT_SHUTDOWN_TIMEOUT,
+            shutdown_timeout=DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
         )
 
         # State
@@ -236,7 +236,7 @@ class ScriptManager:
                 EVENT_SCRIPT_LOADED,
                 {
                     "script_path": script_path,
-                    "script_name": metadata.name,
+                    "script_id": metadata.id,
                     "actions": [a.name for a in metadata.actions],
                     "triggers": len(metadata.triggers),
                     "has_startup": metadata.has_startup,
@@ -414,7 +414,7 @@ class ScriptManager:
             The ScriptContext, or None if not found.
         """
         for context in self._contexts.values():
-            if context.script_name == script_name or context.name == script_name:
+            if context.script_id == script_name or context.name == script_name:
                 return context
         return None
 
@@ -501,7 +501,7 @@ class ScriptManager:
 
         # Submit to the worker pool
         return await self._action_pool.submit_action(
-            script_name=context.script_name,
+            script_name=context.script_id,
             action_name=action_name,
             func=action.func,
             *args,
@@ -523,29 +523,29 @@ class ScriptManager:
                 continue
 
             try:
-                _LOGGER.debug("Running startup action for script '%s'", context.script_name)
+                _LOGGER.debug("Running startup action for script '%s'", context.script_id)
                 await self._action_pool.run_startup_action(
-                    script_name=context.script_name,
+                    script_name=context.script_id,
                     startup_func=startup_func,
                 )
                 startup_count += 1
             except PoolExhaustedError as err:
                 _LOGGER.error(
                     "Failed to run startup action for script '%s': %s",
-                    context.script_name,
+                    context.script_id,
                     err,
                 )
                 error_count += 1
             except ActionCancelledError:
                 _LOGGER.warning(
                     "Startup action for script '%s' was cancelled",
-                    context.script_name,
+                    context.script_id,
                 )
                 error_count += 1
             except Exception as err:
                 _LOGGER.exception(
                     "Error in startup action for script '%s': %s",
-                    context.script_name,
+                    context.script_id,
                     err,
                 )
                 error_count += 1
@@ -572,29 +572,29 @@ class ScriptManager:
                 continue
 
             try:
-                _LOGGER.debug("Running shutdown action for script '%s'", context.script_name)
+                _LOGGER.debug("Running shutdown action for script '%s'", context.script_id)
                 await self._action_pool.run_shutdown_action(
-                    script_name=context.script_name,
+                    script_name=context.script_id,
                     shutdown_func=shutdown_func,
                 )
                 shutdown_count += 1
             except ShutdownTimeoutError as err:
                 _LOGGER.error(
                     "Shutdown action for script '%s' timed out: %s",
-                    context.script_name,
+                    context.script_id,
                     err,
                 )
                 error_count += 1
             except ActionCancelledError:
                 _LOGGER.warning(
                     "Shutdown action for script '%s' was cancelled",
-                    context.script_name,
+                    context.script_id,
                 )
                 error_count += 1
             except Exception as err:  # pylint: disable=broad-exception-caught
                 _LOGGER.exception(
                     "Error in shutdown action for script '%s': %s",
-                    context.script_name,
+                    context.script_id,
                     err,
                 )
                 error_count += 1
@@ -618,26 +618,26 @@ class ScriptManager:
             return
 
         try:
-            _LOGGER.debug("Running shutdown action for script '%s'", context.script_name)
+            _LOGGER.debug("Running shutdown action for script '%s'", context.script_id)
             await self._action_pool.run_shutdown_action(
-                script_name=context.script_name,
+                script_name=context.script_id,
                 shutdown_func=shutdown_func,
             )
         except ShutdownTimeoutError as err:
             _LOGGER.error(
                 "Shutdown action for script '%s' timed out: %s",
-                context.script_name,
+                context.script_id,
                 err,
             )
         except ActionCancelledError:
             _LOGGER.warning(
                 "Shutdown action for script '%s' was cancelled",
-                context.script_name,
+                context.script_id,
             )
         except Exception as err:  # pylint: disable=broad-exception-caught
             _LOGGER.exception(
                 "Error in shutdown action for script '%s': %s",
-                context.script_name,
+                context.script_id,
                 err,
             )
 
@@ -654,26 +654,26 @@ class ScriptManager:
             return
 
         try:
-            _LOGGER.debug("Running startup action for script '%s'", context.script_name)
+            _LOGGER.debug("Running startup action for script '%s'", context.script_id)
             await self._action_pool.run_startup_action(
-                script_name=context.script_name,
+                script_name=context.script_id,
                 startup_func=startup_func,
             )
         except PoolExhaustedError as err:
             _LOGGER.error(
                 "Failed to run startup action for script '%s': %s",
-                context.script_name,
+                context.script_id,
                 err,
             )
         except ActionCancelledError:
             _LOGGER.warning(
                 "Startup action for script '%s' was cancelled",
-                context.script_name,
+                context.script_id,
             )
         except Exception as err:  # pylint: disable=broad-exception-caught
             _LOGGER.exception(
                 "Error in startup action for script '%s': %s",
-                context.script_name,
+                context.script_id,
                 err,
             )
 

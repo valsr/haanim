@@ -93,9 +93,7 @@ class ScriptStatusManager:
         else:
             status.run_state = ScriptRunState.RUNNING
 
-    def remove_running_action(
-        self, script_name: str, execution_id: str, error: str | None = None
-    ) -> None:
+    def remove_running_action(self, script_name: str, execution_id: str, error: str | None = None) -> None:
         """Remove a running action from the script status.
 
         Args:

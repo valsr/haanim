@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from custom_components.haanim.const import (
-    ATTR_MANUAL,
-    ATTR_SCRIPT_PATH,
+    ATTRIBUTE_MANUAL,
+    ATTRIBUTE_SCRIPT_PATH,
     ATTRIBUTE_ACTION_NAME,
     ATTRIBUTE_SCRIPT_NAME,
     CONFIG_ALLOW_ALL_IMPORTS,
@@ -26,7 +26,7 @@ from custom_components.haanim.const import (
     DEFAULT_NAME,
     DEFAULT_SCRIPT_PATH,
     DEFAULT_SCRIPT_REFRESH_INTERVAL,
-    DEFAULT_SHUTDOWN_TIMEOUT,
+    DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
     DOMAIN,
     EVENT_SCRIPT_ERROR,
     EVENT_SCRIPT_EXECUTED,
@@ -115,9 +115,9 @@ class TestAttributeConstants:
     def test_attribute_names(self) -> None:
         """Test all attribute name constants."""
         assert ATTRIBUTE_SCRIPT_NAME == "script_name"
-        assert ATTR_SCRIPT_PATH == "script_path"
+        assert ATTRIBUTE_SCRIPT_PATH == "script_path"
         assert ATTRIBUTE_ACTION_NAME == "action_name"
-        assert ATTR_MANUAL == "manual"
+        assert ATTRIBUTE_MANUAL == "manual"
 
 
 class TestConfigConstants:
@@ -143,7 +143,7 @@ class TestDefaultValues:
         assert isinstance(DEFAULT_IMPORT_ALLOWLIST, list)
         assert len(DEFAULT_IMPORT_ALLOWLIST) > 0
         assert DEFAULT_MAX_CONCURRENT_ACTIONS == 20
-        assert DEFAULT_SHUTDOWN_TIMEOUT == 0.2
+        assert DEFAULT_WORKER_SHUTDOWN_TIMEOUT == 0.2
 
 
 class TestSecurityConstants:

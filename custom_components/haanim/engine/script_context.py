@@ -18,16 +18,16 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.haanim.const import EXEC_MODE_MANUAL, EXEC_MODE_TRIGGER
+from custom_components.haanim import const
 from custom_components.haanim.engine import (
-    AstEvaluator,
     ImportController,
     SafeBuiltins,
-    ScriptError,
     SymbolTable,
     decorators,
 )
+from custom_components.haanim.engine.AstEvaluator import AstEvaluator
 from custom_components.haanim.engine.decorators import FunctionMetadata, get_metadata, has_metadata
+from custom_components.haanim.engine.errors import ScriptError
 from custom_components.haanim.engine.script_status import get_status_manager
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ class TriggerDefinition:
         func_name: The function name in the script.
         func: The callable function.
         kwargs: Additional trigger configuration.
-        script_name: Name of the parent script.
+        script_id: Id of the parent script.
     """
 
     trigger_type: str
@@ -70,7 +70,7 @@ class TriggerDefinition:
     func_name: str
     func: Callable[..., Any]
     kwargs: dict[str, Any] = field(default_factory=dict[str, Any])
-    script_name: str | None = None
+    script_id: str | None = None
 
 
 @dataclass
@@ -85,20 +85,18 @@ class ScriptMetadata:
         modified_at: Last modification time of the file.
         actions: List of manually executable actions.
         triggers: List of triggers defined in the script.
-        services: List of services exposed by the script.
         error: Any error that occurred during loading.
         has_startup: Whether the script has a startup handler.
         has_shutdown: Whether the script has a shutdown handler.
     """
 
-    name: str
+    id: str
     path: str
     filename: str
     loaded_at: datetime = field(default_factory=datetime.now)
     modified_at: datetime | None = None
     actions: list[ActionDefinition] = field(default_factory=list[ActionDefinition])
     triggers: list[TriggerDefinition] = field(default_factory=list[TriggerDefinition])
-    services: list[str] = field(default_factory=list[str])
     error: str | None = None
     enabled: bool = True
     has_startup: bool = False
@@ -109,7 +107,7 @@ class ScriptContext:
     """Execution context for a single HAAnim script.
 
     Manages the script's symbol table, evaluator, and extracted metadata
-    including actions, triggers, and services.
+    including actions and triggers.
     """
 
     def __init__(
@@ -130,10 +128,10 @@ class ScriptContext:
         self.hass = hass
         self.script_path = script_path
         self.filename = os.path.basename(script_path)
-        self.script_name = os.path.splitext(self.filename)[0]
+        self.script_id = os.path.splitext(self.filename)[0].replace("", "_")
 
         # Create logger for this script
-        self._logger = logging.getLogger(f"{__name__}.{self.script_name}")
+        self._logger = logging.getLogger(f"{__name__}.{self.script_id}")
 
         # Initialize components
         self._import_controller = ImportController(
@@ -147,12 +145,10 @@ class ScriptContext:
         # Script metadata
         self._metadata: ScriptMetadata | None = None
         self._source: str | None = None
-        self._custom_name: str | None = None
 
         # Extracted definitions
         self._actions: dict[str, ActionDefinition] = {}
         self._triggers: list[TriggerDefinition] = []
-        self._services: list[str] = []
         self._functions: dict[str, Callable[..., Any]] = {}
 
         # Lifecycle handlers
@@ -177,17 +173,15 @@ class ScriptContext:
                 message: The status message to display, or None to clear.
             """
             status_manager = get_status_manager()
-            status_manager.set_status_message(self.script_name, message)
+            status_manager.set_status_message(self.script_id, message)
 
         # Create a virtual 'haanim' module that scripts can import from
         haanim_module = SimpleNamespace(
             action=decorators.action,
             state_trigger=decorators.state_trigger,
             time_trigger=decorators.time_trigger,
-            event_trigger=decorators.event_trigger,
             time_active=decorators.time_active,
             state_active=decorators.state_active,
-            service=decorators.service,
             startup=decorators.startup,
             shutdown=decorators.shutdown,
             set_status=set_status,
@@ -200,10 +194,8 @@ class ScriptContext:
         self._global_symbols.set("action", decorators.action)
         self._global_symbols.set("state_trigger", decorators.state_trigger)
         self._global_symbols.set("time_trigger", decorators.time_trigger)
-        self._global_symbols.set("event_trigger", decorators.event_trigger)
         self._global_symbols.set("time_active", decorators.time_active)
         self._global_symbols.set("state_active", decorators.state_active)
-        self._global_symbols.set("service", decorators.service)
         self._global_symbols.set("startup", decorators.startup)
         self._global_symbols.set("shutdown", decorators.shutdown)
 
@@ -260,7 +252,7 @@ class ScriptContext:
 
         # Create evaluator
         self._evaluator = AstEvaluator(
-            name=self.script_name,
+            name=self.script_id,
             global_symbols=self._global_symbols,
             import_controller=self._import_controller,
             safe_builtins=self._safe_builtins,
@@ -286,26 +278,22 @@ class ScriptContext:
         # Extract definitions from the global scope
         self._extract_definitions()
 
-        # Determine script name (from @action decorator or filename)
-        display_name = self._custom_name or self.script_name
-
         # Create metadata
         self._metadata = ScriptMetadata(
-            name=display_name,
+            id=self.script_id,
             path=self.script_path,
             filename=self.filename,
             loaded_at=datetime.now(),
             modified_at=modified_at,
             actions=list(self._actions.values()),
             triggers=self._triggers,
-            services=self._services,
             has_startup=self._startup_func is not None,
             has_shutdown=self._shutdown_func is not None,
         )
 
         self._logger.info(
             "Script loaded: %s (%d actions, %d triggers, startup=%s, shutdown=%s)",
-            display_name,
+            self.script_id,
             len(self._actions),
             len(self._triggers),
             self._startup_func is not None,
@@ -315,7 +303,7 @@ class ScriptContext:
         return self._metadata
 
     def _extract_definitions(self) -> None:
-        """Extract action, trigger, and service definitions from loaded script."""
+        """Extract action, trigger definitions from loaded script."""
         symbols = self._global_symbols.as_dict()
 
         for name, obj in symbols.items():
@@ -337,11 +325,6 @@ class ScriptContext:
             # Store all functions for potential use
             self._functions[name] = obj
 
-        # Also check for script-level custom name
-        # This would be applied to a module-level variable
-        if "__script_name__" in symbols:
-            self._custom_name = symbols["__script_name__"]
-
     def _process_function_metadata(
         self,
         func_name: str,
@@ -355,13 +338,9 @@ class ScriptContext:
             func: The function object.
             metadata: Extracted metadata from decorators.
         """
-        # Check for custom name at function level
-        if metadata.custom_name:
-            self._custom_name = metadata.custom_name
-
         # Process actions (@action) OR functions with triggers (implicit action)
         # Any function with triggers is automatically callable as an action
-        if metadata.is_action or metadata.triggers:
+        if metadata.is_marked_as_action or metadata.triggers:
             action_info = metadata.action_info
             action_name = (action_info.name if action_info else None) or func_name
 
@@ -370,7 +349,7 @@ class ScriptContext:
                 func_name=func_name,
                 func=func,
                 description=action_info.description if action_info else None,
-                script_name=self.script_name,
+                script_name=self.script_id,
             )
 
         # Process triggers
@@ -382,20 +361,16 @@ class ScriptContext:
                     func_name=func_name,
                     func=func,
                     kwargs=trigger_info.kwargs,
-                    script_name=self.script_name,
+                    script_id=self.script_id,
                 )
             )
-
-        # Process services
-        if metadata.is_service:
-            self._services.append(func_name)
 
         # Process lifecycle handlers
         if metadata.is_startup:
             if self._startup_func is not None:
                 self._logger.warning(
                     "Multiple @startup handlers found in script '%s'. Only the last one will be used.",
-                    self.script_name,
+                    self.script_id,
                 )
             self._startup_func = func
             self._logger.debug("Registered startup handler: %s", func_name)
@@ -404,7 +379,7 @@ class ScriptContext:
             if self._shutdown_func is not None:
                 self._logger.warning(
                     "Multiple @shutdown handlers found in script '%s'. Only the last one will be used.",
-                    self.script_name,
+                    self.script_id,
                 )
             self._shutdown_func = func
             self._logger.debug("Registered shutdown handler: %s", func_name)
@@ -431,7 +406,7 @@ class ScriptContext:
             ScriptError: If the action is not found or execution fails.
         """
         if action_name not in self._actions:
-            raise ScriptError(f"Action '{action_name}' not found in script '{self.script_name}'")
+            raise ScriptError(f"Action '{action_name}' not found in script '{self.script_id}'")
 
         action = self._actions[action_name]
 
@@ -441,7 +416,7 @@ class ScriptContext:
         self._logger.info(
             "Running action '%s' (%s)",
             action.name,
-            EXEC_MODE_MANUAL if manual else EXEC_MODE_TRIGGER,
+            const.EXEC_MODE_MANUAL if manual else const.EXEC_MODE_TRIGGER,
         )
 
         try:
@@ -471,7 +446,7 @@ class ScriptContext:
             The return value of the function.
         """
         if func_name not in self._functions:
-            raise ScriptError(f"Function '{func_name}' not found in script '{self.script_name}'")
+            raise ScriptError(f"Function '{func_name}' not found in script '{self.script_id}'")
 
         func = self._functions[func_name]
 
@@ -499,14 +474,6 @@ class ScriptContext:
             List of trigger definitions.
         """
         return self._triggers
-
-    def get_services(self) -> list[str]:
-        """Get all services exposed by this script.
-
-        Returns:
-            List of service names.
-        """
-        return self._services
 
     def get_metadata(self) -> ScriptMetadata | None:
         """Get the script metadata.
@@ -537,11 +504,11 @@ class ScriptContext:
         self._global_symbols.set(name, value)
 
     @property
-    def name(self) -> str:
-        """Get the display name of the script."""
+    def id(self) -> str:
+        """Get the id of the script."""
         if self._metadata:
-            return self._metadata.name
-        return self._custom_name or self.script_name
+            return self._metadata.id
+        return self.script_id
 
     @property
     def is_loaded(self) -> bool:

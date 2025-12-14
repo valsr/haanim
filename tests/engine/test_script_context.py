@@ -86,14 +86,14 @@ class TestTriggerDefinition:
             func_name="trigger_func",
             func=func,
             kwargs={"extra": "value"},
-            script_name="test_script",
+            script_id="test_script",
         )
         assert trigger.trigger_type == trigger_type
         assert trigger.trigger_expr == trigger_expr
         assert trigger.func_name == "trigger_func"
         assert trigger.func is func
         assert trigger.kwargs == {"extra": "value"}
-        assert trigger.script_name == "test_script"
+        assert trigger.script_id == "test_script"
 
 
 class TestScriptMetadata:
@@ -117,13 +117,13 @@ class TestScriptMetadata:
                 func_name="trigger_func",
                 func=MagicMock(),
                 kwargs={},
-                script_name="test",
+                script_id="test",
             )
         ]
         services: list[str] = ["my_service"]
 
         metadata = ScriptMetadata(
-            name="Test Script",
+            id="Test Script",
             path="/path/to/script.py",
             filename="script.py",
             loaded_at=now,
@@ -135,7 +135,7 @@ class TestScriptMetadata:
             has_shutdown=False,
         )
 
-        assert metadata.name == "Test Script"
+        assert metadata.id == "Test Script"
         assert metadata.path == "/path/to/script.py"
         assert metadata.filename == "script.py"
         assert metadata.loaded_at == now
@@ -150,7 +150,7 @@ class TestScriptMetadata:
     def test_default_enabled(self) -> None:
         """Test default enabled value."""
         metadata = ScriptMetadata(
-            name="Test",
+            id="Test",
             path="/path/script.py",
             filename="script.py",
             loaded_at=datetime.now(),
@@ -182,7 +182,7 @@ class TestScriptContext:
         )
         assert context.hass is mock_hass
         assert context.script_path == "/scripts/test.py"
-        assert context.script_name == "test"
+        assert context.script_id == "test"
         assert context.filename == "test.py"
 
     @pytest.mark.parametrize(
@@ -205,7 +205,7 @@ class TestScriptContext:
             hass=mock_hass,
             script_path=path,
         )
-        assert context.script_name == expected_name
+        assert context.script_id == expected_name
         assert context.filename == expected_filename
 
     def test_is_loaded_initially_false(self, mock_hass: MagicMock) -> None:
@@ -298,7 +298,7 @@ def my_action():
         metadata = await context.load()
 
         assert metadata is not None
-        assert metadata.name == "test_script"
+        assert metadata.id == "test_script"
         assert len(metadata.actions) == 1
         assert metadata.actions[0].name == "my_action"
 
@@ -444,7 +444,7 @@ def test():
         script_path.write_text("x = 1")
 
         context = ScriptContext(hass=mock_hass, script_path=str(script_path))
-        assert context.script_name == "my_cool_script"
+        assert context.script_id == "my_cool_script"
 
     async def test_filename_property(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test filename property returns filename with .py."""
@@ -484,7 +484,7 @@ class TestScriptContextEdgeCases:
         context = ScriptContext(hass=mock_hass, script_path=str(script_path))
         metadata = await context.load()
 
-        assert metadata.name == "minimal"
+        assert metadata.id == "minimal"
         assert len(metadata.actions) == 0
         assert len(metadata.triggers) == 0
 

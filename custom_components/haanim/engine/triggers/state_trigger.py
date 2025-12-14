@@ -1,20 +1,13 @@
 """State trigger for HAAnim.
 
-This module provides state-based triggers and constraints:
+This module provides state-based triggers:
 - state_trigger: Decorator to trigger functions when entity state conditions are met
-- state_active: Decorator to constrain when triggered functions can run based on state
 - StateTrigger: The runtime trigger class that watches for state changes
 
 Example:
     @state_trigger("sensor.temperature > 25", state_hold=60)
     def handle_high_temp():
         '''Called when temperature exceeds 25 for 60 seconds.'''
-        pass
-
-    @state_active("input_boolean.night_mode == 'on'")
-    @state_trigger("binary_sensor.motion == 'on'")
-    def night_only_motion():
-        '''Only triggers if night_mode is on.'''
         pass
 """
 
@@ -30,7 +23,7 @@ from homeassistant.core import HomeAssistant
 
 from typing import TYPE_CHECKING
 
-from custom_components.haanim.const import DECORATOR_STATE_ACTIVE, DECORATOR_STATE_TRIGGER
+from custom_components.haanim.const import DECORATOR_STATE_TRIGGER
 from custom_components.haanim.ha.state import StateManager, StateChangedEvent
 from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.engine.triggers.base import BaseTrigger, TriggerInfo
@@ -122,55 +115,6 @@ def state_trigger(
             },
         )
         metadata.triggers.append(trigger_info)
-        return func
-
-    return decorator
-
-
-def state_active(
-    *state_exprs: str,
-    **kwargs: Any,
-) -> Callable[[F], F]:
-    """Decorator to constrain when a triggered function can run based on state.
-
-    This decorator adds state-based constraints to a trigger. The decorated function
-    will only execute if ALL state expressions evaluate to true when the trigger fires.
-    Does NOT apply to manual execution via @action.
-
-    Args:
-        state_exprs: State expressions that must all be true for the trigger to fire.
-            Examples: "input_boolean.automation_enabled == 'on'"
-        **kwargs: Additional configuration.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @state_active("input_boolean.night_mode == 'on'")
-        @state_trigger("binary_sensor.motion == 'on'")
-        def night_only_automation():
-            '''Only runs if night_mode is on when motion is detected.'''
-            pass
-
-        @state_active(
-            "input_boolean.vacation_mode == 'off'",
-            "binary_sensor.someone_home == 'on'",
-        )
-        @time_trigger("sunset")
-        def evening_lights():
-            '''Only runs if not in vacation mode AND someone is home.'''
-            pass
-    """
-
-    def decorator(func: F) -> F:
-        metadata = _get_or_create_metadata(func)
-        metadata.constraints.append(
-            {
-                "type": DECORATOR_STATE_ACTIVE,
-                "exprs": list(state_exprs),
-                **kwargs,
-            }
-        )
         return func
 
     return decorator

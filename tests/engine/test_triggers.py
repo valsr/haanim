@@ -67,7 +67,7 @@ class TestBaseTrigger:
             func_name="on_trigger",
             func=MagicMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
 
     @pytest.fixture
@@ -212,7 +212,7 @@ class TestBaseTrigger:
             func_name="on_trigger",
             func=async_func,
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
 
         result = await trigger._execute_function(arg1="value1")
@@ -233,7 +233,7 @@ class TestBaseTrigger:
             func_name="on_trigger",
             func=sync_func,
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
 
         result = await trigger._execute_function()
@@ -313,7 +313,7 @@ class TestTriggerManager:
             func_name="func",
             func=MagicMock(),
             kwargs={},
-            script_name="test",
+            script_id="test",
         )
 
         trigger_id = await trigger_manager.register_trigger(trigger_def)
@@ -334,7 +334,7 @@ class TestTriggerManager:
             func_name="func",
             func=MagicMock(),
             kwargs={},
-            script_name="test",
+            script_id="test",
         )
 
         trigger_id = await trigger_manager.register_trigger(trigger_def)
@@ -360,7 +360,7 @@ class TestTimeRangeEvaluation:
             func_name="func",
             func=MagicMock(),
             kwargs={},
-            script_name="test",
+            script_id="test",
         )
         return ConcreteTrigger(
             hass=mock_hass,
@@ -429,7 +429,7 @@ class TestStateTrigger:
             func_name="on_state",
             func=MagicMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
 
     @pytest.fixture
@@ -461,7 +461,7 @@ class TestStateTrigger:
             func_name="on_state",
             func=MagicMock(),
             kwargs={"state_hold": 5.0, "state_check_now": True},
-            script_name="test_script",
+            script_id="test_script",
         )
         trigger = StateTrigger(
             hass=mock_hass,
@@ -492,7 +492,7 @@ class TestStateTrigger:
             func_name="on_state",
             func=MagicMock(),
             kwargs={"state_hold": state_hold},
-            script_name="test_script",
+            script_id="test_script",
         )
         trigger = StateTrigger(
             hass=mock_hass,
@@ -545,7 +545,7 @@ class TestTimeTrigger:
             func_name="on_time",
             func=MagicMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
 
     @pytest.fixture
@@ -624,7 +624,7 @@ class TestEventTrigger:
             func_name="on_event",
             func=MagicMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
 
     @pytest.fixture
@@ -685,7 +685,7 @@ class TestTimeTriggerParsing:
             func_name="on_time",
             func=MagicMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
         return TimeTrigger(
             hass=mock_hass,
@@ -812,7 +812,7 @@ class TestStateTriggerAdvanced:
             func_name="on_state",
             func=MagicMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
         return StateTrigger(
             hass=mock_hass,
@@ -843,7 +843,7 @@ class TestStateTriggerAdvanced:
             func_name="on_state",
             func=MagicMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
         trigger = StateTrigger(
             hass=mock_hass,
@@ -889,7 +889,7 @@ class TestStateTriggerAdvanced:
             func_name="on_state",
             func=MagicMock(),
             kwargs={"watch": ["sensor.a", "sensor.b"]},
-            script_name="test_script",
+            script_id="test_script",
         )
         trigger = StateTrigger(
             hass=mock_hass,
@@ -930,7 +930,7 @@ class TestTriggerManagerAdvanced:
             func_name="func",
             func=MagicMock(),
             kwargs={},
-            script_name="test",
+            script_id="test",
         )
 
         trigger_id = await trigger_manager.register_trigger(trigger_def)
@@ -956,7 +956,7 @@ class TestTriggerManagerAdvanced:
             func_name="func",
             func=MagicMock(),
             kwargs={},
-            script_name="my_script",
+            script_id="my_script",
         )
 
         await trigger_manager.register_trigger(trigger_def)
@@ -971,7 +971,7 @@ class TestTriggerManagerAdvanced:
             func_name="func",
             func=MagicMock(),
             kwargs={},
-            script_name="my_script",
+            script_id="my_script",
         )
 
         await trigger_manager.register_trigger(trigger_def)
@@ -989,7 +989,7 @@ class TestTriggerManagerAdvanced:
             func_name="func",
             func=MagicMock(),
             kwargs={},
-            script_name="test",
+            script_id="test",
         )
         constraints = [{"type": DECORATOR_TIME_ACTIVE, "specs": ["range(08:00, 18:00)"]}]
 
@@ -1031,7 +1031,7 @@ class TestBaseTriggerConstraints:
             func_name="on_trigger",
             func=MagicMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
 
     async def test_check_constraints_time_active(
@@ -1139,7 +1139,7 @@ class TestBaseTriggerConstraints:
             func_name="on_trigger",
             func=async_func,
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
 
         trigger = ConcreteTrigger(
@@ -1166,7 +1166,7 @@ class TestBaseTriggerConstraints:
             func_name="on_trigger",
             func=sync_func,
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
 
         trigger = ConcreteTrigger(
@@ -1266,7 +1266,7 @@ class TestTimeTriggerTimeLoop:
             func_name="on_time",
             func=MagicMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
         trigger = TimeTrigger(
             hass=mock_hass,
@@ -1291,7 +1291,7 @@ class TestTimeTriggerTimeLoop:
             func_name="on_time",
             func=MagicMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
         trigger = TimeTrigger(
             hass=mock_hass,
@@ -1341,7 +1341,7 @@ class TestEventTriggerAdvanced:
             func_name="on_event",
             func=AsyncMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
         trigger = EventTrigger(
             hass=mock_hass,
@@ -1366,7 +1366,7 @@ class TestEventTriggerAdvanced:
             func_name="on_event",
             func=AsyncMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
         trigger = EventTrigger(
             hass=mock_hass,
@@ -1414,7 +1414,7 @@ class TestTimeConstraintEvaluation:
             func_name="on_trigger",
             func=MagicMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
 
     @pytest.fixture
@@ -1572,7 +1572,7 @@ class TestStateConstraintEvaluation:
             func_name="on_trigger",
             func=MagicMock(),
             kwargs={},
-            script_name="test_script",
+            script_id="test_script",
         )
 
     @pytest.fixture

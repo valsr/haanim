@@ -7,13 +7,13 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.haanim.engine import (
-    AstEvaluator,
     ImportController,
     SafeBuiltins,
     ScriptSecurityError,
     ScriptSyntaxError,
     SymbolTable,
 )
+from custom_components.haanim.engine.AstEvaluator import AstEvaluator
 from custom_components.haanim.engine.errors import ScriptRuntimeError
 
 

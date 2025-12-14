@@ -12,7 +12,6 @@ from custom_components.haanim.engine.decorators import (
     event_trigger,
     get_metadata,
     has_metadata,
-    service,
     shutdown,
     startup,
     state_active,
@@ -67,12 +66,10 @@ class TestFunctionMetadata:
         """Test FunctionMetadata default values."""
         meta = FunctionMetadata()
         assert meta.custom_name is None
-        assert meta.is_action is False
+        assert meta.is_marked_as_action is False
         assert meta.action_info is None
         assert meta.triggers == []
         assert meta.constraints == []
-        assert meta.is_service is False
-        assert meta.service_schema is None
         assert meta.is_startup is False
         assert meta.is_shutdown is False
 
@@ -90,7 +87,7 @@ class TestActionDecorator:
         assert has_metadata(my_action)
         meta = get_metadata(my_action)
         assert meta is not None
-        assert meta.is_action is True
+        assert meta.is_marked_as_action is True
         assert meta.action_info is not None
         assert meta.action_info.name is None
 
@@ -285,35 +282,6 @@ class TestStateActiveDecorator:
         assert "input_boolean.enabled == 'on'" in meta.constraints[0]["exprs"]
 
 
-class TestServiceDecorator:
-    """Tests for the @service decorator."""
-
-    def test_service_without_args(self) -> None:
-        """Test @service without arguments."""
-
-        @service
-        def my_service() -> None:
-            pass
-
-        meta = get_metadata(my_service)
-        assert meta is not None
-        assert meta.is_service is True
-
-    def test_service_with_name(self) -> None:
-        """Test @service with custom name."""
-
-        @service("custom_service", description="A custom service")
-        def my_service() -> None:
-            pass
-
-        meta = get_metadata(my_service)
-        assert meta is not None
-        assert meta.is_service is True
-        assert meta.service_schema is not None
-        assert meta.service_schema["name"] == "custom_service"
-        assert meta.service_schema["description"] == "A custom service"
-
-
 class TestStartupDecorator:
     """Tests for the @startup decorator."""
 
@@ -357,7 +325,7 @@ class TestCombinedDecorators:
 
         meta = get_metadata(combined)
         assert meta is not None
-        assert meta.is_action is True
+        assert meta.is_marked_as_action is True
         assert len(meta.triggers) == 1
 
     def test_multiple_triggers(self) -> None:

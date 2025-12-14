@@ -33,22 +33,21 @@ __all__ = [
     "SERVICE_GET_CONFIG",
     # Attributes
     "ATTRIBUTE_SCRIPT_NAME",
-    "ATTR_SCRIPT_PATH",
+    "ATTRIBUTE_SCRIPT_PATH",
     "ATTRIBUTE_ACTION_NAME",
-    "ATTR_MANUAL",
+    "ATTRIBUTE_MANUAL",
     # Configuration keys
     "CONFIG_SCRIPT_PATH",
     "CONFIG_IMPORT_ALLOWLIST",
     "CONFIG_ALLOW_ALL_IMPORTS",
     "CONFIG_SCRIPT_REFRESH_INTERVAL",
     # Default configuration values
-    "DEFAULT_NAME",
     "DEFAULT_SCRIPT_PATH",
     "DEFAULT_ALLOW_ALL_IMPORTS",
     "DEFAULT_SCRIPT_REFRESH_INTERVAL",
     "DEFAULT_IMPORT_ALLOWLIST",
     "DEFAULT_MAX_CONCURRENT_ACTIONS",
-    "DEFAULT_SHUTDOWN_TIMEOUT",
+    "DEFAULT_WORKER_SHUTDOWN_TIMEOUT",
     # Security
     "RESTRICTED_BUILTINS",
 ]
@@ -87,23 +86,25 @@ SERVICE_GET_CONFIG: Final = "get_config"
 
 # Attributes for script metadata
 ATTRIBUTE_SCRIPT_NAME: Final = "script_name"
-ATTR_SCRIPT_PATH: Final = "script_path"
+ATTRIBUTE_SCRIPT_PATH: Final = "script_path"
 ATTRIBUTE_ACTION_NAME: Final = "action_name"
-ATTR_MANUAL: Final = "manual"
+ATTRIBUTE_MANUAL: Final = "manual"
 
 # Configuration keys
+CONFIG_NAME: Final = "name"
 CONFIG_SCRIPT_PATH: Final = "script_path"
 CONFIG_IMPORT_ALLOWLIST: Final = "import_allowlist"
 CONFIG_ALLOW_ALL_IMPORTS: Final = "allow_all_imports"
 CONFIG_SCRIPT_REFRESH_INTERVAL: Final = "script_refresh_interval"
+CONFIG_MAX_CONCURRENT_ACTIONS: Final = "max_concurrent_actions"
+CONFIG_WORKER_SHUTDOWN_TIMEOUT: Final = "shutdown_timeout"
 
 # Default configuration values
-DEFAULT_NAME: Final = "HAAnim"
 DEFAULT_SCRIPT_PATH: Final = "/config/haanim"
 DEFAULT_ALLOW_ALL_IMPORTS: Final = False
 DEFAULT_SCRIPT_REFRESH_INTERVAL: Final = 10
 DEFAULT_MAX_CONCURRENT_ACTIONS: Final = 20
-DEFAULT_SHUTDOWN_TIMEOUT: Final = 0.2  # 200ms
+DEFAULT_WORKER_SHUTDOWN_TIMEOUT: Final = 0.2  # 200ms
 
 # Default import allowlist - safe modules for automation scripts
 DEFAULT_IMPORT_ALLOWLIST: Final[list[str]] = [

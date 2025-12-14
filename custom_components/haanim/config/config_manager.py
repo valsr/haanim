@@ -17,19 +17,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
+from custom_components.haanim import const
 from custom_components.haanim.config.config_group import ConfigGroup
 from custom_components.haanim.config.config_option import ConfigOption
 from custom_components.haanim.config.config_type import ConfigType
-from custom_components.haanim.const import (
-    CONFIG_ALLOW_ALL_IMPORTS,
-    CONFIG_IMPORT_ALLOWLIST,
-    CONFIG_SCRIPT_PATH,
-    CONFIG_SCRIPT_REFRESH_INTERVAL,
-    DEFAULT_ALLOW_ALL_IMPORTS,
-    DEFAULT_IMPORT_ALLOWLIST,
-    DEFAULT_SCRIPT_PATH,
-    DEFAULT_SCRIPT_REFRESH_INTERVAL,
-)
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,21 +63,21 @@ class ConfigManager:
         general_group = ConfigGroup(
             name="general",
             label="General Settings",
-            description="Basic HAAnim configuration",
+            description="Basic configuration",
             options=[
                 ConfigOption(
-                    key="name",
+                    key=const.CONFIG_NAME,
                     config_type=ConfigType.STRING,
-                    default="HAAnim",
+                    default=const.NAME,
                     required=True,
                     label="Name",
                     description="Display name for the integration",
                     show_in_options=False,
                 ),
                 ConfigOption(
-                    key="script_path",
+                    key=const.CONFIG_SCRIPT_PATH,
                     config_type=ConfigType.STRING,
-                    default="/config/haanim",
+                    default=const.DEFAULT_SCRIPT_PATH,
                     required=True,
                     label="Script Path",
                     description="Path for automation scripts (absolute path)",
@@ -101,36 +93,17 @@ class ConfigManager:
             description="Security-related configuration",
             options=[
                 ConfigOption(
-                    key="allow_all_imports",
+                    key=const.CONFIG_ALLOW_ALL_IMPORTS,
                     config_type=ConfigType.BOOLEAN,
-                    default=False,
+                    default=const.DEFAULT_ALLOW_ALL_IMPORTS,
                     required=True,
                     label="Allow All Imports",
                     description="If enabled, scripts can import any Python module. Use with caution!",
                 ),
                 ConfigOption(
-                    key="import_allowlist",
+                    key=const.CONFIG_IMPORT_ALLOWLIST,
                     config_type=ConfigType.LIST,
-                    default=[
-                        "asyncio",
-                        "datetime",
-                        "json",
-                        "logging",
-                        "math",
-                        "random",
-                        "re",
-                        "time",
-                        "typing",
-                        "collections",
-                        "functools",
-                        "itertools",
-                        "operator",
-                        "statistics",
-                        "decimal",
-                        "fractions",
-                        "enum",
-                        "dataclasses",
-                    ],
+                    default=const.DEFAULT_IMPORT_ALLOWLIST,
                     required=False,
                     label="Import Allowlist",
                     description="List of allowed module names for import",
@@ -139,6 +112,32 @@ class ConfigManager:
             ],
         )
         self.register_group(security_group)
+
+        # Worker settings group
+        worker_group = ConfigGroup(
+            name="worker",
+            label="Worker/Actions Settings",
+            description="Configuration for actions/workers",
+            options=[
+                ConfigOption(
+                    key=const.CONFIG_MAX_CONCURRENT_ACTIONS,
+                    config_type=ConfigType.INTEGER,
+                    default=const.DEFAULT_MAX_CONCURRENT_ACTIONS,
+                    required=False,
+                    label="Max Concurrent Actions",
+                    description="Maximum number of concurrent actions across all scripts. Minimum value 1.",
+                ),
+                ConfigOption(
+                    key=const.CONFIG_WORKER_SHUTDOWN_TIMEOUT,
+                    config_type=ConfigType.INTEGER,
+                    default=const.DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
+                    required=False,
+                    label="Worker Shutdown Timeout",
+                    description="Timeout in seconds for worker shutdown action. <=0 will wait indefinately.",
+                ),
+            ],
+        )
+        self.register_group(worker_group)
 
     def register_group(self, group: ConfigGroup) -> None:
         """Register a configuration group.
@@ -194,10 +193,8 @@ class ConfigManager:
             _LOGGER.debug("Skipping _load_from_entry: hass=%s, entry_id=%s", self._hass, self._entry_id)
             return
 
-        from ..const import DOMAIN
-
         _LOGGER.debug("Loading configuration from entry: %s", self._entry_id)
-        data = self._hass.data.get(DOMAIN, {}).get(self._entry_id, {})
+        data = self._hass.data.get(const.DOMAIN, {}).get(self._entry_id, {})
         if isinstance(data, dict) and "entry" in data:
             entry = data["entry"]  # type: ignore
             if not isinstance(entry, ConfigEntry):
@@ -450,7 +447,7 @@ class ConfigManager:
         Returns:
             Absolute path to the script folder.
         """
-        path = self.get(CONFIG_SCRIPT_PATH, DEFAULT_SCRIPT_PATH)
+        path = self.get(const.CONFIG_SCRIPT_PATH, const.DEFAULT_SCRIPT_PATH)
 
         if not self._hass:
             return path
@@ -466,7 +463,7 @@ class ConfigManager:
         Returns:
             List of allowed module names.
         """
-        allowlist: Any = self.get(CONFIG_IMPORT_ALLOWLIST, DEFAULT_IMPORT_ALLOWLIST)
+        allowlist: Any = self.get(const.CONFIG_IMPORT_ALLOWLIST, const.DEFAULT_IMPORT_ALLOWLIST)
         if not isinstance(allowlist, list):
             _LOGGER.warning("Import allowlist is not a list, returning empty list")
             return []
@@ -478,7 +475,7 @@ class ConfigManager:
         Returns:
             True if all imports are allowed, False otherwise.
         """
-        return bool(self.get(CONFIG_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS))
+        return bool(self.get(const.CONFIG_ALLOW_ALL_IMPORTS, const.DEFAULT_ALLOW_ALL_IMPORTS))
 
     def get_script_refresh_interval(self) -> int:
         """Get the script refresh interval in seconds.
@@ -486,16 +483,51 @@ class ConfigManager:
         Returns:
             Refresh interval in seconds.
         """
-        interval: Any = self.get(CONFIG_SCRIPT_REFRESH_INTERVAL, DEFAULT_SCRIPT_REFRESH_INTERVAL)
+        interval: Any = self.get(const.CONFIG_SCRIPT_REFRESH_INTERVAL, const.DEFAULT_SCRIPT_REFRESH_INTERVAL)
         try:
             return int(interval)
         except (ValueError, TypeError):
             _LOGGER.warning(
                 "Invalid script refresh interval: %s, defaulting to %d seconds",
                 interval,
-                DEFAULT_SCRIPT_REFRESH_INTERVAL,
+                const.DEFAULT_SCRIPT_REFRESH_INTERVAL,
             )
-            return DEFAULT_SCRIPT_REFRESH_INTERVAL
+            return const.DEFAULT_SCRIPT_REFRESH_INTERVAL
+
+    def get_max_concurrent_actions(self):
+        """Get the maximum number of concurrent actions.
+
+        Returns:
+            Maximum number of concurrent actions.
+        """
+        max_actions: Any = self.get(const.CONFIG_MAX_CONCURRENT_ACTIONS, const.DEFAULT_MAX_CONCURRENT_ACTIONS)
+        try:
+            value = int(max_actions)
+            return max(1, value)
+        except (ValueError, TypeError):
+            _LOGGER.warning(
+                "Invalid max concurrent actions: %s, defaulting to %d",
+                max_actions,
+                const.DEFAULT_MAX_CONCURRENT_ACTIONS,
+            )
+            return const.DEFAULT_MAX_CONCURRENT_ACTIONS
+
+    def get_worker_shutdown_timeout(self) -> float:
+        """Get the worker shutdown timeout in seconds.
+
+        Returns:
+            Worker shutdown timeout in seconds.
+        """
+        timeout: Any = self.get(const.CONFIG_WORKER_SHUTDOWN_TIMEOUT, const.DEFAULT_WORKER_SHUTDOWN_TIMEOUT)
+        try:
+            return float(timeout)
+        except (ValueError, TypeError):
+            _LOGGER.warning(
+                "Invalid worker shutdown timeout: %s, defaulting to %.2f seconds",
+                timeout,
+                const.DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
+            )
+            return const.DEFAULT_WORKER_SHUTDOWN_TIMEOUT
 
 
 def get_config_manager() -> ConfigManager:

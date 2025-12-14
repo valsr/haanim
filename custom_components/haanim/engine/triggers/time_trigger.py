@@ -1,20 +1,13 @@
 """Time trigger for HAAnim.
 
-This module provides time-based triggers and constraints:
+This module provides time-based triggers:
 - time_trigger: Decorator to trigger functions at specific times
-- time_active: Decorator to constrain when triggered functions can run based on time
 - TimeTrigger: The runtime trigger class that fires at scheduled times
 
 Example:
     @time_trigger("cron(0 8 * * *)")  # 8 AM daily
     def morning_routine():
         '''Called every morning at 8 AM.'''
-        pass
-
-    @time_active("range(sunset, sunrise)")
-    @state_trigger("binary_sensor.motion == 'on'")
-    def night_motion_light():
-        '''Only triggers at night.'''
         pass
 """
 
@@ -33,7 +26,7 @@ from homeassistant.util import dt as dt_util
 
 from typing import TYPE_CHECKING
 
-from custom_components.haanim.const import DECORATOR_TIME_ACTIVE, DECORATOR_TIME_TRIGGER
+from custom_components.haanim.const import DECORATOR_TIME_TRIGGER
 from custom_components.haanim.ha.state import StateManager
 from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.engine.triggers.base import BaseTrigger, TriggerInfo
@@ -116,59 +109,6 @@ def time_trigger(
             kwargs=kwargs,
         )
         metadata.triggers.append(trigger_info)
-        return func
-
-    return decorator
-
-
-def time_active(
-    *time_specs: str,
-    **kwargs: Any,
-) -> Callable[[F], F]:
-    """Decorator to constrain when a triggered function can run based on time.
-
-    This decorator adds time-based constraints to a trigger. The decorated function
-    will only execute if the current time matches one of the specifications.
-    Does NOT apply to manual execution via @action.
-
-    Args:
-        time_specs: Time specifications for when the function is active.
-            Supports range specifications: "range(start, end)"
-            Times can be specified as HH:MM or sunrise/sunset.
-        **kwargs: Additional configuration.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @time_active("range(sunset, sunrise)")
-        @state_trigger("binary_sensor.motion == 'on'")
-        def night_motion_light():
-            '''Only triggers between sunset and sunrise.'''
-            pass
-
-        @time_active("range(08:00, 17:00)")
-        @state_trigger("binary_sensor.office_motion == 'on'")
-        def office_hours_automation():
-            '''Only triggers during office hours.'''
-            pass
-
-        @time_active("range(22:00, 06:00)")  # Overnight range
-        @event_trigger("custom_event")
-        def night_handler():
-            '''Active from 10 PM to 6 AM (overnight).'''
-            pass
-    """
-
-    def decorator(func: F) -> F:
-        metadata = _get_or_create_metadata(func)
-        metadata.constraints.append(
-            {
-                "type": DECORATOR_TIME_ACTIVE,
-                "specs": list(time_specs),
-                **kwargs,
-            }
-        )
         return func
 
     return decorator

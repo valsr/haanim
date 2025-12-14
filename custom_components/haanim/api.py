@@ -55,7 +55,7 @@ class ScriptsListView(HAAnimAPIView):
         for metadata in manager.get_all_metadata():
             scripts.append(
                 {
-                    "name": metadata.name,
+                    "name": metadata.id,
                     "path": metadata.path,
                     "actions": [{"name": a.name, "func_name": a.func_name} for a in metadata.actions],
                     "triggers": len(metadata.triggers),
@@ -176,7 +176,7 @@ class RunActionView(HAAnimAPIView):
         try:
             await manager.async_run_action(script_name, action_name, manual=True)
             return self.json({"success": True})
-        except Exception as err:
+        except Exception as err:  # pylint: disable=broad-except
             _LOGGER.error("Failed to run action %s.%s: %s", script_name, action_name, err)
             return self.json({"success": False, "error": str(err)})
 
@@ -205,7 +205,7 @@ class ReloadScriptsView(HAAnimAPIView):
         try:
             await manager.async_reload_all_scripts()
             return self.json({"success": True})
-        except Exception as err:
+        except Exception as err:  # pylint: disable=broad-except
             _LOGGER.error("Failed to reload scripts: %s", err)
             return self.json({"success": False, "error": str(err)})
 

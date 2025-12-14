@@ -82,48 +82,6 @@ def action(
     """
     ...
 
-@overload
-def service(func: F) -> F:
-    """Mark a function as a service (no arguments)."""
-    ...
-
-@overload
-def service(
-    name: str | None = None,
-    *,
-    schema: dict[str, Any] | None = None,
-    description: str | None = None,
-) -> Callable[[F], F]:
-    """Expose a function as a service with configuration."""
-    ...
-
-def service(
-    name_or_func: str | F | None = None,
-    *,
-    schema: dict[str, Any] | None = None,
-    description: str | None = None,
-) -> F | Callable[[F], F]:
-    """Decorator to expose a function as a Home Assistant service.
-
-    Args:
-        name_or_func: Optional service name, or the function if used without arguments.
-        schema: Optional voluptuous schema for service parameters.
-        description: Optional description for the service.
-
-    Returns:
-        Decorated function or decorator.
-
-    Example:
-        @service
-        def my_custom_service(entity_id: str):
-            pass
-
-        @service("custom_action", description="Does something custom")
-        def custom_action(target: str, value: int):
-            pass
-    """
-    ...
-
 def state_trigger(
     *trigger_exprs: str,
     state_hold: float | None = None,

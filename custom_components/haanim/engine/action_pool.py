@@ -14,7 +14,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from custom_components.haanim.const import DEFAULT_MAX_CONCURRENT_ACTIONS, DEFAULT_SHUTDOWN_TIMEOUT
+from custom_components.haanim.config import get_config_manager
 from custom_components.haanim.engine.errors import (
     ActionCancelledError,
     PoolExhaustedError,
@@ -79,8 +79,8 @@ class ActionWorkerPool:
 
     def __init__(
         self,
-        max_workers: int = DEFAULT_MAX_CONCURRENT_ACTIONS,
-        shutdown_timeout: float = DEFAULT_SHUTDOWN_TIMEOUT,
+        max_workers: int | None = None,
+        shutdown_timeout: float | None = None,
     ) -> None:
         """Initialize the action worker pool.
 
@@ -88,14 +88,14 @@ class ActionWorkerPool:
             max_workers: Maximum number of concurrent actions allowed.
             shutdown_timeout: Timeout for shutdown actions in seconds.
         """
-        self._max_workers = max_workers
-        self._shutdown_timeout = shutdown_timeout
+        self._max_workers = max_workers or get_config_manager().get_max_concurrent_actions()
+        self._shutdown_timeout = shutdown_timeout or get_config_manager().get_worker_shutdown_timeout()
 
         # Track active executions by execution_id
         self._active_executions: dict[str, ActionExecution] = {}
 
         # Semaphore to limit concurrent actions
-        self._semaphore = asyncio.Semaphore(max_workers)
+        self._semaphore = asyncio.Semaphore(self._max_workers)
 
         # Lock for modifying active executions
         self._lock = asyncio.Lock()
@@ -204,8 +204,7 @@ class ActionWorkerPool:
             # Check if pool has available workers (non-blocking check)
             if self._semaphore.locked() and self.available_workers <= 0:
                 _LOGGER.error(
-                    "Action worker pool exhausted (max=%d), cannot run action '%s' for "
-                    "script '%s'",
+                    "Action worker pool exhausted (max=%d), cannot run action '%s' for " "script '%s'",
                     self._max_workers,
                     action_name,
                     script_name,
@@ -309,9 +308,7 @@ class ActionWorkerPool:
                 )
 
                 # Update status - remove this action
-                status_manager.remove_running_action(
-                    execution.script_name, execution.execution_id
-                )
+                status_manager.remove_running_action(execution.script_name, execution.execution_id)
 
                 return result
 
@@ -324,9 +321,7 @@ class ActionWorkerPool:
                     execution.script_name,
                 )
                 # Update status - remove this action
-                status_manager.remove_running_action(
-                    execution.script_name, execution.execution_id
-                )
+                status_manager.remove_running_action(execution.script_name, execution.execution_id)
                 raise ActionCancelledError(execution.action_name) from exc
 
             except Exception as err:

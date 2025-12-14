@@ -1,14 +1,13 @@
-"""Decorators for HAAnim automation scripts.
+"""Decorator definitions for HAAnim scripts.
 
-This module provides decorators that users can use in their automation scripts to define triggers, actions,
-and metadata. Trigger-specific decorators are implemented in their own modules under engine/triggers/ and
-re-exported here for convenience.
+This module provides decorators for defining actions, lifecycle hooks, and triggers
+in HAAnim automation scripts.
 
-Decorator Categories:
-- Triggers: @state_trigger, @time_trigger, @event_trigger (from engine/triggers/)
-- Constraints: @state_active, @time_active (from engine/triggers/)
-- Actions: @action, @service, @startup, @shutdown (defined here)
-- Metadata: FunctionMetadata, TriggerInfo, ActionInfo (defined here)
+Decorator Types:
+- Actions: @action (from this module)
+- Lifecycle: @startup, @shutdown (from this module)
+- Triggers: @state_trigger, @time_trigger (from engine/triggers/)
+- Constraints: @state_active, @time_active (from engine/constraints/)
 """
 
 from __future__ import annotations
@@ -30,7 +29,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 @dataclass
 class ActionInfo:
-    """Information about an action (act/scene) decorated function.
+    """Information about an action decorated function.
 
     Args:
         name: Display name for the action.
@@ -49,30 +48,26 @@ class FunctionMetadata:
 
     Args:
         custom_name: Custom name from @action("name") decorator.
-        is_action: Whether function is explicitly marked with @action decorator.
+        is_marked_as_action: Whether function is explicitly marked with @action decorator.
         action_info: Information about the action (name, description, queue settings).
         triggers: List of triggers attached to this function. Functions with triggers
             are automatically callable as actions, even without @action decorator.
         constraints: List of constraints (time_active, state_active).
-        is_service: Whether function should be exposed as HA service.
-        service_schema: Schema for service parameters if is_service.
         is_startup: Whether function is a startup handler (@startup).
         is_shutdown: Whether function is a shutdown handler (@shutdown).
     """
 
     custom_name: str | None = None
-    is_action: bool = False
+    is_marked_as_action: bool = False
     action_info: ActionInfo | None = None
     triggers: list[Any] = field(default_factory=list)  # TriggerInfo from triggers.base
     constraints: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
-    is_service: bool = False
-    service_schema: dict[str, Any] | None = None
     is_startup: bool = False
     is_shutdown: bool = False
 
 
 # Attribute name for storing metadata on decorated functions
-METADATA_ATTR = "_haanim_metadata"
+METADATA_ATTRIBUTE = "_haanim_metadata"
 
 
 def _get_or_create_metadata(func: Callable[..., Any]) -> FunctionMetadata:
@@ -84,9 +79,9 @@ def _get_or_create_metadata(func: Callable[..., Any]) -> FunctionMetadata:
     Returns:
         The FunctionMetadata instance attached to the function.
     """
-    if not hasattr(func, METADATA_ATTR):
-        setattr(func, METADATA_ATTR, FunctionMetadata())
-    return getattr(func, METADATA_ATTR)
+    if not hasattr(func, METADATA_ATTRIBUTE):
+        setattr(func, METADATA_ATTRIBUTE, FunctionMetadata())
+    return getattr(func, METADATA_ATTRIBUTE)
 
 
 def get_metadata(func: Callable[..., Any]) -> FunctionMetadata | None:
@@ -98,7 +93,7 @@ def get_metadata(func: Callable[..., Any]) -> FunctionMetadata | None:
     Returns:
         The FunctionMetadata if present, None otherwise.
     """
-    return getattr(func, METADATA_ATTR, None)
+    return getattr(func, METADATA_ATTRIBUTE, None)
 
 
 def has_metadata(func: Callable[..., Any]) -> bool:
@@ -110,7 +105,7 @@ def has_metadata(func: Callable[..., Any]) -> bool:
     Returns:
         True if the function has HAAnim metadata.
     """
-    return hasattr(func, METADATA_ATTR)
+    return hasattr(func, METADATA_ATTRIBUTE)
 
 
 def action(
@@ -156,14 +151,14 @@ def action(
     if callable(name_or_func):
         func = name_or_func
         metadata = _get_or_create_metadata(func)
-        metadata.is_action = True
+        metadata.is_marked_as_action = True
         metadata.action_info = ActionInfo(func=func)
         return func
 
     # Handle @action() or @action("name") or @action(description="...")
     def decorator(func: F) -> F:
         metadata = _get_or_create_metadata(func)
-        metadata.is_action = True
+        metadata.is_marked_as_action = True
         metadata.action_info = ActionInfo(
             name=name_or_func if isinstance(name_or_func, str) else None,
             description=description,
@@ -180,52 +175,6 @@ def action(
 # =============================================================================
 # Lifecycle Decorators
 # =============================================================================
-
-
-def service(
-    name_or_func: str | F | None = None,
-    *,
-    schema: dict[str, Any] | None = None,
-    description: str | None = None,
-) -> F | Callable[[F], F]:
-    """Decorator to expose a function as a Home Assistant service.
-
-    Args:
-        name_or_func: Optional service name, or the function if used without arguments.
-        schema: Optional voluptuous schema for service parameters.
-        description: Optional description for the service.
-
-    Returns:
-        Decorated function or decorator.
-
-    Example:
-        @service
-        def my_custom_service(entity_id: str):
-            pass
-
-        @service("custom_action", description="Does something custom")
-        def custom_action(target: str, value: int):
-            pass
-    """
-    # Handle @service without parentheses
-    if callable(name_or_func):
-        func = name_or_func
-        metadata = _get_or_create_metadata(func)
-        metadata.is_service = True
-        return func
-
-    # Handle @service() or @service("name", ...)
-    def decorator(func: F) -> F:
-        metadata = _get_or_create_metadata(func)
-        metadata.is_service = True
-        metadata.service_schema = {
-            "name": name_or_func if isinstance(name_or_func, str) else None,
-            "schema": schema,
-            "description": description,
-        }
-        return func
-
-    return decorator
 
 
 def startup(func: F) -> F:
@@ -307,23 +256,29 @@ def shutdown(func: F) -> F:
 
 # Import trigger decorators from their respective modules
 # These are the primary interface for user scripts
-from custom_components.haanim.engine.triggers.base import TriggerInfo
-from custom_components.haanim.engine.triggers.state_trigger import state_trigger, state_active
-from custom_components.haanim.engine.triggers.time_trigger import time_trigger, time_active
-from custom_components.haanim.engine.triggers.event_trigger import event_trigger
+from custom_components.haanim.engine.triggers import TriggerInfo  # pylint: disable=wrong-import-order
+from custom_components.haanim.engine.triggers.state_trigger import (
+    state_trigger,
+)  # pylint: disable=wrong-import-order
+from custom_components.haanim.engine.triggers.time_trigger import (
+    time_trigger,
+)  # pylint: disable=wrong-import-order
 
+# Import constraint decorators from constraints module
+from custom_components.haanim.engine.constraints import (
+    state_active,
+    time_active,
+)  # pylint: disable=wrong-import-order
 
 # Export all decorators for use in scripts
 __all__ = [
     # Action decorators
     "action",
-    "service",
     "startup",
     "shutdown",
     # Trigger decorators (re-exported from engine/triggers/)
     "state_trigger",
     "time_trigger",
-    "event_trigger",
     # Constraint decorators (re-exported from engine/triggers/)
     "state_active",
     "time_active",
@@ -335,5 +290,5 @@ __all__ = [
     "FunctionMetadata",
     "TriggerInfo",
     "ActionInfo",
-    "METADATA_ATTR",
+    "METADATA_ATTRIBUTE",
 ]

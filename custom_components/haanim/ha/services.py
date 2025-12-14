@@ -165,7 +165,7 @@ class ServiceManager:
         for metadata in manager.get_all_metadata():
             scripts.append(
                 {
-                    "name": metadata.name,
+                    "name": metadata.id,
                     "path": metadata.path,
                     "actions": [{"name": a.name, "func_name": a.func_name} for a in metadata.actions],
                     "triggers": len(metadata.triggers),

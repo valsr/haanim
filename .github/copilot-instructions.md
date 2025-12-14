@@ -24,6 +24,7 @@ this integration is:
 - NEVER include "Attributes:" or "Methods:" sections in docstrings
 - Use async/await for all I/O operations
 - The integration should follow Home Assistant's best practices and coding standards to ensure compatibility
+- When naming variables use _count suffix to indicate the number of items for a given variable (i.e. `defaults_count = len(args.defaulg)`)
 
 ### Documentation Format
 When generating method or class documentation, always use Google format:

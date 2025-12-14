@@ -15,17 +15,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, TypeVar
 from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from homeassistant.core import HomeAssistant
 
-from typing import TYPE_CHECKING
-
-from custom_components.haanim.const import DECORATOR_EVENT_TRIGGER
+from custom_components.haanim import const
+from custom_components.haanim.engine.triggers import BaseTrigger, TriggerInfo
+from custom_components.haanim.ha.events import EventData, EventManager
 from custom_components.haanim.ha.state import StateManager
-from custom_components.haanim.ha.events import EventManager, EventData
-from custom_components.haanim.engine.triggers.base import BaseTrigger, TriggerInfo
 
 if TYPE_CHECKING:
     from custom_components.haanim.engine.script_context import TriggerDefinition
@@ -47,7 +45,9 @@ def _get_or_create_metadata(func: Callable[..., Any]) -> Any:
         The FunctionMetadata instance attached to the function.
     """
     # Import here to avoid circular dependency
-    from custom_components.haanim.engine.decorators import _get_or_create_metadata as get_metadata
+    from custom_components.haanim.engine.decorators import (
+        _get_or_create_metadata as get_metadata,
+    )
 
     return get_metadata(func)
 
@@ -97,7 +97,7 @@ def event_trigger(
     def decorator(func: F) -> F:
         metadata = _get_or_create_metadata(func)
         trigger_info = TriggerInfo(
-            trigger_type=DECORATOR_EVENT_TRIGGER,
+            trigger_type=const.DECORATOR_EVENT_TRIGGER,
             trigger_expr=event_type,
             kwargs={"event_data": event_data, **kwargs},
         )
@@ -144,7 +144,7 @@ class EventTrigger(BaseTrigger):
 
         self._task = self.hass.async_create_task(
             self._event_loop(),
-            name=f"haanim_event_trigger_{self.trigger_def.script_name}_{self.trigger_def.func_name}",
+            name=f"haanim_event_trigger_{self.trigger_def.script_id}_{self.trigger_def.func_name}",
         )
 
         self._logger.debug("Event trigger started: %s", self._event_type)
@@ -179,5 +179,5 @@ class EventTrigger(BaseTrigger):
 
             except asyncio.CancelledError:
                 break
-            except Exception as err:
+            except Exception as err:  # pylint: disable=broad-except-caught
                 self._logger.error("Error in event trigger loop: %s", err)
