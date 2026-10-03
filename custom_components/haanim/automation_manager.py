@@ -26,14 +26,14 @@ from custom_components.haanim.const import (
     EVENT_AUTOMATION_LOADED,
     EVENT_AUTOMATION_UNLOADED,
 )
-from custom_components.haanim.engine.action_pool import ActionWorkerPool
-from custom_components.haanim.engine.automation_context import (
+from haanim.engine.action_pool import ActionWorkerPool
+from haanim.engine.automation_context import (
     ActionDefinition,
     AutomationContext,
     AutomationMetadata,
 )
-from custom_components.haanim.engine.automation_status import AutomationStatus, get_status_manager
-from custom_components.haanim.engine.errors import (
+from haanim.engine.automation_status import AutomationStatus, get_status_manager
+from haanim.engine.errors import (
     ActionCancelledError,
     PoolExhaustedError,
     HAAnimError,
@@ -707,7 +707,7 @@ class AutomationManager:
             NonExistingAutomationError: If automation not found.
             ActionNotFoundError: If action not found.
         """
-        from custom_components.haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
+        from haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
             NonExistingAutomationError,
             ActionNotFoundError,
         )
@@ -745,7 +745,7 @@ class AutomationManager:
         Raises:
             NonExistingAutomationError: If automation not found.
         """
-        from custom_components.haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
+        from haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
             NonExistingAutomationError,
         )
 
@@ -771,7 +771,7 @@ class AutomationManager:
         Raises:
             NonExistingAutomationError: If automation not found.
         """
-        from custom_components.haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
+        from haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
             NonExistingAutomationError,
         )
 
@@ -797,7 +797,7 @@ class AutomationManager:
         Raises:
             NonExistingAutomationError: If automation not found.
         """
-        from custom_components.haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
+        from haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
             NonExistingAutomationError,
         )
 
@@ -825,7 +825,7 @@ class AutomationManager:
         Raises:
             NonExistingAutomationError: If automation not found.
         """
-        from custom_components.haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
+        from haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
             NonExistingAutomationError,
         )
 

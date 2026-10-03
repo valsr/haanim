@@ -7,11 +7,11 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
-from custom_components.haanim.engine.eval_function import EvalFunction, ReturnValue
-from custom_components.haanim.engine.import_controller import ImportController
-from custom_components.haanim.engine.safe_builtins import SafeBuiltins
-from custom_components.haanim.engine.symbol_table import SymbolTable
-from custom_components.haanim.engine.errors import (
+from haanim.engine.eval_function import EvalFunction, ReturnValue
+from haanim.engine.import_controller import ImportController
+from haanim.engine.safe_builtins import SafeBuiltins
+from haanim.engine.symbol_table import SymbolTable
+from haanim.engine.errors import (
     HAAnimError,
     AutomationRuntimeError,
     AutomationSecurityError,

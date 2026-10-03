@@ -34,6 +34,9 @@ dev = [
     "pytest-xdist>=3.5.0",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/haanim"]
+
 [project.urls]
 Homepage = "https://github.com/valsr/haanim"
 Documentation = "https://github.com/valsr/haanim"
@@ -73,6 +76,7 @@ exclude = '''
 [tool.pylint.main]
 py-version = "3.13"
 ignore = [".venv", "venv", ".pytest_cache", "stubs"]
+source-roots = [".", "src"]
 max-line-length = 110
 
 [tool.pylint.messages_control]
@@ -108,6 +112,7 @@ no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 explicit_package_bases = true
+mypy_path = "src"
 exclude = ["stubs/"]
 
 [tool.pyright]
@@ -133,6 +138,7 @@ addopts = [
     "--dist",
     "loadgroup",
     "--cov=custom_components/haanim",
+    "--cov=src/haanim",
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov",
     "--cov-report=xml:coverage.xml",
@@ -144,7 +150,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["custom_components/haanim"]
+source = ["custom_components/haanim", "src/haanim"]
 omit = [
     "tests/*",
     "*/__pycache__/*",

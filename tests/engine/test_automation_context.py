@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
-from custom_components.haanim.engine.automation_context import (
+from haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
+from haanim.engine.automation_context import (
     ActionDefinition,
     AutomationContext,
     AutomationMetadata,
@@ -253,7 +253,7 @@ class TestAutomationContextLoad:
 
     async def test_load_nonexistent_file(self, mock_hass: MagicMock) -> None:
         """Test loading non-existent file raises error."""
-        from custom_components.haanim.engine.errors import HAAnimError
+        from haanim.engine.errors import HAAnimError
 
         context = AutomationContext(
             hass=mock_hass,
@@ -367,7 +367,7 @@ def on_shutdown():
 
     async def test_load_automation_with_syntax_error(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading an automation with syntax error raises error."""
-        from custom_components.haanim.engine.errors import HAAnimError
+        from haanim.engine.errors import HAAnimError
 
         automation_path = tmp_path / "bad_automation.py"
         automation_path.write_text(
@@ -520,7 +520,7 @@ def do_something():
 
     async def test_load_automation_file_not_found(self, mock_hass: MagicMock) -> None:
         """Test loading a non-existent automation raises HAAnimError."""
-        from custom_components.haanim.engine.errors import HAAnimError
+        from haanim.engine.errors import HAAnimError
 
         context = AutomationContext(hass=mock_hass, automation_path="/nonexistent/path.py")
 

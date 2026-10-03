@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, TypeVar
 
-from custom_components.haanim.const import DECORATOR_TIME_ACTIVE
+from haanim.const import DECORATOR_TIME_ACTIVE
 
 # Avoid circular import by importing the metadata function only when needed
 F = TypeVar("F", bound=Callable[..., Any])
@@ -24,7 +24,7 @@ def _get_or_create_metadata(func: Callable) -> Any:
         The function metadata object.
     """
     # Import here to avoid circular dependencies
-    from custom_components.haanim.engine.decorators import (
+    from haanim.engine.decorators import (
         _get_or_create_metadata as get_metadata,
     )
 

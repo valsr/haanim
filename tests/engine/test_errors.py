@@ -6,8 +6,8 @@ import pytest
 
 from typing import Any
 
-from custom_components.haanim.engine import errors
-from custom_components.haanim.engine.errors import (
+from haanim.engine import errors
+from haanim.engine.errors import (
     PUBLIC_ERRORS,
     ActionCancelledError,
     ActionDroppedError,

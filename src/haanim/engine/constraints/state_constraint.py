@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, TypeVar
 from collections.abc import Callable
 
-from custom_components.haanim.const import DECORATOR_STATE_ACTIVE
+from haanim.const import DECORATOR_STATE_ACTIVE
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -27,7 +27,7 @@ def _get_or_create_metadata(func: Callable[..., Any]) -> Any:
     """
     # Import here to avoid circular dependency
     # pylint: disable=import-outside-toplevel
-    from custom_components.haanim.engine.decorators import (
+    from haanim.engine.decorators import (
         _get_or_create_metadata as get_metadata,
     )
 

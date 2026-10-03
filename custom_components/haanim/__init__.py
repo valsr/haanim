@@ -18,7 +18,7 @@ from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.ha.services import ServiceManager
 from custom_components.haanim.ha.state import StateManager
 from custom_components.haanim.automation_manager import AutomationManager
-from custom_components.haanim.engine.triggers import TriggerManager
+from haanim.engine.triggers import TriggerManager
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from custom_components.haanim.const import (
+from haanim.const import (
     DECORATOR_STATE_ACTIVE,
     DECORATOR_TIME_ACTIVE,
 )

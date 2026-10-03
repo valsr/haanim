@@ -6,8 +6,8 @@ import importlib
 import logging
 from typing import Any
 
-from custom_components.haanim.const import DEFAULT_IMPORT_ALLOWLIST
-from custom_components.haanim.engine.errors import AutomationRuntimeError, AutomationSecurityError
+from haanim.const import DEFAULT_IMPORT_ALLOWLIST
+from haanim.engine.errors import AutomationRuntimeError, AutomationSecurityError
 
 _LOGGER = logging.getLogger(__name__)
 

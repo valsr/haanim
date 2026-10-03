@@ -16,12 +16,12 @@ from enum import Enum
 from typing import Any
 
 from custom_components.haanim.config import get_config_manager
-from custom_components.haanim.engine.errors import (
+from haanim.engine.errors import (
     ActionCancelledError,
     PoolExhaustedError,
     ShutdownTimeoutError,
 )
-from custom_components.haanim.engine.automation_status import get_status_manager
+from haanim.engine.automation_status import get_status_manager
 
 _LOGGER = logging.getLogger(__name__)
 

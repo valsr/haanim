@@ -6,15 +6,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from custom_components.haanim.engine import (
+from haanim.engine import (
     ImportController,
     SafeBuiltins,
     AutomationSecurityError,
     AutomationSyntaxError,
     SymbolTable,
 )
-from custom_components.haanim.engine.ast_evaluator import AstEvaluator
-from custom_components.haanim.engine.errors import AutomationRuntimeError
+from haanim.engine.ast_evaluator import AstEvaluator
+from haanim.engine.errors import AutomationRuntimeError
 
 
 class TestSafeBuiltins:

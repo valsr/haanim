@@ -26,13 +26,13 @@ from homeassistant.util import dt as dt_util
 
 from typing import TYPE_CHECKING
 
-from custom_components.haanim.const import DECORATOR_TIME_TRIGGER
 from custom_components.haanim.ha.state import StateManager
 from custom_components.haanim.ha.events import EventManager
-from custom_components.haanim.engine.triggers.base import BaseTrigger, TriggerInfo
+from haanim.const import DECORATOR_TIME_TRIGGER
+from haanim.engine.triggers.base import BaseTrigger, TriggerInfo
 
 if TYPE_CHECKING:
-    from custom_components.haanim.engine.automation_context import TriggerDefinition
+    from haanim.engine.automation_context import TriggerDefinition
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def _get_or_create_metadata(func: Callable[..., Any]) -> Any:
         The FunctionMetadata instance attached to the function.
     """
     # Import here to avoid circular dependency
-    from custom_components.haanim.engine.decorators import _get_or_create_metadata as get_metadata
+    from haanim.engine.decorators import _get_or_create_metadata as get_metadata
 
     return get_metadata(func)
 

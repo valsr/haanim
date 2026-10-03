@@ -6,7 +6,7 @@ from collections.abc import Generator
 
 import pytest
 
-from custom_components.haanim.engine.automation_status import (
+from haanim.engine.automation_status import (
     AutomationRunState,
     AutomationStatus,
     AutomationStatusManager,

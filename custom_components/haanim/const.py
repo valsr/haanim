@@ -1,100 +1,64 @@
 """Constants for the HAAnim integration."""
 
-from enum import Enum
 from typing import Final
 
+from haanim import const as _engine_const
+from haanim.const import (  # pylint: disable=unused-import
+    DECORATOR_ACTION,
+    DECORATOR_CRON_TRIGGER,
+    DECORATOR_EVENT_TRIGGER,
+    DECORATOR_INTERVAL_TRIGGER,
+    DECORATOR_SERVICE,
+    DECORATOR_SHUTDOWN,
+    DECORATOR_STARTUP,
+    DECORATOR_STATE_ACTIVE,
+    DECORATOR_STATE_TRIGGER,
+    DECORATOR_TIME_ACTIVE,
+    DECORATOR_TIME_TRIGGER,
+    DEFAULT_ACTION_QUEUE_SIZE,
+    DEFAULT_ACTION_TIMEOUT,
+    DEFAULT_IMPORT_ALLOWLIST,
+    EXEC_MODE_AUTOMATION,
+    EXEC_MODE_MANUAL,
+    EXEC_MODE_TRIGGER,
+    RESTRICTED_BUILTINS,
+    ActionMode,
+)
 
-class ActionMode(Enum):
-    """Action execution modes for handling concurrent calls.
-
-    DROP: Drop new action request if already executing.
-    QUEUE: Queue action request to execute sequentially.
-    CANCEL: Cancel current action and start new execution.
-    """
-
-    DROP = "drop"
-    QUEUE = "queue"
-    CANCEL = "cancel"
-
-
+# Integration constants, followed by the engine constants re-exported from haanim.const.
 __all__ = [
-    # Core constants
     "DOMAIN",
     "NAME",
     "VERSION",
-    # Enums
-    "ActionMode",
-    # Decorator names
-    "DECORATOR_ACTION",
-    "DECORATOR_STATE_TRIGGER",
-    "DECORATOR_TIME_TRIGGER",
-    "DECORATOR_EVENT_TRIGGER",
-    "DECORATOR_INTERVAL_TRIGGER",
-    "DECORATOR_CRON_TRIGGER",
-    "DECORATOR_TIME_ACTIVE",
-    "DECORATOR_STATE_ACTIVE",
-    "DECORATOR_SERVICE",
-    "DECORATOR_STARTUP",
-    "DECORATOR_SHUTDOWN",
-    # Execution modes
-    "EXEC_MODE_MANUAL",
-    "EXEC_MODE_TRIGGER",
-    "EXEC_MODE_AUTOMATION",
-    # Events
     "EVENT_AUTOMATION_LOADED",
     "EVENT_AUTOMATION_UNLOADED",
     "EVENT_AUTOMATION_ERROR",
     "EVENT_AUTOMATION_EXECUTED",
-    # Services
     "SERVICE_RELOAD_AUTOMATIONS",
     "SERVICE_RUN_ACTION",
     "SERVICE_LIST_AUTOMATIONS",
     "SERVICE_LIST_ACTIONS",
     "SERVICE_GET_CONFIG",
-    # Attributes
     "ATTRIBUTE_AUTOMATION_ID",
     "ATTRIBUTE_AUTOMATION_PATH",
     "ATTRIBUTE_ACTION_NAME",
     "ATTRIBUTE_MANUAL",
-    # Configuration keys
     "CONFIG_AUTOMATION_PATH",
     "CONFIG_IMPORT_ALLOWLIST",
     "CONFIG_ALLOW_ALL_IMPORTS",
     "CONFIG_AUTOMATION_REFRESH_INTERVAL",
-    # Default configuration values
     "DEFAULT_AUTOMATION_PATH",
     "DEFAULT_ALLOW_ALL_IMPORTS",
     "DEFAULT_AUTOMATION_REFRESH_INTERVAL",
-    "DEFAULT_IMPORT_ALLOWLIST",
     "DEFAULT_MAX_CONCURRENT_ACTIONS",
     "DEFAULT_WORKER_SHUTDOWN_TIMEOUT",
-    "DEFAULT_ACTION_QUEUE_SIZE",
-    "DEFAULT_ACTION_TIMEOUT",
-    # Security
-    "RESTRICTED_BUILTINS",
 ]
+__all__ += _engine_const.__all__
 
 DOMAIN: Final = "haanim"
 NAME: Final = "HAAnim"
 VERSION: Final = "0.1.0"
 
-# Decorator names
-DECORATOR_ACTION: Final = "action"
-DECORATOR_STATE_TRIGGER: Final = "state_trigger"
-DECORATOR_TIME_TRIGGER: Final = "time_trigger"
-DECORATOR_EVENT_TRIGGER: Final = "event_trigger"
-DECORATOR_INTERVAL_TRIGGER: Final = "interval_trigger"
-DECORATOR_CRON_TRIGGER: Final = "cron_trigger"
-DECORATOR_TIME_ACTIVE: Final = "time_active"
-DECORATOR_STATE_ACTIVE: Final = "state_active"
-DECORATOR_SERVICE: Final = "service"
-DECORATOR_STARTUP: Final = "startup"
-DECORATOR_SHUTDOWN: Final = "shutdown"
-
-# Automation execution modes
-EXEC_MODE_MANUAL: Final = "manual"
-EXEC_MODE_TRIGGER: Final = "trigger"
-EXEC_MODE_AUTOMATION: Final = "automation"
 
 # Events
 EVENT_AUTOMATION_LOADED: Final = f"{DOMAIN}_automation_loaded"
@@ -130,46 +94,3 @@ DEFAULT_ALLOW_ALL_IMPORTS: Final = False
 DEFAULT_AUTOMATION_REFRESH_INTERVAL: Final = 10
 DEFAULT_MAX_CONCURRENT_ACTIONS: Final = 20
 DEFAULT_WORKER_SHUTDOWN_TIMEOUT: Final = 0.2  # 200ms
-DEFAULT_ACTION_QUEUE_SIZE: Final = 100
-DEFAULT_ACTION_TIMEOUT: Final = 0  # 0 = no timeout
-
-# Default import allowlist - safe modules for automations
-DEFAULT_IMPORT_ALLOWLIST: Final[list[str]] = [
-    "asyncio",
-    "datetime",
-    "json",
-    "logging",
-    "math",
-    "random",
-    "re",
-    "time",
-    "typing",
-    "collections",
-    "functools",
-    "itertools",
-    "operator",
-    "statistics",
-    "decimal",
-    "fractions",
-    "enum",
-    "dataclasses",
-]
-
-# Restricted builtins that should not be available in automations
-RESTRICTED_BUILTINS: Final[set[str]] = {
-    "eval",
-    "exec",
-    "compile",
-    "open",
-    "input",
-    "__import__",
-    "breakpoint",
-    "memoryview",
-    "globals",
-    "locals",
-    "vars",
-    "dir",
-    "delattr",
-    "setattr",
-    "getattr",
-}

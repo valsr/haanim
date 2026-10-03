@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any, TypeVar
 from collections.abc import Callable
 
-from custom_components.haanim.const import ActionMode
+from haanim.const import ActionMode
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -286,25 +286,25 @@ def shutdown(func: F) -> F:
 
 # Import trigger decorators from their respective modules
 # These are the primary interface for user automations
-from custom_components.haanim.engine.triggers.base import TriggerInfo  # pylint: disable=wrong-import-order
-from custom_components.haanim.engine.triggers.state_trigger import (
+from haanim.engine.triggers.base import TriggerInfo  # pylint: disable=wrong-import-order
+from haanim.engine.triggers.state_trigger import (
     state_trigger,
 )  # pylint: disable=wrong-import-order
-from custom_components.haanim.engine.triggers.time_trigger import (
+from haanim.engine.triggers.time_trigger import (
     time_trigger,
 )  # pylint: disable=wrong-import-order
-from custom_components.haanim.engine.triggers.interval_trigger import (
+from haanim.engine.triggers.interval_trigger import (
     interval,
 )  # pylint: disable=wrong-import-order
-from custom_components.haanim.engine.triggers.cron_trigger import (
+from haanim.engine.triggers.cron_trigger import (
     cron,
 )  # pylint: disable=wrong-import-order
-from custom_components.haanim.engine.triggers.event_trigger import (
+from haanim.engine.triggers.event_trigger import (
     event_trigger,
 )  # pylint: disable=wrong-import-order
 
 # Import constraint decorators from constraints module
-from custom_components.haanim.engine.constraints import (
+from haanim.engine.constraints import (
     state_active,
     time_active,
 )  # pylint: disable=wrong-import-order

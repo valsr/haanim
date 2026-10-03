@@ -14,6 +14,8 @@ if podman run -d \
     -p 8123:8123 \
     --network host \
     -v ./custom_components/haanim:/config/custom_components/haanim:z \
+    -v ./src/haanim:/opt/haanim-src/haanim:z \
+    -e PYTHONPATH=/opt/haanim-src \
     -v ./podman/container-config/haanim:/config/haanim:z \
     haanim-dev:latest; then
     echo ""

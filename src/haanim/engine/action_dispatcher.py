@@ -11,14 +11,14 @@ import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
-from custom_components.haanim.const import ActionMode
-from custom_components.haanim.engine.errors import (
+from haanim.const import ActionMode
+from haanim.engine.errors import (
     ActionTimeOutError,
     QueueFullError,
 )
 
 if TYPE_CHECKING:
-    from custom_components.haanim.engine.action_pool import ActionWorkerPool
+    from haanim.engine.action_pool import ActionWorkerPool
 
 _LOGGER = logging.getLogger(__name__)
 

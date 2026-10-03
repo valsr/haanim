@@ -18,17 +18,17 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.haanim import const
-from custom_components.haanim.engine import (
+from haanim import const
+from haanim.engine import (
     ImportController,
     SafeBuiltins,
     SymbolTable,
     decorators,
 )
-from custom_components.haanim.engine.ast_evaluator import AstEvaluator
-from custom_components.haanim.engine.decorators import FunctionMetadata, get_metadata, has_metadata
-from custom_components.haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
-from custom_components.haanim.engine.automation_status import get_status_manager
+from haanim.engine.ast_evaluator import AstEvaluator
+from haanim.engine.decorators import FunctionMetadata, get_metadata, has_metadata
+from haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
+from haanim.engine.automation_status import get_status_manager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -170,7 +170,7 @@ class AutomationContext:
         including decorators, logging, and Home Assistant access.
         """
         # Import here to avoid circular dependency
-        from custom_components.haanim.engine.haanim_api import (
+        from haanim.engine.haanim_api import (
             HAAnim,
         )  # pylint: disable=import-outside-toplevel
 
@@ -220,7 +220,7 @@ class AutomationContext:
 
         # Import event classes
         try:
-            from custom_components.haanim.events import (  # pylint: disable=import-outside-toplevel
+            from haanim.events import (  # pylint: disable=import-outside-toplevel
                 ActionEvent,
                 TimeEvent,
                 IntervalEvent,
@@ -268,7 +268,7 @@ class AutomationContext:
         self._global_symbols.set("set_status", set_status)
 
         # Add logging module wrapper
-        from custom_components.haanim.engine.logging_wrapper import (  # pylint: disable=import-outside-toplevel
+        from haanim.engine.logging_wrapper import (  # pylint: disable=import-outside-toplevel
             create_logger_wrapper,
         )
 

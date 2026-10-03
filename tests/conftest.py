@@ -140,7 +140,7 @@ def mock_action_pool() -> Generator[MagicMock, None, None]:
     Yields:
         A MagicMock that replaces ActionWorkerPool.
     """
-    with patch("custom_components.haanim.engine.action_pool.ActionWorkerPool") as mock_pool_class:
+    with patch("haanim.engine.action_pool.ActionWorkerPool") as mock_pool_class:
         mock_pool = MagicMock()
         mock_pool.submit_action = AsyncMock(return_value=None)
         mock_pool.shutdown = AsyncMock(return_value=None)

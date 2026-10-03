@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.haanim.engine.decorators import (
+from haanim.engine.decorators import (
     ActionInfo,
     FunctionMetadata,
     TriggerInfo,

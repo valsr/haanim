@@ -14,12 +14,12 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.sun import get_astral_event_next
 from homeassistant.util import dt as dt_util
-from custom_components.haanim import const
+from haanim import const
 from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.ha.state import StateManager
 
 if TYPE_CHECKING:
-    from custom_components.haanim.engine.automation_context import TriggerDefinition
+    from haanim.engine.automation_context import TriggerDefinition
 
 _LOGGER = logging.getLogger(__name__)
 

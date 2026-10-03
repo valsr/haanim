@@ -8,12 +8,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from custom_components.haanim.engine.action_pool import (
+from haanim.engine.action_pool import (
     ActionExecution,
     ActionState,
     ActionWorkerPool,
 )
-from custom_components.haanim.engine.errors import (
+from haanim.engine.errors import (
     ActionCancelledError,
     PoolExhaustedError,
 )
@@ -95,7 +95,7 @@ class TestActionWorkerPool:
         async def test_action() -> str:
             return result_value
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             result = await pool.submit_action("automation", "action", test_action)
 
         assert result == result_value
@@ -109,7 +109,7 @@ class TestActionWorkerPool:
         def sync_action() -> str:
             return "sync_result"
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             result = await pool.submit_action("automation", "action", sync_action)
 
         assert result == "sync_result"
@@ -129,7 +129,7 @@ class TestActionWorkerPool:
         async def action2() -> str:
             return "automation2"
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             # Start automation1's action
             task1 = asyncio.create_task(pool.submit_action("automation1", "action", action1))
             await automation1_started.wait()
@@ -185,7 +185,7 @@ class TestActionWorkerPool:
         async def another_action() -> None:
             pass
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             # Start first action (uses the only worker)
             task = asyncio.create_task(pool.submit_action("automation1", "blocking", blocking_action))
             await started.wait()
@@ -211,7 +211,7 @@ class TestActionWorkerPool:
         async def action_with_args(x: int, y: int, multiplier: int = 1) -> int:
             return (x + y) * multiplier
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             result = await pool.submit_action(
                 "automation",
                 "action",
@@ -232,7 +232,7 @@ class TestActionWorkerPool:
         async def shutdown_handler() -> str:
             return "shutdown_complete"
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             # Lifecycle actions should still be allowed
             result = await pool.submit_action(
                 "automation",
@@ -255,7 +255,7 @@ class TestActionWorkerPoolAdvanced:
         async def startup_handler() -> str:
             return "started"
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             result = await pool.run_startup_action("automation", startup_handler)
 
         assert result == "started"
@@ -268,7 +268,7 @@ class TestActionWorkerPoolAdvanced:
         async def shutdown_handler() -> str:
             return "shutdown_complete"
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             result = await pool.run_shutdown_action("automation", shutdown_handler)
 
         assert result == "shutdown_complete"
@@ -288,7 +288,7 @@ class TestActionWorkerPoolAdvanced:
         async def shutdown_handler() -> str:
             return "shutdown_done"
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             # Start a running action
             running_task = asyncio.create_task(pool.submit_action("automation", "running", running_action))
             await running_started.wait()
@@ -312,7 +312,7 @@ class TestActionWorkerPoolAdvanced:
             started.set()
             await finish.wait()
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             task = asyncio.create_task(pool.submit_action("automation", "slow", slow_action))
             await started.wait()
 
@@ -347,7 +347,7 @@ class TestActionWorkerPoolAdvanced:
         async def failing_action() -> None:
             raise ValueError("test error")
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             with pytest.raises(ValueError, match="test error"):
                 await pool.submit_action("automation", "failing", failing_action)
 
@@ -369,7 +369,7 @@ class TestActionWorkerPoolAdvanced:
             started2.set()
             await finish.wait()
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             task1 = asyncio.create_task(pool.submit_action("automation1", "action1", action1))
             task2 = asyncio.create_task(pool.submit_action("automation2", "action2", action2))
             await started1.wait()
@@ -401,7 +401,7 @@ class TestActionWorkerPoolLifecycle:
             nonlocal executed
             executed = True
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             await pool.run_startup_action("test_automation", startup_func)
 
         assert executed is True
@@ -416,7 +416,7 @@ class TestActionWorkerPoolLifecycle:
             nonlocal executed
             executed = True
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             await pool.run_shutdown_action("test_automation", shutdown_func)
 
         assert executed is True
@@ -431,7 +431,7 @@ class TestActionWorkerPoolLifecycle:
             started.set()
             await asyncio.sleep(100)
 
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
+        with patch("haanim.engine.action_pool.get_status_manager"):
             task = asyncio.create_task(pool.submit_action("automation", "action", long_action))
             await started.wait()
 

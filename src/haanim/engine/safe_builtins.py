@@ -5,7 +5,7 @@ from __future__ import annotations
 import builtins
 from typing import Any
 
-from custom_components.haanim.const import RESTRICTED_BUILTINS
+from haanim.const import RESTRICTED_BUILTINS
 
 
 class SafeBuiltins:

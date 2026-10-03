@@ -24,7 +24,7 @@ from typing import Any, Callable
 AUTOMATION_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(AUTOMATION_DIR))
 
-from custom_components.haanim.engine import decorators
+from haanim.engine import decorators
 
 
 STUB_HEADER = '''"""Type stubs for the HAAnim virtual module.

@@ -10,13 +10,13 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from custom_components.haanim.const import DECORATOR_INTERVAL_TRIGGER
-from custom_components.haanim.engine.triggers.base import BaseTrigger, TriggerInfo
+from haanim.const import DECORATOR_INTERVAL_TRIGGER
+from haanim.engine.triggers.base import BaseTrigger, TriggerInfo
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-    from custom_components.haanim.engine.automation_context import TriggerDefinition
+    from haanim.engine.automation_context import TriggerDefinition
     from custom_components.haanim.ha.events import EventManager
     from custom_components.haanim.ha.state import StateManager
 
@@ -29,7 +29,7 @@ def _get_or_create_metadata(func: Callable[..., Any]) -> Any:
     Imported lazily to avoid a circular import with the decorators module.
     """
     # pylint: disable-next=import-outside-toplevel
-    from custom_components.haanim.engine.decorators import _get_or_create_metadata as get_metadata
+    from haanim.engine.decorators import _get_or_create_metadata as get_metadata
 
     return get_metadata(func)
 

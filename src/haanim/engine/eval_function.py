@@ -5,10 +5,10 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING, Any
 
-from custom_components.haanim.engine.symbol_table import SymbolTable
+from haanim.engine.symbol_table import SymbolTable
 
 if TYPE_CHECKING:
-    from custom_components.haanim.engine.ast_evaluator import AstEvaluator
+    from haanim.engine.ast_evaluator import AstEvaluator
 
 
 class EvalFunction:

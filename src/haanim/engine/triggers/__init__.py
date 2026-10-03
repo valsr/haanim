@@ -8,13 +8,13 @@ This package provides the trigger system for HAAnim, including:
 Each trigger type has its own module with both the trigger class and decorator.
 """
 
-from custom_components.haanim.engine.triggers.base import BaseTrigger, TriggerInfo
-from custom_components.haanim.engine.triggers.cron_trigger import CronTrigger, cron
-from custom_components.haanim.engine.triggers.event_trigger import EventTrigger, event_trigger
-from custom_components.haanim.engine.triggers.interval_trigger import IntervalTrigger, interval
-from custom_components.haanim.engine.triggers.manager import TriggerManager
-from custom_components.haanim.engine.triggers.state_trigger import StateTrigger, state_trigger
-from custom_components.haanim.engine.triggers.time_trigger import TimeTrigger, time_trigger
+from haanim.engine.triggers.base import BaseTrigger, TriggerInfo
+from haanim.engine.triggers.cron_trigger import CronTrigger, cron
+from haanim.engine.triggers.event_trigger import EventTrigger, event_trigger
+from haanim.engine.triggers.interval_trigger import IntervalTrigger, interval
+from haanim.engine.triggers.manager import TriggerManager
+from haanim.engine.triggers.state_trigger import StateTrigger, state_trigger
+from haanim.engine.triggers.time_trigger import TimeTrigger, time_trigger
 
 __all__ = [
     # Base

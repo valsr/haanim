@@ -157,3 +157,26 @@ class TestSecurityConstants:
         assert "__import__" in RESTRICTED_BUILTINS
         assert "compile" in RESTRICTED_BUILTINS
         assert "open" in RESTRICTED_BUILTINS
+
+
+class TestEngineConstantsReExported:
+    """The integration constants module re-exports the engine constants unchanged."""
+
+    def test_engine_constants_are_re_exported(self) -> None:
+        """Test every engine constant is available from the integration module as the same object."""
+        from custom_components.haanim import (
+            const as integration_const,
+        )  # pylint: disable=import-outside-toplevel
+        from haanim import const as engine_const  # pylint: disable=import-outside-toplevel
+
+        for name in engine_const.__all__:
+            assert name in integration_const.__all__
+            assert getattr(integration_const, name) is getattr(engine_const, name)
+
+    def test_no_duplicate_exports(self) -> None:
+        """Test no name is exported twice."""
+        from custom_components.haanim import (
+            const as integration_const,
+        )  # pylint: disable=import-outside-toplevel
+
+        assert len(integration_const.__all__) == len(set(integration_const.__all__))

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
-from custom_components.haanim.engine.errors import (
+from haanim.engine.errors import (
     NonExistingEntityError,
     NonExistingAutomationError,
     NonExistingServiceError,

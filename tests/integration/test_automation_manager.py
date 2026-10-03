@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.haanim.const import DOMAIN
-from custom_components.haanim.engine import HAAnimError
-from custom_components.haanim.engine.errors import ActionCancelledError, ShutdownTimeoutError
+from haanim.engine import HAAnimError
+from haanim.engine.errors import ActionCancelledError, ShutdownTimeoutError
 from custom_components.haanim.automation_manager import AutomationManager, async_get_manager
 
 
