@@ -194,7 +194,7 @@ class StateTrigger(BaseTrigger):
         # Start watch task
         self._task = self.hass.async_create_task(
             self._watch_loop(),
-            name=f"haanim_state_trigger_{self.trigger_def.script_name}_{self.trigger_def.func_name}",
+            name=f"haanim_state_trigger_{self.trigger_def.script_id}_{self.trigger_def.func_name}",
         )
 
         # Check now if requested

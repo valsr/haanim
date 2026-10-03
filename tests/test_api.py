@@ -57,7 +57,7 @@ class TestScriptsListView:
         """Test GET returns script list."""
         mock_manager = MagicMock()
         mock_metadata = MagicMock()
-        mock_metadata.name = "test_script"
+        mock_metadata.id = "test_script"
         mock_metadata.path = "/path/to/script.py"
         mock_metadata.actions = []
         mock_metadata.triggers = []
@@ -230,9 +230,7 @@ class TestRunActionView:
         view = RunActionView()
         request = MagicMock()
         request.app = {"hass": MagicMock()}
-        request.json = AsyncMock(
-            return_value={"script_name": "test", "action_name": "action"}
-        )
+        request.json = AsyncMock(return_value={"script_name": "test", "action_name": "action"})
 
         with patch.object(view, "json", return_value=MagicMock()) as mock_json:
             await view.post(request)
@@ -250,17 +248,13 @@ class TestRunActionView:
         view = RunActionView()
         request = MagicMock()
         request.app = {"hass": MagicMock()}
-        request.json = AsyncMock(
-            return_value={"script_name": "test", "action_name": "action"}
-        )
+        request.json = AsyncMock(return_value={"script_name": "test", "action_name": "action"})
 
         with patch.object(view, "json", return_value=MagicMock()) as mock_json:
             await view.post(request)
             call_args = mock_json.call_args[0][0]
             assert call_args["success"] is True
-            mock_manager.async_run_action.assert_called_once_with(
-                "test", "action", manual=True
-            )
+            mock_manager.async_run_action.assert_called_once_with("test", "action", manual=True)
 
 
 class TestReloadScriptsView:
@@ -326,18 +320,18 @@ class TestRunActionViewErrors:
     async def test_post_action_fails(self, mock_get_manager: MagicMock) -> None:
         """Test POST returns error when action fails."""
         mock_manager = MagicMock()
-        mock_manager.async_run_action = AsyncMock(
-            side_effect=RuntimeError("Action failed")
-        )
+        mock_manager.async_run_action = AsyncMock(side_effect=RuntimeError("Action failed"))
         mock_get_manager.return_value = mock_manager
 
         view = RunActionView()
         request = MagicMock()
         request.app = {"hass": MagicMock()}
-        request.json = AsyncMock(return_value={
-            "script_name": "test_script",
-            "action_name": "test_action",
-        })
+        request.json = AsyncMock(
+            return_value={
+                "script_name": "test_script",
+                "action_name": "test_action",
+            }
+        )
 
         with patch.object(view, "json", return_value=MagicMock()) as mock_json:
             await view.post(request)
@@ -353,9 +347,7 @@ class TestReloadScriptsViewErrors:
     async def test_post_reload_fails(self, mock_get_manager: MagicMock) -> None:
         """Test POST returns error when reload fails."""
         mock_manager = MagicMock()
-        mock_manager.async_reload_all_scripts = AsyncMock(
-            side_effect=RuntimeError("Reload failed")
-        )
+        mock_manager.async_reload_all_scripts = AsyncMock(side_effect=RuntimeError("Reload failed"))
         mock_get_manager.return_value = mock_manager
 
         view = ReloadScriptsView()
@@ -391,8 +383,6 @@ class TestConfigViewEdgeCases:
 
         with patch.object(view, "json", return_value=MagicMock()) as mock_json:
             await view.get(request)
-            mock_config_mgr.load_from_dict.assert_called_once_with(
-                mock_entry.data, mock_entry.options
-            )
+            mock_config_mgr.load_from_dict.assert_called_once_with(mock_entry.data, mock_entry.options)
             call_args = mock_json.call_args[0][0]
             assert "version" in call_args

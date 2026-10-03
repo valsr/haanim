@@ -508,9 +508,7 @@ class TestStateManagerEdgeCases:
         # Second unsubscribe should not raise
         state_manager.unsubscribe(queue)
 
-    def test_get_entity_info_not_found(
-        self, state_manager: StateManager, mock_hass: MagicMock
-    ) -> None:
+    def test_get_entity_info_not_found(self, state_manager: StateManager, mock_hass: MagicMock) -> None:
         """Test get_entity_info returns None for non-existent entity."""
         with patch("custom_components.haanim.ha.state.er") as mock_er:
             mock_registry = MagicMock()
@@ -520,9 +518,7 @@ class TestStateManagerEdgeCases:
             result = state_manager.get_entity_info("sensor.nonexistent")
             assert result is None
 
-    def test_get_entity_info_found(
-        self, state_manager: StateManager, mock_hass: MagicMock
-    ) -> None:
+    def test_get_entity_info_found(self, state_manager: StateManager, mock_hass: MagicMock) -> None:
         """Test get_entity_info returns info for existing entity."""
         with patch("custom_components.haanim.ha.state.er") as mock_er:
             mock_entry = MagicMock()

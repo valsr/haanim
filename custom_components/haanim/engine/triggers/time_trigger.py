@@ -144,7 +144,7 @@ class TimeTrigger(BaseTrigger):
         """Start the time trigger."""
         self._task = self.hass.async_create_task(
             self._time_loop(),
-            name=f"haanim_time_trigger_{self.trigger_def.script_name}_{self.trigger_def.func_name}",
+            name=f"haanim_time_trigger_{self.trigger_def.script_id}_{self.trigger_def.func_name}",
         )
 
         self._logger.debug("Time trigger started: %s", self.trigger_def.trigger_expr)

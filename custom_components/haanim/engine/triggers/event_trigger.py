@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 from homeassistant.core import HomeAssistant
 
 from custom_components.haanim import const
-from custom_components.haanim.engine.triggers import BaseTrigger, TriggerInfo
+from custom_components.haanim.engine.triggers.base import BaseTrigger, TriggerInfo
 from custom_components.haanim.ha.events import EventData, EventManager
 from custom_components.haanim.ha.state import StateManager
 
@@ -179,5 +179,5 @@ class EventTrigger(BaseTrigger):
 
             except asyncio.CancelledError:
                 break
-            except Exception as err:  # pylint: disable=broad-except-caught
+            except Exception as err:  # pylint: disable=broad-exception-caught
                 self._logger.error("Error in event trigger loop: %s", err)

@@ -25,7 +25,7 @@ from custom_components.haanim.engine import (
     SymbolTable,
     decorators,
 )
-from custom_components.haanim.engine.AstEvaluator import AstEvaluator
+from custom_components.haanim.engine.ast_evaluator import AstEvaluator
 from custom_components.haanim.engine.decorators import FunctionMetadata, get_metadata, has_metadata
 from custom_components.haanim.engine.errors import ScriptError
 from custom_components.haanim.engine.script_status import get_status_manager
@@ -88,6 +88,10 @@ class ScriptMetadata:
         error: Any error that occurred during loading.
         has_startup: Whether the script has a startup handler.
         has_shutdown: Whether the script has a shutdown handler.
+        state: Current script state (running, stopped, etc.).
+        message: Current status message for the script.
+        run_time: Timestamp when the script was started.
+        last_action_time: Timestamp of the last action execution.
     """
 
     id: str
@@ -101,6 +105,10 @@ class ScriptMetadata:
     enabled: bool = True
     has_startup: bool = False
     has_shutdown: bool = False
+    state: str | None = None
+    message: str | None = None
+    run_time: datetime | None = None
+    last_action_time: datetime | None = None
 
 
 class ScriptContext:
@@ -128,7 +136,7 @@ class ScriptContext:
         self.hass = hass
         self.script_path = script_path
         self.filename = os.path.basename(script_path)
-        self.script_id = os.path.splitext(self.filename)[0].replace("", "_")
+        self.script_id = os.path.splitext(self.filename)[0].replace(" ", "_")
 
         # Create logger for this script
         self._logger = logging.getLogger(f"{__name__}.{self.script_id}")
@@ -161,6 +169,14 @@ class ScriptContext:
         This injects HAAnim-specific functions into the script's namespace,
         including decorators, logging, and Home Assistant access.
         """
+        # Import here to avoid circular dependency
+        from custom_components.haanim.engine.haanim_api import (
+            HAAnim,
+        )  # pylint: disable=import-outside-toplevel
+
+        # Create the HAAnim API instance for this script
+        storage_path = self.hass.config.path(".storage", "haanim", "scripts")
+        haa = HAAnim(self.hass, self.script_id, self.hass.data.get("haanim_manager"), storage_path)
 
         # Create the set_status function bound to this script
         def set_status(message: str | None) -> None:
@@ -178,31 +194,83 @@ class ScriptContext:
         # Create a virtual 'haanim' module that scripts can import from
         haanim_module = SimpleNamespace(
             action=decorators.action,
+            state=decorators.state,
             state_trigger=decorators.state_trigger,
+            time=decorators.time,
             time_trigger=decorators.time_trigger,
+            interval=decorators.interval,
+            cron=decorators.cron,
+            event=decorators.event,
+            event_trigger=decorators.event_trigger,
             time_active=decorators.time_active,
             state_active=decorators.state_active,
             startup=decorators.startup,
             shutdown=decorators.shutdown,
             set_status=set_status,
+            haa=haa,
+            ActionMode=const.ActionMode,
+            # Export event classes
+            ActionEvent=None,  # Will be populated from events module
+            TimeEvent=None,
+            IntervalEvent=None,
+            CronEvent=None,
+            StateEvent=None,
+            EventTriggerEvent=None,
         )
+
+        # Import event classes
+        try:
+            from custom_components.haanim.events import (  # pylint: disable=import-outside-toplevel
+                ActionEvent,
+                TimeEvent,
+                IntervalEvent,
+                CronEvent,
+                StateEvent,
+                EventTriggerEvent,
+            )
+
+            haanim_module.ActionEvent = ActionEvent
+            haanim_module.TimeEvent = TimeEvent
+            haanim_module.IntervalEvent = IntervalEvent
+            haanim_module.CronEvent = CronEvent
+            haanim_module.StateEvent = StateEvent
+            haanim_module.EventTriggerEvent = EventTriggerEvent
+        except ImportError:
+            pass
 
         # Register the virtual module with the import controller
         self._import_controller.register_virtual_module("haanim", haanim_module)
 
         # Add decorators to global scope (for direct use without import)
         self._global_symbols.set("action", decorators.action)
+        self._global_symbols.set("state", decorators.state)
         self._global_symbols.set("state_trigger", decorators.state_trigger)
+        self._global_symbols.set("time", decorators.time)
         self._global_symbols.set("time_trigger", decorators.time_trigger)
+        self._global_symbols.set("interval", decorators.interval)
+        self._global_symbols.set("cron", decorators.cron)
+        self._global_symbols.set("event", decorators.event)
+        self._global_symbols.set("event_trigger", decorators.event_trigger)
         self._global_symbols.set("time_active", decorators.time_active)
         self._global_symbols.set("state_active", decorators.state_active)
         self._global_symbols.set("startup", decorators.startup)
         self._global_symbols.set("shutdown", decorators.shutdown)
 
+        # Add HAAnim API instance to global scope
+        self._global_symbols.set("haa", haa)
+        self._global_symbols.set("ActionMode", const.ActionMode)
+
         # Add set_status function to global scope
         self._global_symbols.set("set_status", set_status)
 
-        # Add logging functions
+        # Add logging module wrapper
+        from custom_components.haanim.engine.logging_wrapper import (  # pylint: disable=import-outside-toplevel
+            create_logger_wrapper,
+        )
+
+        self._global_symbols.set("logging", create_logger_wrapper(self._logger))
+
+        # Add logging functions for convenience
         self._global_symbols.set("log_debug", self._logger.debug)
         self._global_symbols.set("log_info", self._logger.info)
         self._global_symbols.set("log_warning", self._logger.warning)

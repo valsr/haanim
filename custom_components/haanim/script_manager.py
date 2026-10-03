@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -414,7 +415,7 @@ class ScriptManager:
             The ScriptContext, or None if not found.
         """
         for context in self._contexts.values():
-            if context.script_id == script_name or context.name == script_name:
+            if context.script_id == script_name:
                 return context
         return None
 
@@ -542,7 +543,7 @@ class ScriptManager:
                     context.script_id,
                 )
                 error_count += 1
-            except Exception as err:
+            except Exception as err:  # pylint: disable=broad-exception-caught
                 _LOGGER.exception(
                     "Error in startup action for script '%s': %s",
                     context.script_id,
@@ -677,6 +678,177 @@ class ScriptManager:
                 err,
             )
 
+    async def async_call_action(
+        self,
+        script_id: str,
+        action_name: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """Call a script action.
+
+        Args:
+            script_id: Script identifier.
+            action_name: Name of the action to call.
+            args: Positional arguments for the action.
+            kwargs: Keyword arguments for the action.
+
+        Returns:
+            Action return value.
+
+        Raises:
+            NonExistingScriptError: If script not found.
+            ActionNotFoundError: If action not found.
+        """
+        from custom_components.haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
+            NonExistingScriptError,
+            ActionNotFoundError,
+        )
+
+        # Find script context
+        context = None
+        for ctx in self._contexts.values():
+            if ctx.script_id == script_id:
+                context = ctx
+                break
+
+        if context is None:
+            raise NonExistingScriptError(f"Script '{script_id}' not found")
+
+        # Find action
+        action_def = context.get_action(action_name)
+        if action_def is None:
+            raise ActionNotFoundError(script_id, action_name)
+
+        # Execute action through the action pool
+        return await self._action_pool.submit_action(
+            script_name=script_id,
+            action_name=action_name,
+            action_func=action_def.func,
+            *args,
+            **kwargs,
+        )
+
+    async def async_enable_script(self, script_id: str) -> None:
+        """Enable a script.
+
+        Args:
+            script_id: Script identifier.
+
+        Raises:
+            NonExistingScriptError: If script not found.
+        """
+        from custom_components.haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
+            NonExistingScriptError,
+        )
+
+        # Find script context
+        context = None
+        for ctx in self._contexts.values():
+            if ctx.script_id == script_id:
+                context = ctx
+                break
+
+        if context is None:
+            raise NonExistingScriptError(f"Script '{script_id}' not found")
+
+        context.metadata.enabled = True
+        _LOGGER.info("Enabled script: %s", script_id)
+
+    async def async_disable_script(self, script_id: str) -> None:
+        """Disable a script.
+
+        Args:
+            script_id: Script identifier.
+
+        Raises:
+            NonExistingScriptError: If script not found.
+        """
+        from custom_components.haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
+            NonExistingScriptError,
+        )
+
+        # Find script context
+        context = None
+        for ctx in self._contexts.values():
+            if ctx.script_id == script_id:
+                context = ctx
+                break
+
+        if context is None:
+            raise NonExistingScriptError(f"Script '{script_id}' not found")
+
+        context.metadata.enabled = False
+        _LOGGER.info("Disabled script: %s", script_id)
+
+    async def async_start_script(self, script_id: str) -> None:
+        """Start a script (run startup action if present).
+
+        Args:
+            script_id: Script identifier.
+
+        Raises:
+            NonExistingScriptError: If script not found.
+        """
+        from custom_components.haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
+            NonExistingScriptError,
+        )
+
+        # Find script context
+        context = None
+        for ctx in self._contexts.values():
+            if ctx.script_id == script_id:
+                context = ctx
+                break
+
+        if context is None:
+            raise NonExistingScriptError(f"Script '{script_id}' not found")
+
+        context.metadata.state = "running"
+        context.metadata.run_time = datetime.now()
+        await self._run_script_startup_action(context)
+        _LOGGER.info("Started script: %s", script_id)
+
+    async def async_stop_script(self, script_id: str) -> None:
+        """Stop a script (run shutdown action if present).
+
+        Args:
+            script_id: Script identifier.
+
+        Raises:
+            NonExistingScriptError: If script not found.
+        """
+        from custom_components.haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
+            NonExistingScriptError,
+        )
+
+        # Find script context
+        context = None
+        for ctx in self._contexts.values():
+            if ctx.script_id == script_id:
+                context = ctx
+                break
+
+        if context is None:
+            raise NonExistingScriptError(f"Script '{script_id}' not found")
+
+        context.metadata.state = "stopped"
+        await self._run_script_shutdown_action(context)
+        _LOGGER.info("Stopped script: %s", script_id)
+
+    async def async_restart_script(self, script_id: str) -> None:
+        """Restart a script.
+
+        Args:
+            script_id: Script identifier.
+
+        Raises:
+            NonExistingScriptError: If script not found.
+        """
+        await self.async_stop_script(script_id)
+        await self.async_start_script(script_id)
+        _LOGGER.info("Restarted script: %s", script_id)
+
     @property
     def action_pool(self) -> ActionWorkerPool:
         """Get the action worker pool.
@@ -704,17 +876,6 @@ class ScriptManager:
             Dictionary mapping script names to their statuses.
         """
         return get_status_manager().get_all_statuses()
-
-    def get_script_status_display(self, script_name: str) -> str:
-        """Get the display status string for a script.
-
-        Args:
-            script_name: Name of the script.
-
-        Returns:
-            Formatted status string for UI display.
-        """
-        return get_status_manager().get_status(script_name).get_display_status()
 
 
 async def async_get_manager(hass: HomeAssistant) -> ScriptManager | None:

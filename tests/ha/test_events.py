@@ -277,9 +277,7 @@ class TestEventManagerHandleEvent:
         notification = queue.get_nowait()
         assert isinstance(notification, EventData)
 
-    def test_handle_event_applies_filter(
-        self, event_manager: EventManager, mock_event: MagicMock
-    ) -> None:
+    def test_handle_event_applies_filter(self, event_manager: EventManager, mock_event: MagicMock) -> None:
         """Test _handle_event applies event filter."""
         queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=100)
         event_manager._listeners["test_event"] = [queue]
@@ -289,9 +287,7 @@ class TestEventManagerHandleEvent:
 
         assert queue.empty()
 
-    def test_handle_event_filter_matches(
-        self, event_manager: EventManager, mock_event: MagicMock
-    ) -> None:
+    def test_handle_event_filter_matches(self, event_manager: EventManager, mock_event: MagicMock) -> None:
         """Test _handle_event passes when filter matches."""
         queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=100)
         event_manager._listeners["test_event"] = [queue]
@@ -300,20 +296,20 @@ class TestEventManagerHandleEvent:
 
         assert not queue.empty()
 
-    def test_handle_event_queue_full(
-        self, event_manager: EventManager, mock_event: MagicMock
-    ) -> None:
+    def test_handle_event_queue_full(self, event_manager: EventManager, mock_event: MagicMock) -> None:
         """Test _handle_event handles full queue gracefully."""
         queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=1)
-        queue.put_nowait(EventData(
-            event_type="filler",
-            data={},
-            origin=None,
-            time_fired=datetime.now(),
-            context_id="ctx",
-            context_parent_id=None,
-            context_user_id=None,
-        ))
+        queue.put_nowait(
+            EventData(
+                event_type="filler",
+                data={},
+                origin=None,
+                time_fired=datetime.now(),
+                context_id="ctx",
+                context_parent_id=None,
+                context_user_id=None,
+            )
+        )
         event_manager._listeners["test_event"] = [queue]
 
         # Should not raise, just log warning

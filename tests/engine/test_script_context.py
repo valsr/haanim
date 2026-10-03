@@ -20,16 +20,13 @@ class TestActionDefinition:
     """Tests for ActionDefinition dataclass."""
 
     @pytest.mark.parametrize(
-        ("name", "func_name", "script_name", "queue", "preempt"),
+        ("name", "func_name", "script_name"),
         [
-            ("my_action", "do_action", "test_script", False, False),
-            ("queued_action", "queue_func", "script2", True, False),
-            ("preempt_action", "preempt_func", "script3", False, True),
+            ("my_action", "do_action", "test_script"),
+            ("other_action", "other_func", "script2"),
         ],
     )
-    def test_creation(
-        self, name: str, func_name: str, script_name: str, queue: bool, preempt: bool
-    ) -> None:
+    def test_creation(self, name: str, func_name: str, script_name: str) -> None:
         """Test creating an ActionDefinition."""
         func = MagicMock()
         action = ActionDefinition(
@@ -38,18 +35,12 @@ class TestActionDefinition:
             func=func,
             description="Test description",
             script_name=script_name,
-            queue=queue,
-            queue_timeout=30.0,
-            preempt=preempt,
         )
         assert action.name == name
         assert action.func_name == func_name
         assert action.func is func
         assert action.description == "Test description"
         assert action.script_name == script_name
-        assert action.queue is queue
-        assert action.queue_timeout == 30.0
-        assert action.preempt is preempt
 
     def test_default_values(self) -> None:
         """Test default values."""
@@ -61,9 +52,6 @@ class TestActionDefinition:
             script_name="script",
         )
         assert action.description is None
-        assert action.queue is False
-        assert action.queue_timeout == 10.0
-        assert action.preempt is False
 
 
 class TestTriggerDefinition:
@@ -120,8 +108,6 @@ class TestScriptMetadata:
                 script_id="test",
             )
         ]
-        services: list[str] = ["my_service"]
-
         metadata = ScriptMetadata(
             id="Test Script",
             path="/path/to/script.py",
@@ -130,7 +116,6 @@ class TestScriptMetadata:
             modified_at=now,
             actions=actions,
             triggers=triggers,
-            services=services,
             has_startup=True,
             has_shutdown=False,
         )
@@ -142,7 +127,6 @@ class TestScriptMetadata:
         assert metadata.modified_at == now
         assert metadata.actions == actions
         assert metadata.triggers == triggers
-        assert metadata.services == services
         assert metadata.has_startup is True
         assert metadata.has_shutdown is False
         assert metadata.enabled is True  # Default
@@ -157,7 +141,6 @@ class TestScriptMetadata:
             modified_at=datetime.now(),
             actions=[],
             triggers=[],
-            services=[],
             has_startup=False,
             has_shutdown=False,
         )
@@ -264,9 +247,7 @@ class TestScriptContextLoad:
     def mock_hass(self) -> MagicMock:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
-        hass.async_add_executor_job = AsyncMock(
-            side_effect=lambda func, *args: func(*args)
-        )
+        hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
         return hass
 
     async def test_load_nonexistent_file(self, mock_hass: MagicMock) -> None:
@@ -284,11 +265,13 @@ class TestScriptContextLoad:
     async def test_load_simple_script(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading a simple valid script."""
         script_path = tmp_path / "test_script.py"
-        script_path.write_text("""
+        script_path.write_text(
+            """
 @action
 def my_action():
     pass
-""")
+"""
+        )
 
         context = ScriptContext(
             hass=mock_hass,
@@ -305,7 +288,8 @@ def my_action():
     async def test_load_script_with_triggers(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading a script with triggers."""
         script_path = tmp_path / "trigger_script.py"
-        script_path.write_text("""
+        script_path.write_text(
+            """
 @state_trigger("sensor.test > 50")
 def on_temp_high():
     pass
@@ -313,7 +297,8 @@ def on_temp_high():
 @time_trigger("cron(0 * * * *)")
 def on_hour():
     pass
-""")
+"""
+        )
 
         context = ScriptContext(
             hass=mock_hass,
@@ -330,7 +315,8 @@ def on_hour():
     async def test_load_script_with_startup_shutdown(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading a script with startup and shutdown."""
         script_path = tmp_path / "lifecycle_script.py"
-        script_path.write_text("""
+        script_path.write_text(
+            """
 @startup
 def on_startup():
     pass
@@ -338,7 +324,8 @@ def on_startup():
 @shutdown
 def on_shutdown():
     pass
-""")
+"""
+        )
 
         context = ScriptContext(
             hass=mock_hass,
@@ -357,10 +344,12 @@ def on_shutdown():
         from custom_components.haanim.engine.errors import ScriptError
 
         script_path = tmp_path / "bad_script.py"
-        script_path.write_text("""
+        script_path.write_text(
+            """
 def broken(:
     pass
-""")
+"""
+        )
 
         context = ScriptContext(
             hass=mock_hass,
@@ -386,7 +375,8 @@ class TestScriptContextGetters:
     async def test_get_actions(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test get_actions returns action definitions."""
         script_path = tmp_path / "action_script.py"
-        script_path.write_text("""
+        script_path.write_text(
+            """
 @action("First Action")
 def first():
     pass
@@ -394,7 +384,8 @@ def first():
 @action("Second Action")
 def second():
     pass
-""")
+"""
+        )
 
         context = ScriptContext(hass=mock_hass, script_path=str(script_path))
         await context.load()
@@ -405,11 +396,13 @@ def second():
     async def test_get_triggers(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test get_triggers returns trigger definitions."""
         script_path = tmp_path / "trigger_script.py"
-        script_path.write_text("""
+        script_path.write_text(
+            """
 @state_trigger("sensor.test > 50")
 def on_high():
     pass
-""")
+"""
+        )
 
         context = ScriptContext(hass=mock_hass, script_path=str(script_path))
         await context.load()
@@ -420,11 +413,13 @@ def on_high():
     async def test_get_metadata(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test get_metadata returns script metadata."""
         script_path = tmp_path / "meta_script.py"
-        script_path.write_text("""
+        script_path.write_text(
+            """
 @action("Test")
 def test():
     pass
-""")
+"""
+        )
 
         context = ScriptContext(hass=mock_hass, script_path=str(script_path))
         await context.load()
@@ -454,15 +449,6 @@ def test():
         context = ScriptContext(hass=mock_hass, script_path=str(script_path))
         assert context.filename == "my_script.py"
 
-    async def test_name_property(self, mock_hass: MagicMock, tmp_path: Any) -> None:
-        """Test name property returns display name."""
-        script_path = tmp_path / "test.py"
-        script_path.write_text("x = 1")
-
-        context = ScriptContext(hass=mock_hass, script_path=str(script_path))
-        await context.load()
-        assert context.name == "test"
-
 
 class TestScriptContextEdgeCases:
     """Tests for ScriptContext edge cases."""
@@ -491,11 +477,13 @@ class TestScriptContextEdgeCases:
     async def test_load_script_with_action_name(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading a script with @action decorator sets display name."""
         script_path = tmp_path / "my_script.py"
-        script_path.write_text('''
+        script_path.write_text(
+            """
 @action("My Custom Action")
 def do_something():
     pass
-''')
+"""
+        )
 
         context = ScriptContext(hass=mock_hass, script_path=str(script_path))
         metadata = await context.load()
@@ -591,7 +579,7 @@ def multi_trigger():
         script_path = tmp_path / "trigger_with_action.py"
         script_path.write_text(
             """
-@action("Custom Name", description="Custom description", queue=True)
+@action("Custom Name", description="Custom description")
 @state_trigger("sensor.test > 50")
 def custom_action():
     pass
@@ -607,7 +595,6 @@ def custom_action():
         action = metadata.actions[0]
         assert action.name == "Custom Name"
         assert action.description == "Custom description"
-        assert action.queue is True
 
     async def test_triggered_action_default_settings(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test that triggered function without @action gets default settings."""
@@ -628,9 +615,6 @@ def evening_lights():
         action = metadata.actions[0]
         assert action.name == "evening_lights"  # Uses function name
         assert action.description is None
-        assert action.queue is False
-        assert action.queue_timeout == 10.0
-        assert action.preempt is False
 
     async def test_action_without_trigger(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test that @action without triggers still works."""

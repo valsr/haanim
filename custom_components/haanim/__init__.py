@@ -61,8 +61,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     state_manager = StateManager(hass)
     event_manager = EventManager(hass)
     service_manager = ServiceManager(hass)
-    trigger_manager = TriggerManager(hass, state_manager, event_manager)
     script_manager = ScriptManager(hass, entry)
+    trigger_manager = TriggerManager(hass, state_manager, event_manager, script_manager.action_pool)
 
     # Set up managers
     await state_manager.async_setup()
@@ -80,6 +80,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "service_manager": service_manager,
         "trigger_manager": trigger_manager,
     }
+
+    # Store script manager for global access (used by HAAnim API)
+    hass.data["haanim_manager"] = script_manager
 
     # Register API views for the frontend
     async_register_api(hass)

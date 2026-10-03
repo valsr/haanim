@@ -67,7 +67,7 @@ class TestConfigManagerDefaults:
         defaults = manager.get_defaults()
 
         assert defaults["name"] == "HAAnim"
-        assert defaults["script_path"] == "/config/haanim"
+        assert defaults["script_path"] == "/config/haanim/scripts"
         assert defaults["allow_all_imports"] is False
         assert isinstance(defaults["import_allowlist"], list)
 
@@ -129,9 +129,7 @@ class TestConfigManagerRegistration:
             name="custom",
             label="Custom Settings",
             description="Custom group",
-            options=[
-                ConfigOption(key="custom_opt", config_type=ConfigType.STRING, default="value")
-            ],
+            options=[ConfigOption(key="custom_opt", config_type=ConfigType.STRING, default="value")],
         )
         manager.register_group(new_group)
 

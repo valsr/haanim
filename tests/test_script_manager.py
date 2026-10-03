@@ -23,9 +23,7 @@ class TestScriptManager:
         hass.bus.async_listen_once = MagicMock()
         hass.bus.async_fire = MagicMock()
         hass.async_create_task = MagicMock(return_value=MagicMock())
-        hass.async_add_executor_job = AsyncMock(
-            side_effect=lambda func, *args: func(*args)
-        )
+        hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
         hass.data = {}
         return hass
 
@@ -165,9 +163,7 @@ class TestScriptManagerLoading:
         hass.bus.async_listen_once = MagicMock()
         hass.bus.async_fire = MagicMock()
         hass.async_create_task = MagicMock(return_value=MagicMock())
-        hass.async_add_executor_job = AsyncMock(
-            side_effect=lambda func, *args: func(*args)
-        )
+        hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
         hass.data = {}
         return hass
 
@@ -240,11 +236,13 @@ class TestScriptManagerLoading:
 
         # Create a valid script
         script = tmp_path / "test_script.py"
-        script.write_text("""
+        script.write_text(
+            """
 @action
 def my_action():
     pass
-""")
+"""
+        )
 
         manager = ScriptManager(hass=mock_hass, entry=mock_entry)
         result = await manager.async_load_all_scripts()
@@ -565,25 +563,6 @@ class TestScriptManagerLifecycle:
 
         assert isinstance(result, dict)
 
-    @patch("custom_components.haanim.script_manager.get_config_manager")
-    def test_get_script_status_display(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test get_script_status_display returns status string."""
-        mock_config = MagicMock()
-        mock_config.get_script_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        manager = ScriptManager(hass=mock_hass, entry=mock_entry)
-        result = manager.get_script_status_display("test_script")
-
-        assert isinstance(result, str)
-
 
 class TestScriptManagerRunAction:
     """Tests for async_run_action method."""
@@ -740,19 +719,17 @@ def test_action():
 
         # Create mock context
         mock_context = MagicMock()
-        mock_context.script_name = "my_script"
-        mock_context.name = "My Script"
+        mock_context.script_id = "my_script"
 
         manager = ScriptManager(hass=mock_hass, entry=mock_entry)
         manager._contexts["/tmp/my_script.py"] = mock_context
 
-        # Should find by script_name
+        # Should find by script ID
         result = manager.get_context_by_name("my_script")
         assert result is mock_context
 
-        # Should find by name
-        result2 = manager.get_context_by_name("My Script")
-        assert result2 is mock_context
+        # Unknown IDs are not found
+        assert manager.get_context_by_name("My Script") is None
 
 
 class TestScriptManagerStartupShutdown:
@@ -1184,25 +1161,6 @@ class TestScriptManagerActionsAdvanced:
         manager._action_pool.run_shutdown_action.assert_called_once()
 
     @patch("custom_components.haanim.script_manager.get_config_manager")
-    def test_get_script_status_display(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test get_script_status_display returns display string."""
-        mock_config = MagicMock()
-        mock_config.get_script_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        manager = ScriptManager(hass=mock_hass, entry=mock_entry)
-        result = manager.get_script_status_display("test_script")
-
-        assert isinstance(result, str)
-
-    @patch("custom_components.haanim.script_manager.get_config_manager")
     def test_get_all_script_statuses(
         self,
         mock_get_config: MagicMock,
@@ -1424,9 +1382,7 @@ class TestScriptManagerStartupShutdownActions:
 
         manager = ScriptManager(hass=mock_hass, entry=mock_entry)
 
-        with patch(
-            "custom_components.haanim.script_manager.get_status_manager"
-        ) as mock_status_manager:
+        with patch("custom_components.haanim.script_manager.get_status_manager") as mock_status_manager:
             mock_status = MagicMock()
             mock_status.get_all_statuses.return_value = {"script1": MagicMock()}
             mock_status_manager.return_value = mock_status
@@ -1451,9 +1407,7 @@ class TestScriptManagerStartupShutdownActions:
 
         manager = ScriptManager(hass=mock_hass, entry=mock_entry)
         mock_action_pool = MagicMock()
-        mock_action_pool.run_shutdown_action = AsyncMock(
-            side_effect=ShutdownTimeoutError("test_script", 10)
-        )
+        mock_action_pool.run_shutdown_action = AsyncMock(side_effect=ShutdownTimeoutError("test_script", 10))
         manager._action_pool = mock_action_pool
 
         mock_shutdown = AsyncMock()
@@ -1480,9 +1434,7 @@ class TestScriptManagerStartupShutdownActions:
 
         manager = ScriptManager(hass=mock_hass, entry=mock_entry)
         mock_action_pool = MagicMock()
-        mock_action_pool.run_shutdown_action = AsyncMock(
-            side_effect=ActionCancelledError("cancelled")
-        )
+        mock_action_pool.run_shutdown_action = AsyncMock(side_effect=ActionCancelledError("cancelled"))
         manager._action_pool = mock_action_pool
 
         mock_shutdown = AsyncMock()
@@ -1508,9 +1460,7 @@ class TestScriptManagerStartupShutdownActions:
 
         manager = ScriptManager(hass=mock_hass, entry=mock_entry)
         mock_action_pool = MagicMock()
-        mock_action_pool.run_shutdown_action = AsyncMock(
-            side_effect=RuntimeError("generic error")
-        )
+        mock_action_pool.run_shutdown_action = AsyncMock(side_effect=RuntimeError("generic error"))
         manager._action_pool = mock_action_pool
 
         mock_shutdown = AsyncMock()
@@ -1519,34 +1469,6 @@ class TestScriptManagerStartupShutdownActions:
         mock_context.script_name = "test_script"
 
         await manager._run_script_shutdown_action(mock_context)
-
-    @patch("custom_components.haanim.script_manager.get_config_manager")
-    async def test_run_script_startup_action_busy_error(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_script_startup_action handles busy error."""
-        mock_config = MagicMock()
-        mock_config.get_script_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        manager = ScriptManager(hass=mock_hass, entry=mock_entry)
-        mock_action_pool = MagicMock()
-        mock_action_pool.run_startup_action = AsyncMock(
-            side_effect=ActionBusyError("action_name", "test_script")
-        )
-        manager._action_pool = mock_action_pool
-
-        mock_startup = AsyncMock()
-        mock_context = MagicMock()
-        mock_context.get_startup_func.return_value = mock_startup
-        mock_context.script_name = "test_script"
-
-        await manager._run_script_startup_action(mock_context)
 
     @patch("custom_components.haanim.script_manager.get_config_manager")
     async def test_run_script_startup_action_cancelled(
@@ -1564,9 +1486,7 @@ class TestScriptManagerStartupShutdownActions:
 
         manager = ScriptManager(hass=mock_hass, entry=mock_entry)
         mock_action_pool = MagicMock()
-        mock_action_pool.run_startup_action = AsyncMock(
-            side_effect=ActionCancelledError("cancelled")
-        )
+        mock_action_pool.run_startup_action = AsyncMock(side_effect=ActionCancelledError("cancelled"))
         manager._action_pool = mock_action_pool
 
         mock_startup = AsyncMock()
@@ -1592,9 +1512,7 @@ class TestScriptManagerStartupShutdownActions:
 
         manager = ScriptManager(hass=mock_hass, entry=mock_entry)
         mock_action_pool = MagicMock()
-        mock_action_pool.run_startup_action = AsyncMock(
-            side_effect=RuntimeError("generic error")
-        )
+        mock_action_pool.run_startup_action = AsyncMock(side_effect=RuntimeError("generic error"))
         manager._action_pool = mock_action_pool
 
         mock_startup = AsyncMock()

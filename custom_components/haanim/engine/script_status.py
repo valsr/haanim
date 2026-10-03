@@ -133,6 +133,17 @@ class ScriptStatusManager:
         status = self.get_status(script_name)
         status.last_error = None
 
+    def set_status_message(self, script_name: str, message: str) -> None:
+        """Set a custom status message for a script.
+
+        Args:
+            script_name: Name of the script.
+            message: Status message to set.
+        """
+        status = self.get_status(script_name)
+        # Store message in last_error field for now - we can add a separate message field later if needed
+        status.last_error = message
+
     def get_all_statuses(self) -> dict[str, ScriptStatus]:
         """Get all script statuses.
 

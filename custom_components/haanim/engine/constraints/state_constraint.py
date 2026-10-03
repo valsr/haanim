@@ -26,7 +26,10 @@ def _get_or_create_metadata(func: Callable[..., Any]) -> Any:
         The FunctionMetadata instance attached to the function.
     """
     # Import here to avoid circular dependency
-    from custom_components.haanim.engine.decorators import _get_or_create_metadata as get_metadata
+    # pylint: disable=import-outside-toplevel
+    from custom_components.haanim.engine.decorators import (
+        _get_or_create_metadata as get_metadata,
+    )
 
     return get_metadata(func)
 

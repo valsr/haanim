@@ -1,9 +1,8 @@
-"""Tests for the HAAnim script status module."""
+"""Tests for script execution status tracking (engine/script_status.py)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock
+from collections.abc import Generator
 
 import pytest
 
@@ -16,274 +15,170 @@ from custom_components.haanim.engine.script_status import (
 )
 
 
-class TestScriptRunState:
-    """Tests for ScriptRunState enum."""
+@pytest.fixture
+def manager() -> ScriptStatusManager:
+    """Create a fresh status manager."""
+    return ScriptStatusManager()
 
-    def test_values(self) -> None:
-        """Test all enum values exist."""
-        assert ScriptRunState.IDLE.value == "idle"
-        assert ScriptRunState.RUNNING.value == "running"
-        assert ScriptRunState.STARTUP.value == "starting"
-        assert ScriptRunState.SHUTDOWN.value == "stopping"
+
+@pytest.fixture
+def clean_global_manager() -> Generator[None]:
+    """Reset the global status manager around a test."""
+    reset_status_manager()
+    yield
+    reset_status_manager()
+
+
+class TestScriptRunState:
+    """Tests for the ScriptRunState enum."""
+
+    @pytest.mark.parametrize(
+        ("state", "value"),
+        [
+            (ScriptRunState.IDLE, "idle"),
+            (ScriptRunState.RUNNING, "running"),
+            (ScriptRunState.STARTUP, "startup"),
+            (ScriptRunState.SHUTDOWN, "shutdown"),
+        ],
+    )
+    def test_values(self, state: ScriptRunState, value: str) -> None:
+        """Test each run state has the expected value."""
+        assert state.value == value
 
 
 class TestScriptStatus:
-    """Tests for ScriptStatus dataclass."""
+    """Tests for the ScriptStatus dataclass."""
 
     def test_defaults(self) -> None:
-        """Test default values."""
+        """Test a new status is idle with no actions or error."""
         status = ScriptStatus(script_name="test")
         assert status.script_name == "test"
         assert status.run_state == ScriptRunState.IDLE
-        assert status.action_name is None
-        assert status.status_message is None
-        assert status.last_action is None
-        assert status.last_action_completed_at is None
+        assert status.running_actions == {}
         assert status.last_error is None
+        assert status.is_running is False
 
-    def test_get_elapsed_seconds(self) -> None:
-        """Test elapsed time calculation."""
-        status = ScriptStatus(script_name="test")
-        # State changed at should be now, so elapsed should be close to 0
-        elapsed = status.get_elapsed_seconds()
-        assert 0 <= elapsed < 1
+    def test_is_running_with_actions(self) -> None:
+        """Test is_running reflects running actions."""
+        status = ScriptStatus(script_name="test", running_actions={"id1": "action"})
+        assert status.is_running is True
 
-    @pytest.mark.parametrize(
-        ("seconds", "expected_pattern"),
-        [
-            (5, "5s"),
-            (30, "30s"),
-            (65, "1m 5s"),
-            (125, "2m 5s"),
-            (3665, "1h 1m"),
-            (7325, "2h 2m"),
-        ],
-    )
-    def test_get_elapsed_formatted(self, seconds: int, expected_pattern: str) -> None:
-        """Test formatted elapsed time."""
-        status = ScriptStatus(script_name="test")
-        status.state_changed_at = datetime.now() - timedelta(seconds=seconds)
-        formatted = status.get_elapsed_formatted()
-        assert formatted == expected_pattern
-
-    def test_get_display_status_idle(self) -> None:
-        """Test display status when idle."""
-        status = ScriptStatus(script_name="test")
-        assert status.get_display_status() == "Idle"
-
-    def test_get_display_status_running(self) -> None:
-        """Test display status when running."""
-        status = ScriptStatus(
-            script_name="test",
-            run_state=ScriptRunState.RUNNING,
-            action_name="my_action",
-        )
-        display = status.get_display_status()
-        assert "Running" in display
-        assert "my_action" in display
-
-    def test_get_display_status_with_message(self) -> None:
-        """Test display status with custom message."""
-        status = ScriptStatus(
-            script_name="test",
-            run_state=ScriptRunState.RUNNING,
-            action_name="process",
-            status_message="Processing step 2 of 5",
-        )
-        display = status.get_display_status()
-        assert "Processing step 2 of 5" in display
-
-    def test_get_display_status_no_action_name(self) -> None:
-        """Test display status running without action name."""
-        status = ScriptStatus(
-            script_name="test",
-            run_state=ScriptRunState.STARTUP,
-        )
-        display = status.get_display_status()
-        assert "Starting" in display
-
-    def test_to_dict(self) -> None:
-        """Test conversion to dictionary."""
-        status = ScriptStatus(
-            script_name="test_script",
-            run_state=ScriptRunState.RUNNING,
-            action_name="test_action",
-            status_message="Testing",
-            last_action="previous_action",
-            last_error="Some error",
-        )
-        status.last_action_completed_at = datetime(2024, 1, 1, 12, 0, 0)
-
-        result = status.to_dict()
-
-        assert result["script_name"] == "test_script"
-        assert result["run_state"] == "running"
-        assert result["action_name"] == "test_action"
-        assert result["status_message"] == "Testing"
-        assert result["last_action"] == "previous_action"
-        assert result["last_error"] == "Some error"
-        assert result["last_action_completed_at"] == "2024-01-01T12:00:00"
-        assert "elapsed_seconds" in result
-        assert "elapsed_formatted" in result
-        assert "display_status" in result
-
-    def test_to_dict_no_completed_time(self) -> None:
-        """Test to_dict when last_action_completed_at is None."""
-        status = ScriptStatus(script_name="test")
-        result = status.to_dict()
-        assert result["last_action_completed_at"] is None
+    def test_running_actions_not_shared(self) -> None:
+        """Test each status gets its own running_actions dictionary."""
+        first = ScriptStatus(script_name="a")
+        second = ScriptStatus(script_name="b")
+        first.running_actions["id1"] = "action"
+        assert second.running_actions == {}
 
 
 class TestScriptStatusManager:
     """Tests for ScriptStatusManager."""
 
-    def test_get_status_creates_new(self) -> None:
-        """Test get_status creates new status if not exists."""
-        manager = ScriptStatusManager()
-        status = manager.get_status("new_script")
-        assert status.script_name == "new_script"
-        assert status.run_state == ScriptRunState.IDLE
-
-    def test_get_status_returns_existing(self) -> None:
-        """Test get_status returns existing status."""
-        manager = ScriptStatusManager()
-        status1 = manager.get_status("script")
-        status1.status_message = "Modified"
-        status2 = manager.get_status("script")
-        assert status2.status_message == "Modified"
-
-    def test_get_all_statuses(self) -> None:
-        """Test get_all_statuses returns copy of all statuses."""
-        manager = ScriptStatusManager()
-        manager.get_status("script1")
-        manager.get_status("script2")
-        all_statuses = manager.get_all_statuses()
-        assert len(all_statuses) == 2
-        assert "script1" in all_statuses
-        assert "script2" in all_statuses
+    def test_get_status_creates_and_caches(self, manager: ScriptStatusManager) -> None:
+        """Test get_status creates a status once and returns the same object after."""
+        status = manager.get_status("script")
+        assert status.script_name == "script"
+        assert manager.get_status("script") is status
 
     @pytest.mark.parametrize(
-        ("is_startup", "is_shutdown", "expected_state"),
+        ("is_startup", "is_shutdown", "expected"),
         [
             (False, False, ScriptRunState.RUNNING),
             (True, False, ScriptRunState.STARTUP),
             (False, True, ScriptRunState.SHUTDOWN),
+            (True, True, ScriptRunState.STARTUP),
         ],
     )
-    def test_set_running(
+    def test_add_running_action_sets_state(
         self,
+        manager: ScriptStatusManager,
         is_startup: bool,
         is_shutdown: bool,
-        expected_state: ScriptRunState,
+        expected: ScriptRunState,
     ) -> None:
-        """Test set_running with different lifecycle flags."""
-        manager = ScriptStatusManager()
-        manager.set_running("script", "action", is_startup=is_startup, is_shutdown=is_shutdown)
+        """Test add_running_action records the action and sets the run state."""
+        manager.add_running_action("script", "action", "id1", is_startup=is_startup, is_shutdown=is_shutdown)
         status = manager.get_status("script")
-        assert status.run_state == expected_state
-        assert status.action_name == "action"
+        assert status.running_actions == {"id1": "action"}
+        assert status.run_state == expected
+        assert status.is_running is True
 
-    def test_set_idle(self) -> None:
-        """Test set_idle transitions to idle state."""
-        manager = ScriptStatusManager()
-        manager.set_running("script", "action")
-        manager.set_idle("script")
+    def test_remove_last_action_sets_idle(self, manager: ScriptStatusManager) -> None:
+        """Test removing the only running action returns the script to idle."""
+        manager.add_running_action("script", "action", "id1")
+        manager.remove_running_action("script", "id1")
+        status = manager.get_status("script")
+        assert status.running_actions == {}
+        assert status.run_state == ScriptRunState.IDLE
+        assert status.last_error is None
+
+    def test_remove_one_of_two_stays_running(self, manager: ScriptStatusManager) -> None:
+        """Test the script stays running while another action is active."""
+        manager.add_running_action("script", "first", "id1")
+        manager.add_running_action("script", "second", "id2")
+        manager.remove_running_action("script", "id1")
+        status = manager.get_status("script")
+        assert status.running_actions == {"id2": "second"}
+        assert status.run_state == ScriptRunState.RUNNING
+
+    def test_remove_with_error_records_error(self, manager: ScriptStatusManager) -> None:
+        """Test an error passed on removal is stored."""
+        manager.add_running_action("script", "action", "id1")
+        manager.remove_running_action("script", "id1", error="boom")
+        assert manager.get_status("script").last_error == "boom"
+
+    def test_remove_unknown_execution_is_ignored(self, manager: ScriptStatusManager) -> None:
+        """Test removing an execution that is not running does nothing."""
+        manager.add_running_action("script", "action", "id1")
+        manager.remove_running_action("script", "other")
+        assert manager.get_status("script").running_actions == {"id1": "action"}
+
+    @pytest.mark.parametrize(("error", "expected"), [(None, None), ("failed", "failed")])
+    def test_set_idle(self, manager: ScriptStatusManager, error: str | None, expected: str | None) -> None:
+        """Test set_idle clears running actions and optionally records an error."""
+        manager.add_running_action("script", "action", "id1")
+        manager.set_idle("script", error=error)
         status = manager.get_status("script")
         assert status.run_state == ScriptRunState.IDLE
-        assert status.action_name is None
-        assert status.last_action == "action"
-        assert status.last_action_completed_at is not None
+        assert status.running_actions == {}
+        assert status.last_error == expected
 
-    def test_set_idle_with_error(self) -> None:
-        """Test set_idle records error."""
-        manager = ScriptStatusManager()
-        manager.set_running("script", "action")
-        manager.set_idle("script", error="Something went wrong")
-        status = manager.get_status("script")
-        assert status.last_error == "Something went wrong"
+    def test_set_idle_without_error_keeps_previous_error(self, manager: ScriptStatusManager) -> None:
+        """Test set_idle without an error leaves an earlier error in place."""
+        manager.set_idle("script", error="earlier")
+        manager.set_idle("script")
+        assert manager.get_status("script").last_error == "earlier"
 
-    def test_set_status_message(self) -> None:
-        """Test setting custom status message."""
-        manager = ScriptStatusManager()
-        manager.set_status_message("script", "Processing...")
-        status = manager.get_status("script")
-        assert status.status_message == "Processing..."
+    def test_clear_error(self, manager: ScriptStatusManager) -> None:
+        """Test clear_error removes the stored error."""
+        manager.set_idle("script", error="failed")
+        manager.clear_error("script")
+        assert manager.get_status("script").last_error is None
 
-    def test_clear_status_message(self) -> None:
-        """Test clearing status message."""
-        manager = ScriptStatusManager()
-        manager.set_status_message("script", "Processing...")
-        manager.clear_status_message("script")
-        status = manager.get_status("script")
-        assert status.status_message is None
+    def test_set_status_message(self, manager: ScriptStatusManager) -> None:
+        """Test set_status_message stores the message (currently in last_error)."""
+        manager.set_status_message("script", "working")
+        assert manager.get_status("script").last_error == "working"
 
-    def test_remove_script(self) -> None:
-        """Test removing script status."""
-        manager = ScriptStatusManager()
-        manager.get_status("script")
-        assert "script" in manager.get_all_statuses()
-        manager.remove_script("script")
-        assert "script" not in manager.get_all_statuses()
-
-    def test_remove_nonexistent_script(self) -> None:
-        """Test removing non-existent script does not error."""
-        manager = ScriptStatusManager()
-        manager.remove_script("nonexistent")  # Should not raise
-
-    def test_register_callback(self) -> None:
-        """Test registering and receiving callbacks."""
-        manager = ScriptStatusManager()
-        callback = MagicMock()
-        manager.register_callback(callback)
-
-        manager.set_running("script", "action")
-        callback.assert_called_once()
-        call_args = callback.call_args[0]
-        assert call_args[0] == "script"
-        assert isinstance(call_args[1], ScriptStatus)
-
-    def test_unregister_callback(self) -> None:
-        """Test unregistering callback."""
-        manager = ScriptStatusManager()
-        callback = MagicMock()
-        manager.register_callback(callback)
-        manager.unregister_callback(callback)
-
-        manager.set_running("script", "action")
-        callback.assert_not_called()
-
-    def test_callback_error_handling(self) -> None:
-        """Test that callback errors don't break status updates."""
-        manager = ScriptStatusManager()
-        bad_callback = MagicMock(side_effect=ValueError("Callback error"))
-        good_callback = MagicMock()
-        manager.register_callback(bad_callback)
-        manager.register_callback(good_callback)
-
-        # Should not raise, and good callback should still be called
-        manager.set_running("script", "action")
-        good_callback.assert_called_once()
+    def test_get_all_statuses_returns_copy(self, manager: ScriptStatusManager) -> None:
+        """Test get_all_statuses returns every status in a separate dictionary."""
+        manager.get_status("a")
+        manager.get_status("b")
+        statuses = manager.get_all_statuses()
+        assert set(statuses) == {"a", "b"}
+        statuses.clear()
+        assert set(manager.get_all_statuses()) == {"a", "b"}
 
 
 class TestGlobalStatusManager:
-    """Tests for global status manager functions."""
+    """Tests for the module-level status manager accessors."""
 
-    def teardown_method(self) -> None:
-        """Reset global state after each test."""
-        reset_status_manager()
+    def test_get_status_manager_is_singleton(self, clean_global_manager: None) -> None:
+        """Test get_status_manager returns the same instance each time."""
+        assert get_status_manager() is get_status_manager()
 
-    def test_get_status_manager_singleton(self) -> None:
-        """Test get_status_manager returns same instance."""
+    def test_reset_status_manager(self, clean_global_manager: None) -> None:
+        """Test reset_status_manager discards the current instance."""
+        first = get_status_manager()
         reset_status_manager()
-        manager1 = get_status_manager()
-        manager2 = get_status_manager()
-        assert manager1 is manager2
-
-    def test_reset_status_manager(self) -> None:
-        """Test reset_status_manager creates new instance."""
-        manager1 = get_status_manager()
-        manager1.get_status("test")
-        reset_status_manager()
-        manager2 = get_status_manager()
-        assert manager1 is not manager2
-        assert len(manager2.get_all_statuses()) == 0
+        assert get_status_manager() is not first

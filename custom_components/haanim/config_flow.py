@@ -24,6 +24,8 @@ from custom_components.haanim.const import (
     DOMAIN,
 )
 
+DEFAULT_NAME = NAME  # Use integration NAME as default name
+
 _LOGGER = logging.getLogger(__name__)
 
 # FIXME: ConfigFlow doesn't seem to be working, check what needs to be done to be fixed (if we need to fix

@@ -13,7 +13,7 @@ from custom_components.haanim.engine import (
     ScriptSyntaxError,
     SymbolTable,
 )
-from custom_components.haanim.engine.AstEvaluator import AstEvaluator
+from custom_components.haanim.engine.ast_evaluator import AstEvaluator
 from custom_components.haanim.engine.errors import ScriptRuntimeError
 
 

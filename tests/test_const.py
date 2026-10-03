@@ -23,11 +23,11 @@ from custom_components.haanim.const import (
     DEFAULT_ALLOW_ALL_IMPORTS,
     DEFAULT_IMPORT_ALLOWLIST,
     DEFAULT_MAX_CONCURRENT_ACTIONS,
-    DEFAULT_NAME,
     DEFAULT_SCRIPT_PATH,
     DEFAULT_SCRIPT_REFRESH_INTERVAL,
     DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
     DOMAIN,
+    NAME,
     EVENT_SCRIPT_ERROR,
     EVENT_SCRIPT_EXECUTED,
     EVENT_SCRIPT_LOADED,
@@ -136,8 +136,8 @@ class TestDefaultValues:
 
     def test_default_values(self) -> None:
         """Test all default value constants."""
-        assert DEFAULT_NAME == "HAAnim"
-        assert DEFAULT_SCRIPT_PATH == "/config/haanim"
+        assert NAME == "HAAnim"
+        assert DEFAULT_SCRIPT_PATH == "/config/haanim/scripts"
         assert DEFAULT_ALLOW_ALL_IMPORTS is False
         assert DEFAULT_SCRIPT_REFRESH_INTERVAL == 10
         assert isinstance(DEFAULT_IMPORT_ALLOWLIST, list)

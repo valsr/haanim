@@ -44,7 +44,9 @@ class TestBaseTrigger:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
         hass.async_add_executor_job = AsyncMock(
-            side_effect=lambda func, *args: func(*args) if not asyncio.iscoroutinefunction(func) else func(*args)
+            side_effect=lambda func, *args: (
+                func(*args) if not asyncio.iscoroutinefunction(func) else func(*args)
+            )
         )
         return hass
 
@@ -276,6 +278,7 @@ class TestTriggerManager:
             hass=mock_hass,
             state_manager=mock_state_manager,
             event_manager=mock_event_manager,
+            action_pool=MagicMock(),
         )
 
     async def test_async_setup(
@@ -293,18 +296,13 @@ class TestTriggerManager:
         assert len(trigger_manager._triggers) == 0
 
     @pytest.mark.parametrize(
-        ("trigger_type", "expected_class"),
-        [
-            (DECORATOR_STATE_TRIGGER, "StateTrigger"),
-            (DECORATOR_TIME_TRIGGER, "TimeTrigger"),
-            (DECORATOR_EVENT_TRIGGER, "EventTrigger"),
-        ],
+        "trigger_type",
+        [DECORATOR_STATE_TRIGGER, DECORATOR_TIME_TRIGGER, DECORATOR_EVENT_TRIGGER],
     )
     async def test_register_trigger(
         self,
         trigger_manager: TriggerManager,
         trigger_type: str,
-        expected_class: str,
     ) -> None:
         """Test registering different trigger types."""
         trigger_def = TriggerDefinition(
@@ -320,8 +318,7 @@ class TestTriggerManager:
 
         assert trigger_id != ""
         assert len(trigger_manager._triggers) == 1
-        trigger = list(trigger_manager._triggers.values())[0]
-        assert trigger.__class__.__name__ == expected_class
+        assert trigger_manager._triggers[trigger_id] is trigger_def
 
     async def test_register_unknown_trigger_type(
         self,
@@ -569,6 +566,7 @@ class TestTimeTrigger:
 
     async def test_async_stop(self, time_trigger: TimeTrigger) -> None:
         """Test async_stop cancels task."""
+
         # Create an actual async task that we can cancel
         async def long_running():
             await asyncio.sleep(1000)
@@ -585,9 +583,7 @@ class TestTimeTrigger:
             ("invalid", False),
         ],
     )
-    def test_parse_time_spec(
-        self, time_trigger: TimeTrigger, time_str: str, expected: bool
-    ) -> None:
+    def test_parse_time_spec(self, time_trigger: TimeTrigger, time_str: str, expected: bool) -> None:
         """Test parsing time specifications."""
         now = datetime(2024, 6, 15, 7, 0, 0)
         result = time_trigger._parse_time_spec(time_str, now)
@@ -654,6 +650,7 @@ class TestEventTrigger:
 
     async def test_async_stop(self, event_trigger: EventTrigger) -> None:
         """Test async_stop cancels task."""
+
         # Create an actual async task that we can cancel
         async def long_running():
             await asyncio.sleep(1000)
@@ -833,9 +830,7 @@ class TestStateTriggerAdvanced:
         result = state_trigger._evaluate_trigger()
         assert result is True
 
-    def test_evaluate_trigger_list_expr(
-        self, mock_hass: MagicMock, mock_state_manager: MagicMock
-    ) -> None:
+    def test_evaluate_trigger_list_expr(self, mock_hass: MagicMock, mock_state_manager: MagicMock) -> None:
         """Test evaluating list of trigger expressions."""
         trigger_def = TriggerDefinition(
             trigger_type=DECORATOR_STATE_TRIGGER,
@@ -865,6 +860,7 @@ class TestStateTriggerAdvanced:
         self, state_trigger: StateTrigger, mock_state_manager: MagicMock
     ) -> None:
         """Test async_stop cancels hold task."""
+
         async def long_running():
             await asyncio.sleep(1000)
 
@@ -879,9 +875,7 @@ class TestStateTriggerAdvanced:
         # Hold task may be in cancelling state, so check it's done or cancelling
         assert state_trigger._hold_task.cancelled() or state_trigger._hold_task.cancelling()
 
-    def test_init_with_watch_entities(
-        self, mock_hass: MagicMock, mock_state_manager: MagicMock
-    ) -> None:
+    def test_init_with_watch_entities(self, mock_hass: MagicMock, mock_state_manager: MagicMock) -> None:
         """Test initialization with explicit watch entities."""
         trigger_def = TriggerDefinition(
             trigger_type=DECORATOR_STATE_TRIGGER,
@@ -920,6 +914,7 @@ class TestTriggerManagerAdvanced:
             hass=mock_hass,
             state_manager=MagicMock(),
             event_manager=MagicMock(),
+            action_pool=MagicMock(),
         )
 
     async def test_unregister_trigger(self, trigger_manager: TriggerManager) -> None:
@@ -996,8 +991,7 @@ class TestTriggerManagerAdvanced:
         trigger_id = await trigger_manager.register_trigger(trigger_def, constraints)
 
         assert trigger_id != ""
-        trigger = trigger_manager._triggers[trigger_id]
-        assert trigger._constraints == constraints
+        assert trigger_manager._trigger_metadata[trigger_id]["constraints"] == constraints
 
 
 class TestBaseTriggerConstraints:
@@ -1007,9 +1001,7 @@ class TestBaseTriggerConstraints:
     def mock_hass(self) -> MagicMock:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
-        hass.async_add_executor_job = AsyncMock(
-            side_effect=lambda func, *args: func(*args)
-        )
+        hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
         return hass
 
     @pytest.fixture
@@ -1071,9 +1063,7 @@ class TestBaseTriggerConstraints:
             state_manager=mock_state_manager,
             event_manager=mock_event_manager,
         )
-        trigger.set_constraints([
-            {"type": DECORATOR_STATE_ACTIVE, "exprs": ["light.test == 'on'"]}
-        ])
+        trigger.set_constraints([{"type": DECORATOR_STATE_ACTIVE, "exprs": ["light.test == 'on'"]}])
         result = await trigger._check_constraints()
         assert result is True
 
@@ -1096,9 +1086,7 @@ class TestBaseTriggerConstraints:
             state_manager=mock_state_manager,
             event_manager=mock_event_manager,
         )
-        result = await trigger._check_state_constraint(
-            {"exprs": ["light.test == 'on'"]}
-        )
+        result = await trigger._check_state_constraint({"exprs": ["light.test == 'on'"]})
         assert result is True
 
     async def test_check_state_constraint_fails(
@@ -1120,9 +1108,7 @@ class TestBaseTriggerConstraints:
             state_manager=mock_state_manager,
             event_manager=mock_event_manager,
         )
-        result = await trigger._check_state_constraint(
-            {"exprs": ["light.test == 'on'"]}
-        )
+        result = await trigger._check_state_constraint({"exprs": ["light.test == 'on'"]})
         assert result is False
 
     async def test_execute_function_async(
@@ -1219,9 +1205,7 @@ class TestTimeTriggerTimeLoop:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
         hass.async_create_task = MagicMock(return_value=MagicMock())
-        hass.async_add_executor_job = AsyncMock(
-            side_effect=lambda func, *args: func(*args)
-        )
+        hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
         return hass
 
     @pytest.fixture
@@ -1311,9 +1295,7 @@ class TestEventTriggerAdvanced:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
         hass.async_create_task = MagicMock(return_value=MagicMock())
-        hass.async_add_executor_job = AsyncMock(
-            side_effect=lambda func, *args: func(*args)
-        )
+        hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
         return hass
 
     @pytest.fixture
@@ -1374,6 +1356,7 @@ class TestEventTriggerAdvanced:
             state_manager=mock_state_manager,
             event_manager=mock_event_manager,
         )
+
         # Create a real task that we can cancel
         async def long_running():
             await asyncio.sleep(100)
@@ -1391,7 +1374,9 @@ class TestTimeConstraintEvaluation:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
         hass.async_add_executor_job = AsyncMock(
-            side_effect=lambda func, *args: func(*args) if not asyncio.iscoroutinefunction(func) else func(*args)
+            side_effect=lambda func, *args: (
+                func(*args) if not asyncio.iscoroutinefunction(func) else func(*args)
+            )
         )
         return hass
 

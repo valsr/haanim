@@ -55,9 +55,7 @@ class TestServiceManager:
         assert mock_hass.services.async_register.call_count == 5
 
         # Get all registered service names
-        registered = [
-            call[0][1] for call in mock_hass.services.async_register.call_args_list
-        ]
+        registered = [call[0][1] for call in mock_hass.services.async_register.call_args_list]
         assert SERVICE_RUN_ACTION in registered
         assert SERVICE_RELOAD_SCRIPTS in registered
         assert SERVICE_LIST_SCRIPTS in registered
@@ -78,9 +76,7 @@ class TestServiceManager:
         """Test calling a service."""
         mock_hass.services.async_call.return_value = {"result": "ok"}
 
-        result = await service_manager.call(
-            "light", "turn_on", {"entity_id": "light.test"}, blocking=True
-        )
+        result = await service_manager.call("light", "turn_on", {"entity_id": "light.test"}, blocking=True)
 
         mock_hass.services.async_call.assert_called_once_with(
             "light",
@@ -95,9 +91,7 @@ class TestServiceManager:
         self, service_manager: ServiceManager, mock_hass: MagicMock
     ) -> None:
         """Test calling a service with return_response."""
-        await service_manager.call(
-            "light", "turn_on", return_response=True
-        )
+        await service_manager.call("light", "turn_on", return_response=True)
 
         mock_hass.services.async_call.assert_called_once_with(
             "light",
@@ -114,9 +108,7 @@ class TestServiceManager:
         handler = AsyncMock()
         schema = vol.Schema({vol.Required("value"): int})
 
-        await service_manager.async_register_service(
-            "my_service", handler, schema, "My service description"
-        )
+        await service_manager.async_register_service("my_service", handler, schema, "My service description")
 
         mock_hass.services.async_register.assert_called_once()
         assert "my_service" in service_manager._registered_services
@@ -147,16 +139,12 @@ class TestServiceManager:
         assert "my_service" not in service_manager._registered_services
         mock_hass.services.async_remove.assert_called_with(DOMAIN, "my_service")
 
-    async def test_async_unregister_service_not_registered(
-        self, service_manager: ServiceManager
-    ) -> None:
+    async def test_async_unregister_service_not_registered(self, service_manager: ServiceManager) -> None:
         """Test unregistering non-existent service returns False."""
         result = await service_manager.async_unregister_service("nonexistent")
         assert result is False
 
-    def test_get_registered_services(
-        self, service_manager: ServiceManager
-    ) -> None:
+    def test_get_registered_services(self, service_manager: ServiceManager) -> None:
         """Test getting list of registered services."""
         service_manager._registered_services = {
             "service1": {},
@@ -166,9 +154,7 @@ class TestServiceManager:
         result = service_manager.get_registered_services()
         assert result == ["service1", "service2"]
 
-    def test_get_registered_services_empty(
-        self, service_manager: ServiceManager
-    ) -> None:
+    def test_get_registered_services_empty(self, service_manager: ServiceManager) -> None:
         """Test getting list when no services registered."""
         result = service_manager.get_registered_services()
         assert result == []
@@ -217,9 +203,7 @@ class TestServiceHandlers:
 
         await service_manager._handle_run_action(mock_service_call)
 
-        mock_manager.async_run_action.assert_called_once_with(
-            "test_script", "test_action", manual=True
-        )
+        mock_manager.async_run_action.assert_called_once_with("test_script", "test_action", manual=True)
 
     @patch("custom_components.haanim.ha.services.async_get_manager")
     async def test_handle_run_action_no_manager(
@@ -264,7 +248,7 @@ class TestServiceHandlers:
         """Test _handle_list_scripts returns script info."""
         mock_manager = MagicMock()
         mock_metadata = MagicMock()
-        mock_metadata.name = "test_script"
+        mock_metadata.id = "test_script"
         mock_metadata.path = "/path/to/script.py"
         mock_metadata.actions = []
         mock_metadata.triggers = []

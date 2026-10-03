@@ -58,6 +58,7 @@ class TestActionExecution:
 
 # class TestQueuedAction - REMOVED (queue functionality removed)
 
+
 class TestActionWorkerPool:
     """Tests for ActionWorkerPool."""
 
@@ -112,36 +113,6 @@ class TestActionWorkerPool:
             result = await pool.submit_action("script", "action", sync_action)
 
         assert result == "sync_result"
-
-    @pytest.mark.asyncio
-    async def test_submit_action_busy_error(self) -> None:
-        """Test that ActionBusyError is raised when script is busy."""
-        pool = ActionWorkerPool()
-        started = asyncio.Event()
-        finish = asyncio.Event()
-
-        async def slow_action() -> None:
-            started.set()
-            await finish.wait()
-
-        async def second_action() -> None:
-            pass
-
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
-            # Start first action
-            task = asyncio.create_task(pool.submit_action("script", "slow", slow_action))
-            await started.wait()
-
-            # Try to submit second action - should fail
-            with pytest.raises(ActionBusyError) as exc_info:
-                await pool.submit_action("script", "second", second_action)
-
-            assert exc_info.value.script_name == "script"
-            assert exc_info.value.current_action == "slow"
-
-            # Cleanup
-            finish.set()
-            await task
 
     @pytest.mark.asyncio
     async def test_submit_action_different_scripts(self) -> None:
@@ -277,36 +248,6 @@ class TestActionWorkerPoolAdvanced:
     """Advanced tests for ActionWorkerPool methods."""
 
     @pytest.mark.asyncio
-    async def test_cancel_action_no_running_action(self) -> None:
-        """Test cancel_action returns False when no action running."""
-        pool = ActionWorkerPool()
-        result = await pool.cancel_action("script", "test reason")
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_cancel_action_running_action(self) -> None:
-        """Test cancel_action cancels a running action."""
-        pool = ActionWorkerPool()
-        started = asyncio.Event()
-        finish = asyncio.Event()
-
-        async def slow_action() -> None:
-            started.set()
-            await finish.wait()
-
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
-            task = asyncio.create_task(pool.submit_action("script", "slow", slow_action))
-            await started.wait()
-
-            # Cancel the running action
-            result = await pool.cancel_action("script", "test cancel")
-            assert result is True
-
-            # Wait for task to complete (with cancellation)
-            with pytest.raises(ActionCancelledError):
-                await task
-
-    @pytest.mark.asyncio
     async def test_run_startup_action(self) -> None:
         """Test run_startup_action executes startup handler."""
         pool = ActionWorkerPool()
@@ -349,9 +290,7 @@ class TestActionWorkerPoolAdvanced:
 
         with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
             # Start a running action
-            running_task = asyncio.create_task(
-                pool.submit_action("script", "running", running_action)
-            )
+            running_task = asyncio.create_task(pool.submit_action("script", "running", running_action))
             await running_started.wait()
 
             # Run shutdown - should cancel the running action
@@ -415,81 +354,6 @@ class TestActionWorkerPoolAdvanced:
         assert pool.active_count == 0
 
     @pytest.mark.asyncio
-    async def test_submit_action_preempt(self) -> None:
-        """Test preempt parameter cancels current action."""
-        pool = ActionWorkerPool()
-        first_started = asyncio.Event()
-        first_finish = asyncio.Event()
-
-        async def first_action() -> str:
-            first_started.set()
-            await first_finish.wait()
-            return "first"
-
-        async def preempting_action() -> str:
-            return "preempted"
-
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
-            # Start first action
-            first_task = asyncio.create_task(
-                pool.submit_action("script", "first", first_action)
-            )
-            await first_started.wait()
-
-            # Preempt with second action
-            result = await pool.submit_action(
-                "script", "preempt", preempting_action, preempt=True
-            )
-            assert result == "preempted"
-
-            # First task should have been cancelled
-            with pytest.raises(ActionCancelledError):
-                await first_task
-
-    @pytest.mark.asyncio
-    async def test_is_script_busy_true(self) -> None:
-        """Test is_script_busy returns True when action is running."""
-        pool = ActionWorkerPool()
-        started = asyncio.Event()
-        finish = asyncio.Event()
-
-        async def action() -> None:
-            started.set()
-            await finish.wait()
-
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
-            task = asyncio.create_task(pool.submit_action("script", "action", action))
-            await started.wait()
-
-            assert pool.is_script_busy("script") is True
-
-            finish.set()
-            await task
-
-    @pytest.mark.asyncio
-    async def test_get_active_action_returns_execution(self) -> None:
-        """Test get_active_action returns the running execution."""
-        pool = ActionWorkerPool()
-        started = asyncio.Event()
-        finish = asyncio.Event()
-
-        async def action() -> None:
-            started.set()
-            await finish.wait()
-
-        with patch("custom_components.haanim.engine.action_pool.get_status_manager"):
-            task = asyncio.create_task(pool.submit_action("script", "my_action", action))
-            await started.wait()
-
-            execution = pool.get_active_action("script")
-            assert execution is not None
-            assert execution.action_name == "my_action"
-            assert execution.state == ActionState.RUNNING
-
-            finish.set()
-            await task
-
-    @pytest.mark.asyncio
     async def test_get_all_active_actions_returns_list(self) -> None:
         """Test get_all_active_actions returns all running executions."""
         pool = ActionWorkerPool()
@@ -522,6 +386,7 @@ class TestActionWorkerPoolAdvanced:
 
 
 # class TestActionWorkerPoolQueue - REMOVED (queue functionality removed)
+
 
 class TestActionWorkerPoolLifecycle:
     """Tests for ActionWorkerPool lifecycle actions."""

@@ -200,9 +200,11 @@ async def test_options_flow_init(hass: HomeAssistant) -> None:
             "import_allowlist": ["datetime", "math"],
         }
         mock_manager.get = MagicMock(side_effect=test_data.get)
-        mock_manager.get_defaults = MagicMock(return_value={
-            "import_allowlist": ["datetime", "math", "json"],
-        })
+        mock_manager.get_defaults = MagicMock(
+            return_value={
+                "import_allowlist": ["datetime", "math", "json"],
+            }
+        )
         mock_get.return_value = mock_manager
 
         handler = OptionsFlowHandler(entry)
@@ -238,11 +240,13 @@ async def test_options_flow_submit_valid(hass: HomeAssistant) -> None:
         handler = OptionsFlowHandler(entry)
         handler.hass = hass
 
-        result = await handler.async_step_init(user_input={
-            "script_path": "/config/haanim",
-            "allow_all_imports": True,
-            "import_allowlist_str": "datetime, json, math",
-        })
+        result = await handler.async_step_init(
+            user_input={
+                "script_path": "/config/haanim",
+                "allow_all_imports": True,
+                "import_allowlist_str": "datetime, json, math",
+            }
+        )
 
         assert result.get("type") == FlowResultType.CREATE_ENTRY
         assert result.get("data", {}).get("allow_all_imports") is True
@@ -280,10 +284,12 @@ async def test_options_flow_invalid_path(hass: HomeAssistant) -> None:
         handler = OptionsFlowHandler(entry)
         handler.hass = hass
 
-        result = await handler.async_step_init(user_input={
-            "script_path": "/invalid/path",
-            "allow_all_imports": False,
-        })
+        result = await handler.async_step_init(
+            user_input={
+                "script_path": "/invalid/path",
+                "allow_all_imports": False,
+            }
+        )
 
         assert result.get("type") == FlowResultType.FORM
         errors = result.get("errors") or {}

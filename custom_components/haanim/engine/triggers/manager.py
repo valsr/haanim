@@ -174,6 +174,7 @@ class TriggerManager:
             self._register_event_trigger(trigger_id, trigger_def, metadata)
         else:
             _LOGGER.error("Unknown trigger type: %s", trigger_def.trigger_type)
+            del self._triggers[trigger_id]
             return ""
 
         self._trigger_metadata[trigger_id] = metadata

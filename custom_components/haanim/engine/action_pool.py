@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -66,7 +67,7 @@ class ActionExecution:
     result: Any = None
     error: BaseException | None = None
     is_lifecycle: bool = False
-    execution_id: str = field(default_factory=lambda: str(id(object())))
+    execution_id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
 
 class ActionWorkerPool:
