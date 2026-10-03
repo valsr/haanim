@@ -112,18 +112,18 @@ class CronTrigger(BaseTrigger):
 
     async def _run_cron(self) -> None:
         """Run the cron loop."""
-        cron_iter = croniter(self._cron_expr, datetime.now())
+        cron_iter = croniter(self._cron_expr, self.host.clock.now())
 
         while True:
             try:
                 # Get next execution time
                 next_time = cron_iter.get_next(datetime)
-                now = datetime.now()
+                now = self.host.clock.now()
 
                 # Wait until next execution
                 wait_seconds = (next_time - now).total_seconds()
                 if wait_seconds > 0:
-                    await asyncio.sleep(wait_seconds)
+                    await self.host.clock.sleep(wait_seconds)
 
                 # Check constraints
                 if await self._check_constraints():
@@ -133,4 +133,4 @@ class CronTrigger(BaseTrigger):
                 break
             except Exception as err:  # pylint: disable=broad-exception-caught
                 _LOGGER.exception("Error in cron trigger: %s", err)
-                await asyncio.sleep(60)  # Wait a minute before retrying
+                await self.host.clock.sleep(60)  # Wait a minute before retrying

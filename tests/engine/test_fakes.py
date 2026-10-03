@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -37,17 +38,22 @@ class TestFakeClock:
         assert clock.now() == DEFAULT_NOW
         assert clock.now().tzinfo is not None
 
+    def test_custom_start(self) -> None:
+        """Test the clock starts at the given time."""
+        start = datetime(2030, 5, 1, 8, 0, tzinfo=UTC)
+        assert FakeClock(start).now() == start
+
     def test_does_not_move_on_its_own(self) -> None:
         """Test two reads give the same time."""
         clock = FakeClock()
         assert clock.now() == clock.now()
 
-    def test_set(self) -> None:
-        """Test set jumps to the given time."""
-        clock = FakeClock()
-        target = datetime(2030, 5, 1, 8, 0, tzinfo=UTC)
-        clock.set(target)
-        assert clock.now() == target
+    def test_naive_datetime_rejected(self) -> None:
+        """Test a datetime without a time zone is rejected by the constructor and by call_at."""
+        with pytest.raises(ValueError, match="timezone-aware"):
+            FakeClock(datetime(2025, 1, 1))
+        with pytest.raises(ValueError, match="timezone-aware"):
+            FakeClock().call_at(datetime(2025, 1, 1), lambda: None)
 
     @pytest.mark.parametrize(
         ("delta", "kwargs", "expected"),
@@ -58,26 +64,309 @@ class TestFakeClock:
             (None, {}, timedelta()),
         ],
     )
-    def test_advance(self, delta: timedelta | None, kwargs: dict[str, float], expected: timedelta) -> None:
+    async def test_advance(
+        self, delta: timedelta | None, kwargs: dict[str, float], expected: timedelta
+    ) -> None:
         """Test advance moves forward by a timedelta, keyword arguments, or both."""
         clock = FakeClock()
-        assert clock.advance(delta, **kwargs) == DEFAULT_NOW + expected
+        assert await clock.advance(delta, **kwargs) == DEFAULT_NOW + expected
         assert clock.now() == DEFAULT_NOW + expected
 
-    def test_advance_backwards_rejected(self) -> None:
+    async def test_advance_backwards_rejected(self) -> None:
         """Test the clock refuses to move backwards and stays where it was."""
         clock = FakeClock()
         with pytest.raises(ValueError, match="backwards"):
-            clock.advance(seconds=-1)
+            await clock.advance(seconds=-1)
         assert clock.now() == DEFAULT_NOW
 
-    def test_naive_datetime_rejected(self) -> None:
-        """Test a datetime without a time zone is rejected by the constructor and by set."""
-        with pytest.raises(ValueError, match="timezone-aware"):
-            FakeClock(datetime(2025, 1, 1))
+
+class TestFakeClockTimers:
+    """Tests for call_later and call_at on FakeClock."""
+
+    async def test_call_later_runs_only_when_due(self) -> None:
+        """Test a callback runs once the clock reaches its time, not before, and only once."""
         clock = FakeClock()
-        with pytest.raises(ValueError, match="timezone-aware"):
-            clock.set(datetime(2025, 1, 1))
+        calls: list[datetime] = []
+        clock.call_later(10, lambda: calls.append(clock.now()))
+
+        await clock.advance(seconds=9)
+        assert calls == []
+        assert clock.pending_timers == 1
+
+        await clock.advance(seconds=1)
+        assert calls == [DEFAULT_NOW + timedelta(seconds=10)]
+        assert clock.pending_timers == 0
+
+        await clock.advance(seconds=60)
+        assert len(calls) == 1
+
+    async def test_callback_sees_its_own_time(self) -> None:
+        """Test now() inside a callback is the callback's time, not the end of the advance."""
+        clock = FakeClock()
+        seen: list[datetime] = []
+        clock.call_later(10, lambda: seen.append(clock.now()))
+        await clock.advance(minutes=5)
+        assert seen == [DEFAULT_NOW + timedelta(seconds=10)]
+        assert clock.now() == DEFAULT_NOW + timedelta(minutes=5)
+
+    async def test_timers_run_in_time_order(self) -> None:
+        """Test timers run earliest first, whatever order they were scheduled in."""
+        clock = FakeClock()
+        order: list[str] = []
+        clock.call_later(30, lambda: order.append("third"))
+        clock.call_later(10, lambda: order.append("first"))
+        clock.call_later(20, lambda: order.append("second"))
+        await clock.advance(minutes=1)
+        assert order == ["first", "second", "third"]
+
+    async def test_equal_times_run_in_scheduling_order(self) -> None:
+        """Test timers due at the same instant run in the order they were scheduled."""
+        clock = FakeClock()
+        order: list[int] = []
+        for number in range(5):
+            clock.call_later(10, lambda number=number: order.append(number))
+        await clock.advance(seconds=10)
+        assert order == [0, 1, 2, 3, 4]
+
+    async def test_cancel(self) -> None:
+        """Test a cancelled timer never runs, and cancelling again or afterwards is harmless."""
+        clock = FakeClock()
+        calls: list[str] = []
+        handle = clock.call_later(10, lambda: calls.append("cancelled"))
+        kept = clock.call_later(10, lambda: calls.append("kept"))
+
+        handle.cancel()
+        handle.cancel()
+        assert clock.pending_timers == 1
+
+        await clock.advance(seconds=10)
+        kept.cancel()
+        assert calls == ["kept"]
+
+    async def test_timer_scheduled_by_a_timer_runs_in_the_same_advance(self) -> None:
+        """Test a callback that schedules another timer inside the advanced span sees it run too."""
+        clock = FakeClock()
+        calls: list[datetime] = []
+
+        def first() -> None:
+            calls.append(clock.now())
+            clock.call_later(10, lambda: calls.append(clock.now()))
+
+        clock.call_later(10, first)
+        await clock.advance(seconds=30)
+        assert calls == [DEFAULT_NOW + timedelta(seconds=10), DEFAULT_NOW + timedelta(seconds=20)]
+
+    async def test_call_at(self) -> None:
+        """Test call_at runs the callback when the clock reaches the given time."""
+        clock = FakeClock()
+        calls: list[datetime] = []
+        clock.call_at(DEFAULT_NOW + timedelta(hours=1), lambda: calls.append(clock.now()))
+        await clock.advance(minutes=59)
+        assert calls == []
+        await clock.advance(minutes=1)
+        assert calls == [DEFAULT_NOW + timedelta(hours=1)]
+
+    @pytest.mark.parametrize("schedule", ["call_at_past", "call_later_zero", "call_later_negative"])
+    async def test_not_in_the_future_runs_as_soon_as_possible(self, schedule: str) -> None:
+        """Test a timer that is not in the future runs at the next advance without moving time."""
+        clock = FakeClock()
+        calls: list[datetime] = []
+
+        def record() -> None:
+            calls.append(clock.now())
+
+        if schedule == "call_at_past":
+            clock.call_at(DEFAULT_NOW - timedelta(hours=1), record)
+        elif schedule == "call_later_zero":
+            clock.call_later(0, record)
+        else:
+            clock.call_later(-5, record)
+
+        assert calls == []
+        await clock.advance()
+        assert calls == [DEFAULT_NOW]
+
+
+class TestFakeClockSleep:
+    """Tests for sleep on FakeClock."""
+
+    async def test_sleep_waits_for_advance(self) -> None:
+        """Test a sleeping task resumes when the clock has advanced far enough, not before."""
+        clock = FakeClock()
+        woke: list[datetime] = []
+
+        async def sleeper() -> None:
+            await clock.sleep(60)
+            woke.append(clock.now())
+
+        task = asyncio.create_task(sleeper())
+        await clock.advance(seconds=59)
+        assert woke == []
+        await clock.advance(seconds=1)
+        assert woke == [DEFAULT_NOW + timedelta(seconds=60)]
+        await task
+
+    @pytest.mark.parametrize("seconds", [0, -1])
+    async def test_sleep_zero_returns_without_advance(self, seconds: float) -> None:
+        """Test a sleep of zero or less only yields; it needs no advance and leaves no timer."""
+        clock = FakeClock()
+        await clock.sleep(seconds)
+        assert clock.now() == DEFAULT_NOW
+        assert clock.pending_timers == 0
+
+    async def test_repeated_sleeps_inside_one_advance(self) -> None:
+        """Test a loop that sleeps repeatedly runs every iteration that falls inside one advance."""
+        clock = FakeClock()
+        ticks: list[datetime] = []
+
+        async def interval() -> None:
+            while True:
+                await clock.sleep(10)
+                ticks.append(clock.now())
+
+        task = asyncio.create_task(interval())
+        await clock.advance(seconds=35)
+        task.cancel()
+
+        assert ticks == [DEFAULT_NOW + timedelta(seconds=seconds) for seconds in (10, 20, 30)]
+
+    async def test_cancelled_sleep_leaves_no_timer(self) -> None:
+        """Test cancelling a sleeping task removes its timer."""
+        clock = FakeClock()
+        task = asyncio.create_task(clock.sleep(60))
+        await clock.settle()
+        assert clock.pending_timers == 1
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert clock.pending_timers == 0
+
+    async def test_sleepers_wake_in_order(self) -> None:
+        """Test several sleeping tasks wake in order of their wake-up time."""
+        clock = FakeClock()
+        order: list[str] = []
+
+        async def sleeper(name: str, seconds: float) -> None:
+            await clock.sleep(seconds)
+            order.append(name)
+
+        tasks = [
+            asyncio.create_task(sleeper("slow", 30)),
+            asyncio.create_task(sleeper("fast", 10)),
+            asyncio.create_task(sleeper("medium", 20)),
+        ]
+        await clock.advance(minutes=1)
+        await asyncio.gather(*tasks)
+        assert order == ["fast", "medium", "slow"]
+
+
+class TestFakeClockWaitFor:
+    """Tests for wait_for on FakeClock."""
+
+    async def test_returns_result_when_finished_in_time(self) -> None:
+        """Test the awaitable's result is returned and no timer is left behind."""
+        clock = FakeClock()
+
+        async def work() -> str:
+            await clock.sleep(5)
+            return "done"
+
+        waiter = asyncio.create_task(clock.wait_for(work(), 10))
+        await clock.advance(seconds=5)
+        assert await waiter == "done"
+        assert clock.pending_timers == 0
+
+    async def test_result_without_any_advance(self) -> None:
+        """Test an awaitable that finishes without waiting on the clock needs no advance."""
+        clock = FakeClock()
+
+        async def work() -> int:
+            return 7
+
+        assert await clock.wait_for(work(), 10) == 7
+
+    async def test_timeout_cancels_and_raises(self) -> None:
+        """Test passing the timeout raises TimeoutError and cancels the awaitable."""
+        clock = FakeClock()
+        cancelled: list[bool] = []
+
+        async def work() -> None:
+            try:
+                await clock.sleep(100)
+            except asyncio.CancelledError:
+                cancelled.append(True)
+                raise
+
+        waiter = asyncio.create_task(clock.wait_for(work(), 10))
+        await clock.advance(seconds=10)
+
+        with pytest.raises(TimeoutError):
+            await waiter
+        assert cancelled == [True]
+        assert clock.pending_timers == 0
+
+    async def test_exception_propagates(self) -> None:
+        """Test an exception from the awaitable reaches the caller unchanged."""
+        clock = FakeClock()
+
+        async def work() -> None:
+            raise ValueError("boom")
+
+        with pytest.raises(ValueError, match="boom"):
+            await clock.wait_for(work(), 10)
+
+    @pytest.mark.parametrize("timeout", [0, -1])
+    async def test_zero_timeout_gives_up_at_once(self, timeout: float) -> None:
+        """Test a timeout of zero or less raises without any advance when the awaitable is not finished."""
+        clock = FakeClock()
+        with pytest.raises(TimeoutError):
+            await clock.wait_for(clock.sleep(5), timeout)
+        assert clock.pending_timers == 0
+
+    async def test_zero_timeout_returns_finished_awaitable(self) -> None:
+        """Test a timeout of zero still returns the result of an awaitable that finishes at once."""
+        clock = FakeClock()
+
+        async def work() -> int:
+            return 7
+
+        assert await clock.wait_for(work(), 0) == 7
+
+    async def test_cancelling_the_waiter_cancels_the_awaitable(self) -> None:
+        """Test cancelling the task that is waiting also cancels what it waits for."""
+        clock = FakeClock()
+        cancelled: list[bool] = []
+
+        async def work() -> None:
+            try:
+                await clock.sleep(100)
+            except asyncio.CancelledError:
+                cancelled.append(True)
+                raise
+
+        waiter = asyncio.create_task(clock.wait_for(work(), 50))
+        await clock.settle()
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        assert cancelled == [True]
+        assert clock.pending_timers == 0
+
+    async def test_awaitable_that_fails_while_being_cancelled(self) -> None:
+        """Test a timeout is still reported when the awaitable raises during cancellation."""
+        clock = FakeClock()
+
+        async def work() -> None:
+            try:
+                await clock.sleep(100)
+            except asyncio.CancelledError:
+                raise RuntimeError("cleanup failed") from None
+
+        waiter = asyncio.create_task(clock.wait_for(work(), 10))
+        await clock.advance(seconds=10)
+        with pytest.raises(TimeoutError):
+            await waiter
 
 
 class TestFakeStateProvider:
@@ -109,20 +398,20 @@ class TestFakeStateProvider:
         states.set_state("light.hall", "on")
         assert states.get("light.hall").attributes == {}
 
-    def test_timestamps(self) -> None:
+    async def test_timestamps(self) -> None:
         """Test last_changed moves only when the value changes; last_updated always moves."""
         clock = FakeClock()
         states = FakeStateProvider(clock)
         states.set_state("sensor.temp", "20")
         first = clock.now()
 
-        clock.advance(minutes=1)
+        await clock.advance(minutes=1)
         states.set_state("sensor.temp", "20", {"unit": "C"})
         value = states.get("sensor.temp")
         assert value.last_changed == first
         assert value.last_updated == first + timedelta(minutes=1)
 
-        clock.advance(minutes=1)
+        await clock.advance(minutes=1)
         states.set_state("sensor.temp", "21")
         assert states.get("sensor.temp").last_changed == first + timedelta(minutes=2)
 
@@ -299,8 +588,6 @@ class TestFakeEventBus:
 
 async def asyncio_yield() -> None:
     """Let scheduled callbacks and tasks run once."""
-    import asyncio  # pylint: disable=import-outside-toplevel
-
     await asyncio.sleep(0)
 
 
@@ -440,12 +727,12 @@ class TestFakeFileSystem:
         assert await files.read_text(path) == "x = 1"
         assert files.modified_time(path) == clock.now()
 
-    def test_rewrite_updates_modified_time(self) -> None:
+    async def test_rewrite_updates_modified_time(self) -> None:
         """Test writing again moves the modification time."""
         clock = FakeClock()
         files = FakeFileSystem(clock)
         files.write("/a.py", "1")
-        clock.advance(seconds=10)
+        await clock.advance(seconds=10)
         files.write("/a.py", "2")
         assert files.modified_time(Path("/a.py")) == DEFAULT_NOW + timedelta(seconds=10)
 
@@ -496,7 +783,7 @@ class TestLocalFileSystem:
         files = LocalFileSystem()
         assert files.exists(path) is True
         assert await files.read_text(path) == "x = 1"
-        assert files.modified_time(path) == datetime.fromtimestamp(path.stat().st_mtime)
+        assert files.modified_time(path) == datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
 
     async def test_missing_file(self, tmp_path: Path) -> None:
         """Test a missing file does not exist and raises OSError when read or inspected."""
@@ -602,11 +889,11 @@ class TestMakeHost:
         assert isinstance(host.sun, FakeSunProvider)
         assert isinstance(host.files, FakeFileSystem)
 
-    def test_created_fakes_share_the_clock(self) -> None:
+    async def test_created_fakes_share_the_clock(self) -> None:
         """Test states, events and files created by make_host are stamped by the host's clock."""
         clock = FakeClock()
         host = make_host(clock=clock)
-        clock.advance(hours=1)
+        await clock.advance(hours=1)
 
         host.states.set_state("sensor.temp", "20")  # type: ignore[attr-defined]
         host.events.fire("my_event")

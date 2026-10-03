@@ -92,7 +92,7 @@ class TestAutomationMetadata:
 
     def test_creation(self) -> None:
         """Test creating AutomationMetadata."""
-        now = datetime.now()
+        now = datetime(2024, 1, 15, 12, 0, 0)
         actions = [
             ActionDefinition(
                 name="action1",
@@ -140,8 +140,8 @@ class TestAutomationMetadata:
             id="Test",
             path="/path/automation.py",
             filename="automation.py",
-            loaded_at=datetime.now(),
-            modified_at=datetime.now(),
+            loaded_at=datetime(2024, 1, 15, 12, 0, 0),
+            modified_at=datetime(2024, 1, 15, 12, 0, 0),
             actions=[],
             triggers=[],
             has_startup=False,

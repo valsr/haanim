@@ -23,8 +23,15 @@ from haanim.engine.errors import (
     ShutdownTimeoutError,
 )
 from haanim.engine.automation_status import AutomationStatusManager
+from haanim.interfaces import Clock
 
 _LOGGER = logging.getLogger(__name__)
+
+# How long an automation's cancelled actions get to finish before its shutdown action runs.
+CANCEL_CLEANUP_SECONDS = 0.05
+
+# How long the pool waits for cancelled actions when it shuts down.
+POOL_SHUTDOWN_WAIT_SECONDS = 1.0
 
 
 class ActionState(Enum):
@@ -82,6 +89,7 @@ class ActionWorkerPool:
     def __init__(
         self,
         status_manager: AutomationStatusManager,
+        clock: Clock,
         max_workers: int = DEFAULT_MAX_CONCURRENT_ACTIONS,
         shutdown_timeout: float = DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
     ) -> None:
@@ -89,10 +97,14 @@ class ActionWorkerPool:
 
         Args:
             status_manager: Where the running actions of each automation are recorded.
+            clock: Source of timestamps, delays and timeouts.
             max_workers: Maximum number of concurrent actions allowed.
             shutdown_timeout: Timeout for shutdown actions in seconds.
         """
         self._status_manager = status_manager
+        self._clock = clock
+        # Set each time an execution ends; lets wait_idle() wake up and re-check.
+        self._execution_ended = asyncio.Event()
         self._max_workers = max_workers
         self._shutdown_timeout = shutdown_timeout
 
@@ -240,6 +252,32 @@ class ActionWorkerPool:
                 # Clean up after execution
                 if execution.execution_id in self._active_executions:
                     del self._active_executions[execution.execution_id]
+            self._execution_ended.set()
+
+    @property
+    def clock(self) -> Clock:
+        """The clock this pool takes its time from."""
+        return self._clock
+
+    async def wait_idle(self, automation_id: str | None = None) -> None:
+        """Wait until no action is executing.
+
+        Returns at once if nothing is executing. This does not stop new actions
+        from being submitted while waiting; it returns the first time the pool
+        is found idle.
+
+        Args:
+            automation_id: Wait only for this automation's actions. All automations if omitted.
+        """
+        while self._has_active(automation_id):
+            self._execution_ended.clear()
+            await self._execution_ended.wait()
+
+    def _has_active(self, automation_id: str | None) -> bool:
+        """Return whether any action is executing, optionally for one automation only."""
+        if automation_id is None:
+            return bool(self._active_executions)
+        return any(execution.automation_id == automation_id for execution in self._active_executions.values())
 
     def _wrap_sync_func(self, func: Callable[..., Any]) -> Callable[..., Coroutine[Any, Any, Any]]:
         """Wrap a sync function as async.
@@ -276,7 +314,7 @@ class ActionWorkerPool:
 
         async with self._semaphore:
             execution.state = ActionState.RUNNING
-            execution.started_at = datetime.now()
+            execution.started_at = self._clock.now()
 
             # Update automation status to running
             status_manager.add_running_action(
@@ -304,7 +342,7 @@ class ActionWorkerPool:
 
                 execution.state = ActionState.COMPLETED
                 execution.result = result
-                execution.completed_at = datetime.now()
+                execution.completed_at = self._clock.now()
 
                 _LOGGER.debug(
                     "Completed action '%s' for automation '%s'",
@@ -319,7 +357,7 @@ class ActionWorkerPool:
 
             except asyncio.CancelledError as exc:
                 execution.state = ActionState.CANCELLED
-                execution.completed_at = datetime.now()
+                execution.completed_at = self._clock.now()
                 _LOGGER.warning(
                     "Action '%s' for automation '%s' was cancelled",
                     execution.action_name,
@@ -332,7 +370,7 @@ class ActionWorkerPool:
             except Exception as err:
                 execution.state = ActionState.FAILED
                 execution.error = err
-                execution.completed_at = datetime.now()
+                execution.completed_at = self._clock.now()
                 _LOGGER.error(
                     "Action '%s' for automation '%s' failed: %s",
                     execution.action_name,
@@ -412,13 +450,16 @@ class ActionWorkerPool:
             # Cancel any currently running actions
             await self.cancel_automation_actions(automation_id, "automation shutdown")
 
-            # Wait briefly for cancelled actions to clean up
-            await asyncio.sleep(0.05)
+            # Give cancelled actions a moment to finish cleaning up
+            try:
+                await self._clock.wait_for(self.wait_idle(automation_id), CANCEL_CLEANUP_SECONDS)
+            except TimeoutError:
+                pass
 
             # Execute shutdown with timeout
             _LOGGER.debug("Running shutdown action for automation '%s'", automation_id)
             try:
-                return await asyncio.wait_for(
+                return await self._clock.wait_for(
                     self.submit_action(
                         automation_id,
                         "__shutdown__",
@@ -427,9 +468,9 @@ class ActionWorkerPool:
                         is_lifecycle=True,
                         **kwargs,
                     ),
-                    timeout=self._shutdown_timeout,
+                    self._shutdown_timeout,
                 )
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 _LOGGER.error(
                     "Shutdown action for automation '%s' timed out after %.0fs",
                     automation_id,
@@ -501,11 +542,10 @@ class ActionWorkerPool:
                 execution.task.cancel()
 
         # Wait for all actions to complete
-        max_wait = 1.0  # Maximum 1 second wait
-        waited = 0.0
-        while self.active_count > 0 and waited < max_wait:
-            await asyncio.sleep(0.01)
-            waited += 0.01
+        try:
+            await self._clock.wait_for(self.wait_idle(), POOL_SHUTDOWN_WAIT_SECONDS)
+        except TimeoutError:
+            pass
 
         if self.active_count > 0:
             _LOGGER.warning(

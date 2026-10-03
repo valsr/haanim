@@ -171,9 +171,9 @@ class ActionDispatcher:
             if timeout > 0:
                 # Execute with timeout
                 try:
-                    result = await asyncio.wait_for(task, timeout=timeout)
+                    result = await self._pool.clock.wait_for(task, timeout)
                     return result
-                except asyncio.TimeoutError as err:
+                except TimeoutError as err:
                     task.cancel()
                     raise ActionTimeOutError(automation_id, action_name, timeout) from err
             else:
@@ -207,8 +207,8 @@ class ActionDispatcher:
             while True:
                 # Get next item from queue
                 try:
-                    item = await asyncio.wait_for(queue.get(), timeout=1.0)
-                except asyncio.TimeoutError:
+                    item = await self._pool.clock.wait_for(queue.get(), 1.0)
+                except TimeoutError:
                     # Check if queue is empty
                     if queue.empty():
                         break

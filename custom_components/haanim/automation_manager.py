@@ -90,6 +90,7 @@ class AutomationManager:
         # Action worker pool for concurrent execution
         self._action_pool = ActionWorkerPool(
             status_manager=self._status_manager,
+            clock=host.clock,
             max_workers=DEFAULT_MAX_CONCURRENT_ACTIONS,
             shutdown_timeout=DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
         )

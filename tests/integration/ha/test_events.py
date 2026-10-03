@@ -44,7 +44,7 @@ class TestEventData:
             event_type="test_event",
             data={},
             origin=None,
-            time_fired=datetime.now(),
+            time_fired=datetime(2024, 1, 15, 12, 0, 0),
             context_id="ctx123",
             context_parent_id=None,
             context_user_id=None,
@@ -84,7 +84,7 @@ class TestEventManager:
         await event_manager.async_teardown()
 
         # Queue should receive None to signal shutdown
-        msg = await asyncio.wait_for(queue.get(), timeout=1.0)
+        msg = queue.get_nowait()
         assert msg is None
 
     async def test_async_teardown_unsubscribes_all(
@@ -200,7 +200,7 @@ class TestEventConvenienceFunctions:
             mock_event.data = {"test": "data"}
             mock_event.time_fired = datetime(2024, 1, 1, 12, 0, 0)
             # Call the callback
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0)
             callback(mock_event)
             return MagicMock()
 
@@ -304,7 +304,7 @@ class TestEventManagerHandleEvent:
                 event_type="filler",
                 data={},
                 origin=None,
-                time_fired=datetime.now(),
+                time_fired=datetime(2024, 1, 15, 12, 0, 0),
                 context_id="ctx",
                 context_parent_id=None,
                 context_user_id=None,

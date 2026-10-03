@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -369,25 +369,144 @@ class TestServiceCallerContract:
 # --- Clock -----------------------------------------------------------------------
 
 
+# The real clock cannot be advanced, so its contract tests wait for real time to pass.
+# The durations are kept as short as is reliable; the fake clock runs the same tests instantly.
+TICK = 0.02
+
+
+@dataclass
+class ClockSetup:
+    """A clock and a way to make time pass on it."""
+
+    clock: Clock
+    fake: FakeClock | None
+
+    async def elapse(self, seconds: float) -> None:
+        """Let at least the given time pass and let anything that became due run."""
+        if self.fake is not None:
+            await self.fake.advance(seconds=seconds)
+        else:
+            await asyncio.sleep(seconds + TICK)
+
+
 @pytest.fixture(params=IMPLEMENTATIONS)
-def clock(request: pytest.FixtureRequest) -> Clock:
+def clock_setup(request: pytest.FixtureRequest) -> ClockSetup:
     """A clock in each implementation."""
-    return FakeClock() if request.param == "fake" else HAClock()
+    if request.param == "fake":
+        fake = FakeClock()
+        return ClockSetup(fake, fake)
+    return ClockSetup(HAClock(), None)
 
 
 class TestClockContract:
     """Behaviour every Clock must have."""
 
-    def test_now_is_timezone_aware(self, clock: Clock) -> None:
+    def test_now_is_timezone_aware(self, clock_setup: ClockSetup) -> None:
         """Test now() returns a datetime with a time zone."""
-        now = clock.now()
+        now = clock_setup.clock.now()
         assert isinstance(now, datetime)
         assert now.tzinfo is not None
 
-    def test_now_does_not_go_backwards(self, clock: Clock) -> None:
-        """Test a later read is never earlier than an earlier one."""
-        first = clock.now()
-        assert clock.now() >= first
+    async def test_now_moves_forward(self, clock_setup: ClockSetup) -> None:
+        """Test now() is later after time has passed."""
+        first = clock_setup.clock.now()
+        await clock_setup.elapse(TICK)
+        assert clock_setup.clock.now() - first >= timedelta(seconds=TICK)
+
+    async def test_sleep_resumes_after_the_time_has_passed(self, clock_setup: ClockSetup) -> None:
+        """Test a sleeping task is still waiting before its time and finished after it."""
+        task = asyncio.create_task(clock_setup.clock.sleep(TICK))
+        await asyncio.sleep(0)
+        assert not task.done()
+        await clock_setup.elapse(TICK)
+        assert task.done()
+        await task
+
+    @pytest.mark.parametrize("seconds", [0, -1])
+    async def test_sleep_zero_or_less_returns(self, clock_setup: ClockSetup, seconds: float) -> None:
+        """Test a sleep of zero or less returns without time having to pass."""
+        await clock_setup.clock.sleep(seconds)
+
+    async def test_call_later(self, clock_setup: ClockSetup) -> None:
+        """Test a callback runs once, after its delay."""
+        calls: list[int] = []
+        clock_setup.clock.call_later(TICK, lambda: calls.append(1))
+        await asyncio.sleep(0)
+        assert calls == []
+        await clock_setup.elapse(TICK)
+        await clock_setup.elapse(TICK)
+        assert calls == [1]
+
+    async def test_call_later_cancel(self, clock_setup: ClockSetup) -> None:
+        """Test a cancelled callback never runs, and cancelling twice is harmless."""
+        calls: list[int] = []
+        handle = clock_setup.clock.call_later(TICK, lambda: calls.append(1))
+        handle.cancel()
+        handle.cancel()
+        await clock_setup.elapse(TICK)
+        assert calls == []
+
+    async def test_call_later_zero_delay(self, clock_setup: ClockSetup) -> None:
+        """Test a zero delay runs the callback as soon as the loop gets a turn."""
+        calls: list[int] = []
+        clock_setup.clock.call_later(0, lambda: calls.append(1))
+        await clock_setup.elapse(0)
+        assert calls == [1]
+
+    async def test_call_at(self, clock_setup: ClockSetup) -> None:
+        """Test a callback scheduled for a time runs when that time is reached."""
+        calls: list[int] = []
+        clock_setup.clock.call_at(clock_setup.clock.now() + timedelta(seconds=TICK), lambda: calls.append(1))
+        await asyncio.sleep(0)
+        assert calls == []
+        await clock_setup.elapse(TICK)
+        assert calls == [1]
+
+    async def test_call_at_in_the_past(self, clock_setup: ClockSetup) -> None:
+        """Test a time that has already passed runs the callback as soon as possible."""
+        calls: list[int] = []
+        clock_setup.clock.call_at(clock_setup.clock.now() - timedelta(hours=1), lambda: calls.append(1))
+        await clock_setup.elapse(0)
+        assert calls == [1]
+
+    async def test_wait_for_returns_result(self, clock_setup: ClockSetup) -> None:
+        """Test an awaitable that finishes in time gives its result."""
+
+        async def work() -> str:
+            return "done"
+
+        assert await clock_setup.clock.wait_for(work(), 10) == "done"
+
+    async def test_wait_for_times_out(self, clock_setup: ClockSetup) -> None:
+        """Test an awaitable that overruns is cancelled and TimeoutError is raised."""
+        cancelled: list[bool] = []
+
+        async def work() -> None:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.append(True)
+                raise
+
+        waiter = asyncio.create_task(clock_setup.clock.wait_for(work(), TICK))
+        await clock_setup.elapse(TICK)
+        with pytest.raises(TimeoutError):
+            await waiter
+        assert cancelled == [True]
+
+    async def test_wait_for_propagates_exceptions(self, clock_setup: ClockSetup) -> None:
+        """Test an exception from the awaitable reaches the caller unchanged."""
+
+        async def work() -> None:
+            raise ValueError("boom")
+
+        with pytest.raises(ValueError, match="boom"):
+            await clock_setup.clock.wait_for(work(), 10)
+
+    async def test_wait_for_zero_timeout(self, clock_setup: ClockSetup) -> None:
+        """Test a zero timeout gives up at once on an awaitable that is not finished."""
+        with pytest.raises(TimeoutError):
+            await clock_setup.clock.wait_for(asyncio.Event().wait(), 0)
 
 
 # --- SunProvider -----------------------------------------------------------------

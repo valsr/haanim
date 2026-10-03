@@ -138,7 +138,7 @@ class IntervalTrigger(BaseTrigger):
     async def _run_interval(self) -> None:
         """Run the interval loop."""
         # Initial delay
-        await asyncio.sleep(self._delay_seconds)
+        await self.host.clock.sleep(self._delay_seconds)
 
         while True:
             try:
@@ -148,10 +148,10 @@ class IntervalTrigger(BaseTrigger):
                     await self._execute_function()
 
                 # Wait for next interval
-                await asyncio.sleep(self._interval_seconds)
+                await self.host.clock.sleep(self._interval_seconds)
 
             except asyncio.CancelledError:
                 break
             except Exception as err:  # pylint: disable=broad-exception-caught
                 _LOGGER.exception("Error in interval trigger: %s", err)
-                await asyncio.sleep(self._interval_seconds)
+                await self.host.clock.sleep(self._interval_seconds)

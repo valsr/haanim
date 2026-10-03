@@ -8,9 +8,11 @@ all into a ``Host``.
 
 from __future__ import annotations
 
-from datetime import datetime
+import asyncio
+from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -23,6 +25,8 @@ from custom_components.haanim.ha.state import StateManager
 from haanim.engine.errors import ServiceCallError
 from haanim.interfaces import Host
 from haanim.types import ServiceInfo
+
+T = TypeVar("T")
 
 __all__ = ["HAClock", "HAFileSystem", "HAServiceCaller", "HASunProvider", "build_host"]
 
@@ -95,11 +99,31 @@ class HAServiceCaller:
 
 
 class HAClock:
-    """Current time in Home Assistant's configured time zone."""
+    """Real time, in Home Assistant's configured time zone, on the running event loop."""
 
     def now(self) -> datetime:
         """Return the current time as a timezone-aware datetime."""
         return dt_util.now()
+
+    async def sleep(self, seconds: float) -> None:
+        """Suspend the caller for the given time."""
+        await asyncio.sleep(max(seconds, 0.0))
+
+    def call_later(self, delay: float, callback: Callable[[], Any]) -> asyncio.TimerHandle:
+        """Call ``callback`` once, ``delay`` seconds from now."""
+        return asyncio.get_running_loop().call_later(max(delay, 0.0), callback)
+
+    def call_at(self, when: datetime, callback: Callable[[], Any]) -> asyncio.TimerHandle:
+        """Call ``callback`` once, at the given timezone-aware time."""
+        return self.call_later((when - self.now()).total_seconds(), callback)
+
+    async def wait_for(self, awaitable: Awaitable[T], timeout: float) -> T:
+        """Wait for an awaitable, giving up after ``timeout`` seconds.
+
+        Raises:
+            TimeoutError: If the awaitable did not finish in time.
+        """
+        return await asyncio.wait_for(awaitable, timeout=max(timeout, 0.0))
 
 
 class HASunProvider:
@@ -135,7 +159,7 @@ class HAFileSystem:
 
     def modified_time(self, path: Path) -> datetime:
         """Return when the file was last modified."""
-        return datetime.fromtimestamp(path.stat().st_mtime)
+        return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
 
     async def read_text(self, path: Path) -> str:
         """Return the file's contents decoded as UTF-8."""

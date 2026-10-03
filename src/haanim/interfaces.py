@@ -10,16 +10,18 @@ supplies in-memory ones for tests.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from haanim.types import EventData, ServiceInfo, StateChangedEvent, StateVal
 
 if TYPE_CHECKING:
     from haanim.engine.automation_context import AutomationContext
+
+T = TypeVar("T")
 
 __all__ = [
     "AutomationRegistry",
@@ -30,6 +32,7 @@ __all__ = [
     "ServiceCaller",
     "StateProvider",
     "SunProvider",
+    "TimerHandle",
 ]
 
 
@@ -116,11 +119,54 @@ class ServiceCaller(Protocol):
         """
 
 
+class TimerHandle(Protocol):
+    """A scheduled callback that can be cancelled."""
+
+    def cancel(self) -> None:
+        """Stop the callback from running. Does nothing if it already ran or was cancelled."""
+
+
 class Clock(Protocol):
-    """Source of the current time."""
+    """Source of time for the engine.
+
+    All time in the engine comes from here: timestamps, delays, scheduled
+    callbacks and timeouts. Nothing in the engine reads the system clock or
+    calls ``asyncio.sleep`` directly, so a test can replace the clock and
+    control time.
+    """
 
     def now(self) -> datetime:
         """Return the current time as a timezone-aware datetime in the host's time zone."""
+
+    async def sleep(self, seconds: float) -> None:
+        """Suspend the caller for the given time.
+
+        A value of zero or less yields to the event loop once and returns.
+        """
+
+    def call_later(self, delay: float, callback: Callable[[], Any]) -> TimerHandle:
+        """Call ``callback`` once, ``delay`` seconds from now.
+
+        The callback is a plain function, not a coroutine function, and is
+        called on the event loop. A delay of zero or less means as soon as possible.
+        """
+
+    def call_at(self, when: datetime, callback: Callable[[], Any]) -> TimerHandle:
+        """Call ``callback`` once, at the given timezone-aware time.
+
+        A time that is not in the future means as soon as possible.
+        """
+
+    async def wait_for(self, awaitable: Awaitable[T], timeout: float) -> T:
+        """Wait for an awaitable, giving up after ``timeout`` seconds.
+
+        If the time runs out, the awaitable is cancelled and ``TimeoutError``
+        is raised. A timeout of zero or less gives up at once unless the
+        awaitable is already finished.
+
+        Raises:
+            TimeoutError: If the awaitable did not finish in time.
+        """
 
 
 class SunProvider(Protocol):

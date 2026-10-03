@@ -301,7 +301,7 @@ class StateTrigger(BaseTrigger):
         """
         try:
             if self._state_hold:
-                await asyncio.sleep(self._state_hold)
+                await self.host.clock.sleep(self._state_hold)
 
             # Re-check trigger condition
             if self._evaluate_trigger():

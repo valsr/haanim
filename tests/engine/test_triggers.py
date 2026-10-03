@@ -131,7 +131,7 @@ class TestBaseTrigger:
         expected_minute: int,
     ) -> None:
         """Test parsing HH:MM time format."""
-        now = datetime.now()
+        now = datetime(2024, 1, 15, 12, 0, 0)
         result = trigger._parse_time_value(time_str, now)
         assert result is not None
         assert result.hour == expected_hour
@@ -139,7 +139,7 @@ class TestBaseTrigger:
 
     def test_parse_time_value_invalid(self, trigger: ConcreteTrigger) -> None:
         """Test parsing invalid time returns None."""
-        now = datetime.now()
+        now = datetime(2024, 1, 15, 12, 0, 0)
         result = trigger._parse_time_value("invalid", now)
         assert result is None
 
@@ -392,7 +392,7 @@ class TestTimeRangeEvaluation:
 
     def test_evaluate_time_spec_invalid(self, trigger: ConcreteTrigger) -> None:
         """Test invalid time spec returns False."""
-        now = datetime.now()
+        now = datetime(2024, 1, 15, 12, 0, 0)
         result = trigger._evaluate_time_spec("invalid_spec", now)
         assert result is False
 
@@ -561,7 +561,7 @@ class TestTimeTrigger:
 
         # Create an actual async task that we can cancel
         async def long_running():
-            await asyncio.sleep(1000)
+            await asyncio.Event().wait()
 
         time_trigger._task = asyncio.create_task(long_running())
         await time_trigger.async_stop()
@@ -644,7 +644,7 @@ class TestEventTrigger:
 
         # Create an actual async task that we can cancel
         async def long_running():
-            await asyncio.sleep(1000)
+            await asyncio.Event().wait()
 
         event_trigger._queue = asyncio.Queue()
         event_trigger._task = asyncio.create_task(long_running())
@@ -847,7 +847,7 @@ class TestStateTriggerAdvanced:
         """Test async_stop cancels hold task."""
 
         async def long_running():
-            await asyncio.sleep(1000)
+            await asyncio.Event().wait()
 
         state_trigger._task = asyncio.create_task(long_running())
         state_trigger._hold_task = asyncio.create_task(long_running())
@@ -1319,7 +1319,7 @@ class TestEventTriggerAdvanced:
 
         # Create a real task that we can cancel
         async def long_running():
-            await asyncio.sleep(100)
+            await asyncio.Event().wait()
 
         trigger._task = asyncio.create_task(long_running())
         await trigger.async_stop()
@@ -1384,25 +1384,25 @@ class TestTimeConstraintEvaluation:
 
     def test_parse_time_value_hhmm_format(self, trigger: StateTrigger) -> None:
         """Test parsing HH:MM time format."""
-        now = datetime.now()
+        now = datetime(2024, 1, 15, 12, 0, 0)
         result = trigger._parse_time_value("14:30", now)
         assert result == time(14, 30, 0)
 
     def test_parse_time_value_hhmmss_format(self, trigger: StateTrigger) -> None:
         """Test parsing HH:MM:SS time format."""
-        now = datetime.now()
+        now = datetime(2024, 1, 15, 12, 0, 0)
         result = trigger._parse_time_value("14:30:45", now)
         assert result == time(14, 30, 45)
 
     def test_parse_time_value_invalid(self, trigger: StateTrigger) -> None:
         """Test parsing invalid time format returns None."""
-        now = datetime.now()
+        now = datetime(2024, 1, 15, 12, 0, 0)
         result = trigger._parse_time_value("not_a_time", now)
         assert result is None
 
     def test_parse_time_value_sunrise(self, trigger: StateTrigger) -> None:
         """Test parsing sunrise returns time."""
-        now = datetime.now()
+        now = datetime(2024, 1, 15, 12, 0, 0)
         with patch.object(trigger.host.sun, "next_event") as mock_sun:
             mock_sun.return_value = datetime(2024, 1, 15, 7, 30, 0)
             result = trigger._parse_time_value("sunrise", now)
@@ -1411,7 +1411,7 @@ class TestTimeConstraintEvaluation:
 
     def test_parse_time_value_sunset(self, trigger: StateTrigger) -> None:
         """Test parsing sunset returns time."""
-        now = datetime.now()
+        now = datetime(2024, 1, 15, 12, 0, 0)
         with patch.object(trigger.host.sun, "next_event") as mock_sun:
             mock_sun.return_value = datetime(2024, 1, 15, 18, 45, 0)
             result = trigger._parse_time_value("sunset", now)
@@ -1420,7 +1420,7 @@ class TestTimeConstraintEvaluation:
 
     def test_parse_time_value_sunrise_none(self, trigger: StateTrigger) -> None:
         """Test parsing sunrise returns None when sun data unavailable."""
-        now = datetime.now()
+        now = datetime(2024, 1, 15, 12, 0, 0)
         with patch.object(trigger.host.sun, "next_event") as mock_sun:
             mock_sun.return_value = None
             result = trigger._parse_time_value("sunrise", now)
@@ -1428,7 +1428,7 @@ class TestTimeConstraintEvaluation:
 
     def test_parse_time_value_sunset_none(self, trigger: StateTrigger) -> None:
         """Test parsing sunset returns None when sun data unavailable."""
-        now = datetime.now()
+        now = datetime(2024, 1, 15, 12, 0, 0)
         with patch.object(trigger.host.sun, "next_event") as mock_sun:
             mock_sun.return_value = None
             result = trigger._parse_time_value("sunset", now)

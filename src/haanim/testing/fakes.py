@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from haanim.engine.errors import ActionNotFoundError, NonExistingAutomationError, ServiceCallError
 from haanim.interfaces import FileSystem, Host
@@ -35,12 +35,60 @@ __all__ = [
     "make_host",
 ]
 
+T = TypeVar("T")
+
 DEFAULT_NOW = datetime(2025, 1, 6, 12, 0, 0, tzinfo=timezone.utc)
 """Where a FakeClock starts unless told otherwise: Monday 6 January 2025, noon UTC."""
 
 
+SETTLE_ITERATIONS = 100
+"""How many times FakeClock yields to the event loop to let woken tasks run.
+
+After a timer fires, the tasks it wakes need turns on the event loop before
+they reach their next wait. There is no public way to ask the loop whether it
+has anything left to run, so the clock yields a fixed number of times. The
+number is far more than any chain of awaits in the engine needs.
+"""
+
+
+def _resolve(future: asyncio.Future[None]) -> None:
+    """Complete a future unless it is already finished or cancelled."""
+    if not future.done():
+        future.set_result(None)
+
+
+class _FakeTimer:
+    """A callback scheduled on a FakeClock; satisfies ``haanim.interfaces.TimerHandle``."""
+
+    def __init__(self, when: datetime, sequence: int, callback: Callable[[], Any]) -> None:
+        self.when = when
+        self.sequence = sequence
+        self._callback: Callable[[], Any] | None = callback
+
+    def cancel(self) -> None:
+        """Stop the callback from running."""
+        self._callback = None
+
+    @property
+    def active(self) -> bool:
+        """Whether the callback is still waiting to run."""
+        return self._callback is not None
+
+    def fire(self) -> None:
+        """Run the callback once."""
+        callback, self._callback = self._callback, None
+        if callback is not None:
+            callback()
+
+
 class FakeClock:
-    """A clock that only moves when a test moves it."""
+    """A clock that only moves when a test moves it.
+
+    ``sleep``, ``call_later``, ``call_at`` and ``wait_for`` register timers.
+    Nothing happens to them until the test calls ``advance``, which moves the
+    time forward, runs every timer that falls due in order, and lets the tasks
+    they wake run.
+    """
 
     def __init__(self, now: datetime = DEFAULT_NOW) -> None:
         """Initialize the clock.
@@ -51,32 +99,111 @@ class FakeClock:
         Raises:
             ValueError: If ``now`` has no time zone.
         """
-        self._now = self._require_aware(now)
-
-    @staticmethod
-    def _require_aware(value: datetime) -> datetime:
-        if value.tzinfo is None:
+        if now.tzinfo is None:
             raise ValueError("FakeClock needs a timezone-aware datetime")
-        return value
+        self._now = now
+        self._timers: list[_FakeTimer] = []
+        self._sequence = 0
+
+    # --- Clock protocol ---------------------------------------------------------
 
     def now(self) -> datetime:
         """Return the current fake time."""
         return self._now
 
-    def set(self, now: datetime) -> None:
-        """Jump to the given time.
+    async def sleep(self, seconds: float) -> None:
+        """Suspend the caller until the clock has been advanced by ``seconds``."""
+        if seconds <= 0:
+            await asyncio.sleep(0)
+            return
+        future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        timer = self.call_later(seconds, lambda: _resolve(future))
+        try:
+            await future
+        finally:
+            timer.cancel()
+
+    def call_later(self, delay: float, callback: Callable[[], Any]) -> _FakeTimer:
+        """Schedule ``callback`` for when the clock has been advanced by ``delay`` seconds."""
+        return self.call_at(self._now + timedelta(seconds=max(delay, 0.0)), callback)
+
+    def call_at(self, when: datetime, callback: Callable[[], Any]) -> _FakeTimer:
+        """Schedule ``callback`` for when the clock reaches ``when``.
 
         Raises:
-            ValueError: If ``now`` has no time zone.
+            ValueError: If ``when`` has no time zone.
         """
-        self._now = self._require_aware(now)
+        if when.tzinfo is None:
+            raise ValueError("FakeClock needs a timezone-aware datetime")
+        self._sequence += 1
+        timer = _FakeTimer(max(when, self._now), self._sequence, callback)
+        self._timers.append(timer)
+        return timer
 
-    def advance(self, delta: timedelta | None = None, **kwargs: float) -> datetime:
-        """Move the clock forward and return the new time.
+    async def wait_for(self, awaitable: Awaitable[T], timeout: float) -> T:
+        """Wait for an awaitable until the clock has been advanced by ``timeout`` seconds.
+
+        Raises:
+            TimeoutError: If the clock passed the timeout before the awaitable finished.
+        """
+        task: asyncio.Future[T] = asyncio.ensure_future(awaitable)
+        if timeout <= 0:
+            await asyncio.sleep(0)
+            if task.done():
+                return task.result()
+            await self._cancel(task)
+            raise TimeoutError
+
+        timed_out: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        timer = self.call_later(timeout, lambda: _resolve(timed_out))
+        try:
+            waiting: set[asyncio.Future[Any]] = {task, timed_out}
+            await asyncio.wait(waiting, return_when=asyncio.FIRST_COMPLETED)
+        except asyncio.CancelledError:
+            await self._cancel(task)
+            raise
+        finally:
+            timer.cancel()
+            timed_out.cancel()
+
+        if task.done():
+            return task.result()
+        await self._cancel(task)
+        raise TimeoutError
+
+    @staticmethod
+    async def _cancel(task: asyncio.Future[Any]) -> None:
+        """Cancel a task and wait until it has finished cancelling."""
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # pylint: disable=broad-exception-caught
+            # The task failed while being cancelled; the timeout or cancellation
+            # that caused this is what the caller is told about.
+            pass
+
+    # --- Test controls ----------------------------------------------------------
+
+    async def advance(self, delta: timedelta | None = None, **kwargs: float) -> datetime:
+        """Move the clock forward, running everything that falls due on the way.
+
+        Timers run in order of their time, and in the order they were scheduled
+        when times are equal. Before each timer runs, the clock is set to that
+        timer's time, so code woken by it sees the right ``now()``. After each
+        one, woken tasks get to run, which lets them schedule further timers
+        inside the same advance (an interval loop fires repeatedly, for example).
+
+        ``advance()`` with no arguments moves no time; it runs timers that are
+        already due and lets pending tasks run.
 
         Args:
             delta: How far to move, or pass ``timedelta`` keyword arguments instead.
             **kwargs: Keyword arguments for ``timedelta``, e.g. ``minutes=5``.
+
+        Returns:
+            The new time.
 
         Raises:
             ValueError: If the clock would move backwards.
@@ -84,8 +211,35 @@ class FakeClock:
         step = (delta or timedelta()) + timedelta(**kwargs)
         if step < timedelta():
             raise ValueError("FakeClock cannot move backwards")
-        self._now += step
+        target = self._now + step
+
+        await self.settle()
+        while (timer := self._next_due(target)) is not None:
+            self._now = timer.when
+            timer.fire()
+            await self.settle()
+        self._now = target
         return self._now
+
+    async def settle(self) -> None:
+        """Let tasks that are ready to run do so, without moving time."""
+        for _ in range(SETTLE_ITERATIONS):
+            await asyncio.sleep(0)
+
+    def _next_due(self, target: datetime) -> _FakeTimer | None:
+        """Remove and return the earliest active timer due at or before ``target``."""
+        self._timers = [timer for timer in self._timers if timer.active]
+        due = [timer for timer in self._timers if timer.when <= target]
+        if not due:
+            return None
+        timer = min(due, key=lambda candidate: (candidate.when, candidate.sequence))
+        self._timers.remove(timer)
+        return timer
+
+    @property
+    def pending_timers(self) -> int:
+        """The number of timers waiting to run, including sleeps and timeouts."""
+        return sum(1 for timer in self._timers if timer.active)
 
 
 @dataclass
@@ -479,7 +633,7 @@ class LocalFileSystem:
 
     def modified_time(self, path: Path) -> datetime:
         """Return when the file was last modified."""
-        return datetime.fromtimestamp(Path(path).stat().st_mtime)
+        return datetime.fromtimestamp(Path(path).stat().st_mtime, tz=timezone.utc)
 
     async def read_text(self, path: Path) -> str:
         """Return the file's contents decoded as UTF-8."""

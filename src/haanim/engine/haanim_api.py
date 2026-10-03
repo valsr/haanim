@@ -51,25 +51,27 @@ class HAAnimServiceCall:
         self.error_code: str | None = None
         self.response_data: dict[str, Any] = {}
 
-    def mark_success(self, response_data: dict[str, Any] | None = None) -> None:
+    def mark_success(self, complete_time: datetime, response_data: dict[str, Any] | None = None) -> None:
         """Mark the service call as successful.
 
         Args:
+            complete_time: When the call finished.
             response_data: Optional response data from the service.
         """
-        self.complete_time = datetime.now()
+        self.complete_time = complete_time
         self.success = True
         if response_data:
             self.response_data = response_data
 
-    def mark_failure(self, error: str, error_code: str | None = None) -> None:
+    def mark_failure(self, complete_time: datetime, error: str, error_code: str | None = None) -> None:
         """Mark the service call as failed.
 
         Args:
+            complete_time: When the call finished.
             error: Error message.
             error_code: Optional error code.
         """
-        self.complete_time = datetime.now()
+        self.complete_time = complete_time
         self.success = False
         self.error = error
         self.error_code = error_code
@@ -116,7 +118,8 @@ class HAAnimServiceProxy:
         Raises:
             NonExistingServiceError: If the service doesn't exist.
         """
-        result = HAAnimServiceCall(self.domain, self.name, datetime.now())
+        clock = self._host.clock
+        result = HAAnimServiceCall(self.domain, self.name, clock.now())
 
         try:
             # Check if service exists
@@ -133,16 +136,16 @@ class HAAnimServiceProxy:
 
             # Mark success - response is either None or a dict
             if response is not None:
-                result.mark_success(response)
+                result.mark_success(clock.now(), response)
             else:
-                result.mark_success()
+                result.mark_success(clock.now())
 
         except NonExistingServiceError:
             raise
         except ServiceCallError as err:
-            result.mark_failure(err.reason, "home_assistant_error")
+            result.mark_failure(clock.now(), err.reason, "home_assistant_error")
         except Exception as err:  # pylint: disable=broad-exception-caught
-            result.mark_failure(str(err), "unknown_error")
+            result.mark_failure(clock.now(), str(err), "unknown_error")
             _LOGGER.exception("Unexpected error calling service %s", self._service_key)
 
         return result
@@ -403,6 +406,16 @@ class HAAnim:
     def id(self) -> str:
         """Get the current automation's ID."""
         return self._automation_id
+
+    def now(self) -> datetime:
+        """Get the current time.
+
+        Returns:
+            The current time as a timezone-aware datetime in the host's time zone.
+            This is the clock that drives triggers and timeouts, so it follows
+            a test that freezes or advances time; ``datetime.now()`` does not.
+        """
+        return self._host.clock.now()
 
     def __getattr__(self, domain: str) -> EntityProxy | _ServiceAccessor:
         """Get entity proxy for a domain.

@@ -350,7 +350,7 @@ class TestStateManager:
 
         await state_manager.async_teardown()
         # Should receive None to signal shutdown
-        msg = await asyncio.wait_for(queue.get(), timeout=1.0)
+        msg = queue.get_nowait()
         assert msg is None
 
     def test_get(self, state_manager: StateManager, mock_hass: MagicMock) -> None:

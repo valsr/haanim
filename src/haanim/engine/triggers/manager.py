@@ -451,7 +451,7 @@ class TriggerManager:
             hold_seconds: Seconds to hold.
         """
         try:
-            await asyncio.sleep(hold_seconds)
+            await self.host.clock.sleep(hold_seconds)
 
             # Re-check trigger condition
             trigger_def = self._triggers.get(trigger_id)
@@ -514,9 +514,9 @@ class TriggerManager:
         while True:
             try:
                 # Check all time triggers every minute
-                await asyncio.sleep(60)
+                await self.host.clock.sleep(60)
 
-                current_time = datetime.now()
+                current_time = self.host.clock.now()
 
                 for trigger_id in self._time_triggers:
                     if await self._should_fire_time_trigger(trigger_id, current_time):

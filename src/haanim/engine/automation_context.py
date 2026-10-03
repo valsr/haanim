@@ -98,7 +98,7 @@ class AutomationMetadata:
     id: str
     path: str
     filename: str
-    loaded_at: datetime = field(default_factory=datetime.now)
+    loaded_at: datetime | None = None
     modified_at: datetime | None = None
     actions: list[ActionDefinition] = field(default_factory=list[ActionDefinition])
     triggers: list[TriggerDefinition] = field(default_factory=list[TriggerDefinition])
@@ -291,7 +291,7 @@ class AutomationContext:
 
         # Also expose the automation's logger as 'log'
         self._global_symbols.set("log", self._logger)
-        self._global_symbols.set("sleep", asyncio.sleep)
+        self._global_symbols.set("sleep", self.host.clock.sleep)
 
     async def load(self) -> AutomationMetadata:
         """Load and parse the automation file.
@@ -355,7 +355,7 @@ class AutomationContext:
             id=self.automation_id,
             path=self.automation_path,
             filename=self.filename,
-            loaded_at=datetime.now(),
+            loaded_at=self.host.clock.now(),
             modified_at=modified_at,
             actions=list(self._actions.values()),
             triggers=self._triggers,

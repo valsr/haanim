@@ -146,7 +146,9 @@ class TestAutomationFunctionsActuallyRun:
             AutomationStatusManager,
         )
 
-        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
+        from haanim.testing import FakeClock  # pylint: disable=import-outside-toplevel
+
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager(), clock=FakeClock())
         func = context.get_action(action).func
         assert await pool.submit_action("auto", action, func, value=4) == expected
         assert context.get_symbol("calls") == [recorded]

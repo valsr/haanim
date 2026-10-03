@@ -261,6 +261,10 @@ class HAAnim:
         """Get current automation ID."""
         ...
 
+    def now(self) -> datetime:
+        """Get the current time, timezone-aware, from the clock that drives triggers and timeouts."""
+        ...
+
     def __getattr__(self, domain: str) -> EntityProxy:
         """Access entities by domain.
 

@@ -166,7 +166,7 @@ class TimeTrigger(BaseTrigger):
                         self._startup_triggered = True
                         if await self._check_constraints():
                             await self._execute_function()
-                    await asyncio.sleep(60)  # Check again in a minute
+                    await self.host.clock.sleep(60)  # Check again in a minute
                     continue
 
                 # Wait until trigger time
@@ -174,20 +174,20 @@ class TimeTrigger(BaseTrigger):
                 wait_seconds = (next_time - now).total_seconds()
 
                 if wait_seconds > 0:
-                    await asyncio.sleep(wait_seconds)
+                    await self.host.clock.sleep(wait_seconds)
 
                 # Check constraints and execute
                 if await self._check_constraints():
                     await self._execute_function()
 
                 # Small delay to prevent rapid re-triggering
-                await asyncio.sleep(1)
+                await self.host.clock.sleep(1)
 
             except asyncio.CancelledError:
                 break
             except Exception as err:
                 self._logger.error("Error in time trigger loop: %s", err)
-                await asyncio.sleep(60)  # Wait before retrying
+                await self.host.clock.sleep(60)  # Wait before retrying
 
     def _calculate_next_trigger(self, specs: list[str]) -> datetime | None:
         """Calculate the next trigger time from specs.
