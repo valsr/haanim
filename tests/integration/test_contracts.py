@@ -592,3 +592,61 @@ class TestFileSystemContract:
         """Test an empty file is read as an empty string."""
         path = file_setup.write("empty.py", "")
         assert await file_setup.files.read_text(path) == ""
+
+
+class TestAutomationIdContract:
+    """The engine's ID rule agrees with Home Assistant's ``slugify``."""
+
+    SAMPLES = [
+        "My Automation",
+        "my-automation",
+        "Café  Lights.v2",
+        "3d_printer",
+        "LIGHTS",
+        "Küche",
+        "Straße",
+        "naïve",
+        "Ærø",
+        "İstanbul",
+        "Привет",
+        "日本語",
+        "ＡＢＣ",
+        "a   b",
+        "a__b",
+        "a.b-c d",
+        "tab\there",
+        "new\nline",
+        "lights (old)",
+        "_private",
+        "trailing_",
+        "  spaced  ",
+        "__init__",
+        "100%",
+        "½ price",
+        "№5",
+        "living_room_2",
+        "x" * 300,
+        "sensor.temperature",
+        "Wohnzimmer Lüftung #2",
+    ]
+    EMPTY = ["---", "", "   ", "_", "...", "!?"]
+
+    @pytest.mark.parametrize("name", SAMPLES)
+    def test_agrees_with_home_assistant(self, name: str) -> None:
+        """For a name with a usable slug, both give the same ID."""
+        from homeassistant.util import slugify  # pylint: disable=import-outside-toplevel
+
+        from haanim.engine.automation_ids import automation_id  # pylint: disable=import-outside-toplevel
+
+        assert automation_id(name) == slugify(name)
+        assert automation_id(name) != ""
+
+    @pytest.mark.parametrize("name", EMPTY)
+    def test_empty_slug_is_the_only_difference(self, name: str) -> None:
+        """Where Home Assistant substitutes "unknown" (or returns nothing), the engine gives an empty ID."""
+        from homeassistant.util import slugify  # pylint: disable=import-outside-toplevel
+
+        from haanim.engine.automation_ids import automation_id  # pylint: disable=import-outside-toplevel
+
+        assert automation_id(name) == ""
+        assert slugify(name) in ("unknown", "")
