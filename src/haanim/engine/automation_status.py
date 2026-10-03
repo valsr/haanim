@@ -133,12 +133,12 @@ class AutomationStatusManager:
         status = self.get_status(automation_id)
         status.last_error = None
 
-    def set_status_message(self, automation_id: str, message: str) -> None:
+    def set_status_message(self, automation_id: str, message: str | None) -> None:
         """Set a custom status message for an automation.
 
         Args:
             automation_id: Name of the automation.
-            message: Status message to set.
+            message: Status message to set, or None to clear it.
         """
         status = self.get_status(automation_id)
         # Store message in last_error field for now - we can add a separate message field later if needed

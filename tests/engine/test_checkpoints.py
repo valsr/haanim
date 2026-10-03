@@ -300,6 +300,7 @@ class TestCancellation:
         """While one action loops forever, another action of the automation runs and returns."""
         path = tmp_path / "auto.py"
         path.write_text(
+            "from haanim import action\n"
             "@action\ndef forever():\n    while True:\n        pass\n\n@action\ndef quick():\n    return 'done'\n",
             encoding="utf-8",
         )
@@ -403,7 +404,10 @@ class TestSingleLoop:
         """Through the context, a def and an async def action both run on the calling thread."""
         threads: list[int] = []
         path = tmp_path / "auto.py"
-        path.write_text(f"@action\n{definition} where():\n    return record()\n", encoding="utf-8")
+        path.write_text(
+            "from haanim import action\n" f"@action\n{definition} where():\n    return record()\n",
+            encoding="utf-8",
+        )
         context = make_context(str(path), host=make_host(files=LocalFileSystem()))
         context.set_symbol("record", lambda: threads.append(threading.get_ident()))
         await context.load()
@@ -514,6 +518,7 @@ class TestBlockingWarning:
         object.__setattr__(host.clock, "now", clock.now)
         path = tmp_path / "lights.py"
         path.write_text(
+            "from haanim import action\n"
             "def slow(v):\n    for i in range(10):\n        pass\n    return v\n\n"
             "@action\nasync def order():\n    return sorted([2, 1], key=slow)\n",
             encoding="utf-8",
@@ -524,7 +529,7 @@ class TestBlockingWarning:
         with caplog.at_level(logging.WARNING):
             assert await context.run_action("order") == [1, 2]
 
-        assert "lights.py:1: function 'slow' of automation 'lights'" in caplog.text
+        assert "lights.py:2: function 'slow' of automation 'lights'" in caplog.text
 
     def test_run_to_completion_reports_each_checkpoint(self) -> None:
         """The driver calls back once per skipped checkpoint."""

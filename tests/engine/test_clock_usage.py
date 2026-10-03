@@ -467,6 +467,7 @@ class TestAutomationOnClock:
         """Test the sleep helper available to automations waits on the clock, not on real time."""
         path = tmp_path / "auto.py"
         path.write_text(
+            "from haanim import action, sleep\n"
             "steps = []\n"
             "\n"
             "@action\n"

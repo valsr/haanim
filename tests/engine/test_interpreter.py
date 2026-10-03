@@ -740,7 +740,10 @@ class TestEngineCalls:
     async def test_action_without_parameters(self, tmp_path: Path, definition: str) -> None:
         """An action that declares no parameters is not given any."""
         path = tmp_path / "auto.py"
-        path.write_text(f"@action\n{definition} compute():\n    return 7\n", encoding="utf-8")
+        path.write_text(
+            "from haanim import action\n" f"@action\n{definition} compute():\n    return 7\n",
+            encoding="utf-8",
+        )
         context = make_context(str(path))
         await context.load()
 
@@ -751,7 +754,9 @@ class TestEngineCalls:
         """An action that declares ``manual`` receives it."""
         path = tmp_path / "auto.py"
         path.write_text(
-            f"@action\n{definition} compute(manual, extra=1):\n    return (manual, extra)\n", encoding="utf-8"
+            "from haanim import action\n"
+            f"@action\n{definition} compute(manual, extra=1):\n    return (manual, extra)\n",
+            encoding="utf-8",
         )
         context = make_context(str(path))
         await context.load()
@@ -762,6 +767,7 @@ class TestEngineCalls:
         """An automation can define a class with methods and use it from an action."""
         path = tmp_path / "auto.py"
         path.write_text(
+            "from haanim import action\n"
             "class Counter:\n"
             "    def __init__(self):\n"
             "        self.count = 0\n"
@@ -784,11 +790,11 @@ class TestEngineCalls:
     async def test_top_level_await_fails_the_load(self, tmp_path: Path) -> None:
         """An automation that awaits at the top level is rejected and nothing runs."""
         path = tmp_path / "auto.py"
-        path.write_text("ran = True\nawait sleep(1)\n", encoding="utf-8")
+        path.write_text("from haanim import sleep\nran = True\nawait sleep(1)\n", encoding="utf-8")
         context = make_context(str(path))
 
         with pytest.raises(
-            AutomationSyntaxError, match=r"^auto.py:2: invalid syntax: 'await' outside function"
+            AutomationSyntaxError, match=r"^auto.py:3: invalid syntax: 'await' outside function"
         ):
             await context.load()
 

@@ -43,6 +43,10 @@ class ImportController:
         """
         self._virtual_modules[name] = module
 
+    def clear_virtual_modules(self) -> None:
+        """Forget every registered virtual module."""
+        self._virtual_modules.clear()
+
     def is_allowed(self, module_name: str) -> bool:
         """Check if a module is allowed to be imported.
 

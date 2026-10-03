@@ -249,6 +249,7 @@ class TestAutomationManagerLoading:
         automation = tmp_path / "test_automation.py"
         automation.write_text(
             """
+from haanim import action
 @action
 def my_action():
     pass
@@ -707,6 +708,7 @@ class TestAutomationManagerReload:
         automation = tmp_path / "test.py"
         automation.write_text(
             """
+from haanim import action
 @action
 def test_action():
     pass
@@ -736,6 +738,7 @@ def test_action():
         automation = tmp_path / "maths.py"
         automation.write_text(
             """
+from haanim import action
 @action("Add numbers")
 async def add(a, b):
     return a + b
@@ -764,7 +767,7 @@ async def add(a, b):
         mock_get_config.return_value = mock_config
 
         automation = tmp_path / "maths.py"
-        automation.write_text("@action\ndef add(a, b):\n    return a + b\n")
+        automation.write_text("from haanim import action\n" "@action\ndef add(a, b):\n    return a + b\n")
 
         manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         await manager.async_load_automation(str(automation))

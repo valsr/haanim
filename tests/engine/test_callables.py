@@ -94,7 +94,10 @@ class TestAsCoroutineFunction:
     async def test_automation_functions_need_awaiting(self, tmp_path: Path, definition: str) -> None:
         """Test a function defined in an automation runs as a coroutine whether written def or async def."""
         path = tmp_path / "auto.py"
-        path.write_text(f"@action\n{definition} compute():\n    return 7\n", encoding="utf-8")
+        path.write_text(
+            "from haanim import action\n" f"@action\n{definition} compute():\n    return 7\n",
+            encoding="utf-8",
+        )
         context = make_context(str(path))
         await context.load()
 
@@ -104,6 +107,7 @@ class TestAsCoroutineFunction:
 
 
 AUTOMATION = """
+from haanim import action
 calls = []
 
 @action

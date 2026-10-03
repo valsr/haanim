@@ -12,7 +12,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 from haanim import const
@@ -20,12 +19,12 @@ from haanim.engine import (
     ImportController,
     SafeBuiltins,
     SymbolTable,
-    decorators,
 )
 from haanim.engine.ast_evaluator import AstEvaluator
 from haanim.engine.callables import accepted_kwargs, as_coroutine_function
-from haanim.engine.decorators import FunctionMetadata, get_metadata, has_metadata
-from haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
+from haanim.engine.decorators import FunctionMetadata, get_metadata
+from haanim.engine.errors import HAAnimError
+from haanim.engine.haanim_module import DecoratorRegistry, build_haanim_module
 from haanim.engine.logging_wrapper import create_logger_wrapper
 from haanim.engine.automation_status import AutomationStatusManager
 from haanim.interfaces import AutomationRegistry, Host
@@ -173,21 +172,27 @@ class AutomationContext:
         self._startup_func: Callable[..., Any] | None = None
         self._shutdown_func: Callable[..., Any] | None = None
 
-    def _setup_builtin_functions(self) -> None:
-        """Set up built-in functions available to automations.
+        # What the automation's code gets from 'haanim'
+        self._decorators = DecoratorRegistry()
+        self._haa: Any = None
 
-        This injects HAAnim-specific functions into the automation's namespace,
-        including decorators, logging, and Home Assistant access.
+    def _build_modules(self) -> None:
+        """Build the modules the engine supplies to this automation.
+
+        Nothing is put into the automation's namespace: the automation gets
+        its ``haa`` instance, decorators and logger by importing them from
+        ``haanim``.
         """
         # Import here to avoid circular dependency
-        from haanim.engine.haanim_api import (
+        from haanim.engine.haanim_api import (  # pylint: disable=import-outside-toplevel
             HAAnim,
-        )  # pylint: disable=import-outside-toplevel
+        )
 
-        # Create the HAAnim API instance for this automation
-        haa = HAAnim(self.host, self.automation_id, self._registry, self._storage_path)
+        self._haa = HAAnim(self.host, self.automation_id, self._registry, self._storage_path)
+        logging_module = create_logger_wrapper(self._logger)
+        automation_id = self.automation_id
+        status_manager = self._status_manager
 
-        # Create the set_status function bound to this automation
         def set_status(message: str | None) -> None:
             """Set a status message for this automation.
 
@@ -197,63 +202,23 @@ class AutomationContext:
             Args:
                 message: The status message to display, or None to clear.
             """
-            self._status_manager.set_status_message(self.automation_id, message)
+            status_manager.set_status_message(automation_id, message)
 
-        # Create a virtual 'haanim' module that automations can import from
-        haanim_module = SimpleNamespace(
-            action=decorators.action,
-            state=decorators.state,
-            state_trigger=decorators.state_trigger,
-            time=decorators.time,
-            time_trigger=decorators.time_trigger,
-            interval=decorators.interval,
-            cron=decorators.cron,
-            event=decorators.event,
-            event_trigger=decorators.event_trigger,
-            time_active=decorators.time_active,
-            state_active=decorators.state_active,
-            startup=decorators.startup,
-            shutdown=decorators.shutdown,
-            set_status=set_status,
-            haa=haa,
-            ActionMode=const.ActionMode,
-            # Export event classes
-            ActionEvent=None,  # Will be populated from events module
-            TimeEvent=None,
-            IntervalEvent=None,
-            CronEvent=None,
-            StateEvent=None,
-            EventTriggerEvent=None,
+        haanim_module = build_haanim_module(
+            haa=self._haa,
+            registry=self._decorators,
+            logging_wrapper=logging_module,
+            logger=self._logger,
+            hass=self.host.hass,
+            helpers={
+                "set_status": set_status,
+                "sleep": self.host.clock.sleep,
+                "log_debug": self._logger.debug,
+                "log_info": self._logger.info,
+                "log_warning": self._logger.warning,
+                "log_error": self._logger.error,
+            },
         )
-
-        # Import event classes
-        try:
-            from haanim.events import (  # pylint: disable=import-outside-toplevel
-                ActionEvent,
-                TimeEvent,
-                IntervalEvent,
-                CronEvent,
-                StateEvent,
-                EventTriggerEvent,
-            )
-
-            haanim_module.ActionEvent = ActionEvent
-            haanim_module.TimeEvent = TimeEvent
-            haanim_module.IntervalEvent = IntervalEvent
-            haanim_module.CronEvent = CronEvent
-            haanim_module.StateEvent = StateEvent
-            haanim_module.EventTriggerEvent = EventTriggerEvent
-        except ImportError:
-            pass
-
-        # Export the public error classes
-        for error_class in PUBLIC_ERRORS:
-            setattr(haanim_module, error_class.__name__, error_class)
-
-        # 'import logging' and 'from haanim import logging' give the automation's logger
-        logging_module = create_logger_wrapper(self._logger)
-        haanim_module.logging = logging_module
-        haanim_module.hass = self.host.hass
 
         # Register what the engine supplies for these imports
         self._import_controller.register_virtual_module("haanim", haanim_module)
@@ -261,39 +226,23 @@ class AutomationContext:
         if self.host.hass is not None:
             self._import_controller.register_virtual_module("hass", self.host.hass)
 
-        # Add decorators to global scope (for direct use without import)
-        self._global_symbols.set("action", decorators.action)
-        self._global_symbols.set("state", decorators.state)
-        self._global_symbols.set("state_trigger", decorators.state_trigger)
-        self._global_symbols.set("time", decorators.time)
-        self._global_symbols.set("time_trigger", decorators.time_trigger)
-        self._global_symbols.set("interval", decorators.interval)
-        self._global_symbols.set("cron", decorators.cron)
-        self._global_symbols.set("event", decorators.event)
-        self._global_symbols.set("event_trigger", decorators.event_trigger)
-        self._global_symbols.set("time_active", decorators.time_active)
-        self._global_symbols.set("state_active", decorators.state_active)
-        self._global_symbols.set("startup", decorators.startup)
-        self._global_symbols.set("shutdown", decorators.shutdown)
+    def unload(self) -> None:
+        """Discard everything the automation's code created.
 
-        # Add HAAnim API instance to global scope
-        self._global_symbols.set("haa", haa)
-        self._global_symbols.set("ActionMode", const.ActionMode)
-
-        # Add set_status function to global scope
-        self._global_symbols.set("set_status", set_status)
-
-        self._global_symbols.set("logging", logging_module)
-
-        # Add logging functions for convenience
-        self._global_symbols.set("log_debug", self._logger.debug)
-        self._global_symbols.set("log_info", self._logger.info)
-        self._global_symbols.set("log_warning", self._logger.warning)
-        self._global_symbols.set("log_error", self._logger.error)
-
-        # Also expose the automation's logger as 'log'
-        self._global_symbols.set("log", self._logger)
-        self._global_symbols.set("sleep", self.host.clock.sleep)
+        After this the automation's ``haa`` instance, its ``haanim`` module and
+        its namespace are no longer referenced by the engine.
+        """
+        self._import_controller.clear_virtual_modules()
+        self._decorators.clear()
+        self._global_symbols = SymbolTable()
+        self._evaluator = None
+        self._haa = None
+        self._metadata = None
+        self._actions = {}
+        self._triggers = []
+        self._functions = {}
+        self._startup_func = None
+        self._shutdown_func = None
 
     async def load(self) -> AutomationMetadata:
         """Load and parse the automation file.
@@ -321,8 +270,8 @@ class AutomationContext:
         # Get file modification time
         modified_at = self.host.files.modified_time(path)
 
-        # Set up built-in functions
-        self._setup_builtin_functions()
+        # Build the automation's own haanim module
+        self._build_modules()
 
         # Create evaluator
         self._evaluator = AstEvaluator(
@@ -380,27 +329,20 @@ class AutomationContext:
         return self._metadata
 
     def _extract_definitions(self) -> None:
-        """Extract action, trigger definitions from loaded automation."""
-        symbols = self._global_symbols.as_dict()
+        """Collect the actions, triggers and lifecycle handlers of the loaded automation.
 
-        for name, obj in symbols.items():
-            # Skip non-callables and builtins
-            if not callable(obj) or name.startswith("_"):
-                continue
+        They are the functions decorated with this automation's decorators, in
+        any of its files.
+        """
+        for func in self._decorators.functions:
+            metadata = get_metadata(func)
+            if metadata is not None:
+                self._process_function_metadata(getattr(func, "__name__", repr(func)), func, metadata)
 
-            # Check for HAAnim metadata
-            if has_metadata(obj):
-                metadata = get_metadata(obj)
-                if not metadata:
-                    raise RuntimeError("Metadata expected but not found")
-                self._process_function_metadata(name, obj, metadata)
-            elif hasattr(obj, "_haanim_metadata"):
-                # Also check wrapped functions
-                metadata = getattr(obj, "_haanim_metadata")
-                self._process_function_metadata(name, obj, metadata)
-
-            # Store all functions for potential use
-            self._functions[name] = obj
+        # Every module-level callable of the main file can be run by name
+        for name, obj in self._global_symbols.as_dict().items():
+            if callable(obj) and not name.startswith("_"):
+                self._functions[name] = obj
 
     def _process_function_metadata(
         self,

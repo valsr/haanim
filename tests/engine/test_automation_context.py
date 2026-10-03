@@ -260,6 +260,7 @@ class TestAutomationContextLoad:
         automation_path = tmp_path / "test_automation.py"
         automation_path.write_text(
             """
+from haanim import action
 @action
 def my_action():
     pass
@@ -307,6 +308,7 @@ def my_action():
         automation_path = tmp_path / "trigger_automation.py"
         automation_path.write_text(
             """
+from haanim import state_trigger, time_trigger
 @state_trigger("sensor.test > 50")
 def on_temp_high():
     pass
@@ -333,6 +335,7 @@ def on_hour():
         automation_path = tmp_path / "lifecycle_automation.py"
         automation_path.write_text(
             """
+from haanim import startup, shutdown
 @startup
 def on_startup():
     pass
@@ -391,6 +394,7 @@ class TestAutomationContextGetters:
         automation_path = tmp_path / "action_automation.py"
         automation_path.write_text(
             """
+from haanim import action
 @action("First Action")
 def first():
     pass
@@ -412,6 +416,7 @@ def second():
         automation_path = tmp_path / "trigger_automation.py"
         automation_path.write_text(
             """
+from haanim import state_trigger
 @state_trigger("sensor.test > 50")
 def on_high():
     pass
@@ -429,6 +434,7 @@ def on_high():
         automation_path = tmp_path / "meta_automation.py"
         automation_path.write_text(
             """
+from haanim import action
 @action("Test")
 def test():
     pass
@@ -493,6 +499,7 @@ class TestAutomationContextEdgeCases:
         automation_path = tmp_path / "my_automation.py"
         automation_path.write_text(
             """
+from haanim import action
 @action("My Custom Action")
 def do_something():
     pass
@@ -553,6 +560,7 @@ class TestTriggersAsActions:
         automation_path = tmp_path / "trigger_automation.py"
         automation_path.write_text(
             """
+from haanim import state_trigger
 @state_trigger("sensor.test > 50")
 def on_high():
     pass
@@ -572,6 +580,7 @@ def on_high():
         automation_path = tmp_path / "multi_trigger.py"
         automation_path.write_text(
             """
+from haanim import state_trigger, time_trigger
 @state_trigger("sensor.a > 10")
 @state_trigger("sensor.b < 5")
 @time_trigger("cron(0 8 * * *)")
@@ -593,6 +602,7 @@ def multi_trigger():
         automation_path = tmp_path / "trigger_with_action.py"
         automation_path.write_text(
             """
+from haanim import action, state_trigger
 @action("Custom Name", description="Custom description")
 @state_trigger("sensor.test > 50")
 def custom_action():
@@ -615,6 +625,7 @@ def custom_action():
         automation_path = tmp_path / "trigger_only.py"
         automation_path.write_text(
             """
+from haanim import time_trigger
 @time_trigger("sunset")
 def evening_lights():
     pass
@@ -635,6 +646,7 @@ def evening_lights():
         automation_path = tmp_path / "action_only.py"
         automation_path.write_text(
             """
+from haanim import action
 @action("Manual Action")
 def manual_only():
     pass
@@ -654,6 +666,7 @@ def manual_only():
         automation_path = tmp_path / "mixed.py"
         automation_path.write_text(
             """
+from haanim import action, state_trigger, time_trigger
 @action("Manual Only")
 def manual():
     pass

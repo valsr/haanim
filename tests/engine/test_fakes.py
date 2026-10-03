@@ -804,6 +804,7 @@ class TestFakeAutomationRegistry:
         """Load an automation with a sync and an async action."""
         path = tmp_path / "lights.py"
         path.write_text(
+            "from haanim import action\n"
             "@action\n"
             "def add(a, b):\n"
             "    return a + b\n"

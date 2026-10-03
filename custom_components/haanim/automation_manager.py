@@ -306,17 +306,21 @@ class AutomationManager:
 
         context = self._contexts.pop(automation_path)
         self._file_mtimes.pop(automation_path, None)
+        automation_id = context.automation_id
+
+        # Discard the automation's haa instance, haanim module and namespace
+        context.unload()
 
         # Fire unloaded event
         self.hass.bus.async_fire(
             EVENT_AUTOMATION_UNLOADED,
             {
                 "automation_path": automation_path,
-                "automation_id": context.name,
+                "automation_id": automation_id,
             },
         )
 
-        _LOGGER.info("Unloaded automation: %s", context.name)
+        _LOGGER.info("Unloaded automation: %s", automation_id)
         return True
 
     async def async_unload_all_automations(self) -> None:

@@ -751,6 +751,7 @@ class TestRelativeImports:
         )
         path = tmp_path / "auto.py"
         path.write_text(
+            "from haanim import action\n"
             "from haanim import haa\nfrom .helper import automation_id\nfrom . import helper\n"
             "same = helper.haa is haa\n\n@action\ndef which():\n    return automation_id()\n",
             encoding="utf-8",

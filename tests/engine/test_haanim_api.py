@@ -30,6 +30,7 @@ from haanim.testing import FakeAutomationRegistry, FakeServiceCaller, FakeStateP
 from tests.engine.helpers import make_context
 
 AUTOMATION_SOURCE = """
+from haanim import action
 @action("Add numbers", description="Adds two numbers")
 def add(a, b):
     return a + b
