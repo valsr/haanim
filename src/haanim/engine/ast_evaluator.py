@@ -12,9 +12,16 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from haanim.engine.eval_function import ControlFlow, EvalFunction, ReturnValue, get_eval_function
+from haanim.engine.eval_function import (
+    CHECKPOINT,
+    ControlFlow,
+    EvalFunction,
+    ReturnValue,
+    NATIVE_CALL_WARNING_SECONDS,
+    get_eval_function,
+)
 from haanim.engine import operators
-from haanim.engine.automation_module import AutomationModule
+from haanim.engine.automation_module import ModuleLoader
 from haanim.engine.import_controller import ImportController
 from haanim.engine.safe_builtins import SafeBuiltins
 from haanim.engine.symbol_table import SCOPE_CLASS, SCOPE_COMPREHENSION, SCOPE_MODULE, SymbolTable
@@ -26,9 +33,12 @@ from haanim.engine.errors import (
 from haanim.engine.validation import validate_source
 
 if TYPE_CHECKING:
-    from haanim.interfaces import FileSystem
+    from haanim.interfaces import Clock, FileSystem
 
 _LOGGER = logging.getLogger(__name__)
+
+# Yield to the event loop at every this many checkpoints.
+DEFAULT_CHECKPOINT_INTERVAL = 1
 
 
 class BreakLoop(ControlFlow):
@@ -52,8 +62,9 @@ class AstEvaluator:
         logger: logging.Logger | None = None,
         files: FileSystem | None = None,
         path: Path | None = None,
-        root: Path | None = None,
-        modules: dict[Path, AutomationModule] | None = None,
+        loader: ModuleLoader | None = None,
+        clock: Clock | None = None,
+        checkpoint_interval: int = DEFAULT_CHECKPOINT_INTERVAL,
     ) -> None:
         """Initialize the AST evaluator.
 
@@ -66,11 +77,13 @@ class AstEvaluator:
             files: File system to read relatively imported files from. Without
                 it relative imports are not available.
             path: Path of the file being evaluated; relative imports are
-                resolved against its directory.
-            root: Directory relative imports must stay within. Defaults to the
-                directory of ``path``.
-            modules: The relatively imported modules loaded so far, shared by
-                all files of an automation.
+                resolved against its directory and must stay within it.
+            loader: The loader shared by the files of an automation. Created
+                from ``files`` and ``path`` if omitted.
+            clock: Clock used to notice functions that block the event loop.
+                Without it no such warning is logged.
+            checkpoint_interval: Yield to the event loop at every this many
+                checkpoints.
         """
         self.name = name
         self._logger = logger or _LOGGER
@@ -82,8 +95,12 @@ class AstEvaluator:
         self._filename = "<automation>"
         self._files = files
         self._path = path
-        self._root = root if root is not None else (path.parent if path is not None else None)
-        self._modules: dict[Path, AutomationModule] = modules if modules is not None else {}
+        self.loader = loader
+        if loader is None and files is not None and path is not None:
+            self.loader = ModuleLoader(name, files, path.parent, self._run_module)
+        self.clock = clock
+        self._checkpoint_interval = max(1, checkpoint_interval)
+        self._checkpoints = 0
 
         # Add builtins to global scope
         for builtin_name, value in self._safe_builtins.get_builtins().items():
@@ -190,6 +207,31 @@ class AstEvaluator:
             raise AutomationRuntimeError(f"Runtime error: {err}") from err
 
         return self._global_symbols.as_dict()
+
+    def checkpoint_due(self) -> bool:
+        """Count a checkpoint and return whether to yield to the event loop at it.
+
+        Checkpoints are every loop iteration and every call of a function of
+        the automation. Use as ``if self.checkpoint_due(): await CHECKPOINT``.
+        """
+        self._checkpoints += 1
+        if self._checkpoints < self._checkpoint_interval:
+            return False
+        self._checkpoints = 0
+        return True
+
+    def warn_blocking(self, function: EvalFunction) -> None:
+        """Log that a function called from outside the interpreter has been running long."""
+        self._logger.warning(
+            "%s:%s: function '%s' of automation '%s' has been running for more than %g second"
+            " without yielding; it was called from outside the interpreter and blocks Home Assistant"
+            " until it returns",
+            self._filename,
+            function.lineno,
+            function.name,
+            self.name,
+            NATIVE_CALL_WARNING_SECONDS,
+        )
 
     async def aeval(self, node: ast.AST, scope: SymbolTable) -> Any:
         """Asynchronously evaluate an AST node.
@@ -394,6 +436,7 @@ class AstEvaluator:
         scope: SymbolTable,
         *,
         is_async: bool = False,
+        lineno: int | None = None,
     ) -> Callable[..., Any]:
         """Create the Python callable for a function definition or lambda.
 
@@ -421,6 +464,7 @@ class AstEvaluator:
             defaults=defaults,
             kw_defaults=kw_defaults,
             doc=doc,
+            lineno=lineno,
         ).function
 
     async def _define(
@@ -434,7 +478,7 @@ class AstEvaluator:
 
     async def _eval_lambda(self, node: ast.Lambda, scope: SymbolTable) -> Callable[..., Any]:
         """Evaluate a lambda expression."""
-        return await self._make_function("<lambda>", node.args, node.body, scope)
+        return await self._make_function("<lambda>", node.args, node.body, scope, lineno=node.lineno)
 
     async def _eval_list_comprehension(self, node: ast.ListComp, scope: SymbolTable) -> list[Any]:
         """Evaluate a list comprehension."""
@@ -458,6 +502,8 @@ class AstEvaluator:
             gen = generators[idx]
             iterable = await self.aeval(gen.iter, local_scope)
             for item in iterable:
+                if self.checkpoint_due():
+                    await CHECKPOINT
                 inner_scope = local_scope.create_child(SCOPE_COMPREHENSION)
                 await self._assign_target(gen.target, item, inner_scope)
 
@@ -491,6 +537,8 @@ class AstEvaluator:
             gen = generators[idx]
             iterable = await self.aeval(gen.iter, local_scope)
             for item in iterable:
+                if self.checkpoint_due():
+                    await CHECKPOINT
                 inner_scope = local_scope.create_child(SCOPE_COMPREHENSION)
                 await self._assign_target(gen.target, item, inner_scope)
 
@@ -626,6 +674,8 @@ class AstEvaluator:
         """Evaluate a for loop."""
         iterable = await self.aeval(node.iter, scope)
         for item in iterable:
+            if self.checkpoint_due():
+                await CHECKPOINT
             await self._assign_target(node.target, item, scope)
             try:
                 for stmt in node.body:
@@ -643,6 +693,8 @@ class AstEvaluator:
     async def _eval_while(self, node: ast.While, scope: SymbolTable) -> Any:
         """Evaluate a while loop."""
         while await self.aeval(node.test, scope):
+            if self.checkpoint_due():
+                await CHECKPOINT
             try:
                 for stmt in node.body:
                     await self.aeval(stmt, scope)
@@ -670,12 +722,14 @@ class AstEvaluator:
 
     async def _eval_function_def(self, node: ast.FunctionDef, scope: SymbolTable) -> None:
         """Evaluate a function definition."""
-        func = await self._make_function(node.name, node.args, node.body, scope)
+        func = await self._make_function(node.name, node.args, node.body, scope, lineno=node.lineno)
         await self._define(node.name, func, node.decorator_list, scope)
 
     async def _eval_async_function_def(self, node: ast.AsyncFunctionDef, scope: SymbolTable) -> None:
         """Evaluate an async function definition."""
-        func = await self._make_function(node.name, node.args, node.body, scope, is_async=True)
+        func = await self._make_function(
+            node.name, node.args, node.body, scope, is_async=True, lineno=node.lineno
+        )
         await self._define(node.name, func, node.decorator_list, scope)
 
     async def _eval_class_def(self, node: ast.ClassDef, scope: SymbolTable) -> None:
@@ -725,7 +779,9 @@ class AstEvaluator:
             raise AutomationSecurityError("Wildcard imports are not allowed")
 
         if node.level > 0:
-            await self._import_relative(node, scope)
+            if self.loader is None or self._path is None:
+                raise ImportError("relative imports are not available here")
+            await self.loader.import_from(self._path, node, scope)
             return
 
         module_name = node.module or ""
@@ -737,56 +793,9 @@ class AstEvaluator:
                 raise ImportError(f"cannot import name '{alias.name}' from '{module_name}'") from None
             scope.set(alias.asname or alias.name, obj)
 
-    async def _import_relative(self, node: ast.ImportFrom, scope: SymbolTable) -> None:
-        """Evaluate a relative import: another file of the same automation."""
-        if self._files is None or self._path is None or self._root is None:
-            raise ImportError("relative imports are not available here")
-
-        package = self._path.parent
-        for _ in range(node.level - 1):
-            package = package.parent
-        if not package.is_relative_to(self._root):
-            raise AutomationSecurityError("Relative import reaches outside the automation")
-
-        if node.module:
-            # from .helper import name
-            module = await self._load_module(package.joinpath(*node.module.split(".")), node)
-            for alias in node.names:
-                try:
-                    obj = getattr(module, alias.name)
-                except AttributeError:
-                    raise ImportError(f"cannot import name '{alias.name}' from '.{node.module}'") from None
-                scope.set(alias.asname or alias.name, obj)
-        else:
-            # from . import helper
-            for alias in node.names:
-                module = await self._load_module(package / alias.name, node)
-                scope.set(alias.asname or alias.name, module)
-
-    async def _load_module(self, location: Path, node: ast.ImportFrom) -> AutomationModule:
-        """Load a file of the automation as a module, once.
-
-        Args:
-            location: Path of the module without its ``.py`` suffix.
-            node: The import statement, for the error message.
-
-        Returns:
-            The module. The same object is returned on every import of the file.
-        """
-        assert self._files is not None and self._path is not None
-        candidates = [location.with_name(location.name + ".py"), location / "__init__.py"]
-        path = next((candidate for candidate in candidates if self._files.exists(candidate)), None)
-        if path is None:
-            dotted = "." * node.level + (node.module or location.name)
-            raise ModuleNotFoundError(f"No module named '{dotted}' in automation '{self.name}'")
-
-        if path in self._modules:
-            return self._modules[path]
-
-        module_scope = SymbolTable()
-        module = AutomationModule(path, module_scope)
-        # Registered before it runs, so that two files importing each other terminate.
-        self._modules[path] = module
+    async def _run_module(self, path: Path, module_scope: SymbolTable) -> None:
+        """Check and execute another file of the automation in its own module scope."""
+        assert self._files is not None
         evaluator = AstEvaluator(
             name=self.name,
             global_symbols=module_scope,
@@ -795,16 +804,12 @@ class AstEvaluator:
             logger=self._logger,
             files=self._files,
             path=path,
-            root=self._root,
-            modules=self._modules,
+            loader=self.loader,
+            clock=self.clock,
+            checkpoint_interval=self._checkpoint_interval,
         )
-        try:
-            evaluator.parse(await self._files.read_text(path), filename=path.name)
-            await evaluator.execute()
-        except BaseException:
-            del self._modules[path]
-            raise
-        return module
+        evaluator.parse(await self._files.read_text(path), filename=path.name)
+        await evaluator.execute()
 
     async def _eval_pass(self, node: ast.Pass, scope: SymbolTable) -> None:
         """Evaluate a pass statement."""

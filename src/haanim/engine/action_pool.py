@@ -16,7 +16,7 @@ from enum import Enum
 from typing import Any
 
 from haanim.const import DEFAULT_MAX_CONCURRENT_ACTIONS, DEFAULT_WORKER_SHUTDOWN_TIMEOUT
-from haanim.engine.callables import as_coroutine_function, is_coroutine_callable
+from haanim.engine.callables import as_coroutine_function
 from haanim.engine.errors import (
     ActionCancelledError,
     PoolExhaustedError,
@@ -228,8 +228,8 @@ class ActionWorkerPool:
                 )
                 raise PoolExhaustedError(self._max_workers)
 
-            # Wrap sync functions as async
-            async_func = self._wrap_sync_func(func)
+            # Everything runs on the event loop, whether written def or async def
+            async_func = as_coroutine_function(func)
 
             # Create execution record
             execution = ActionExecution(
@@ -278,24 +278,6 @@ class ActionWorkerPool:
         if automation_id is None:
             return bool(self._active_executions)
         return any(execution.automation_id == automation_id for execution in self._active_executions.values())
-
-    def _wrap_sync_func(self, func: Callable[..., Any]) -> Callable[..., Coroutine[Any, Any, Any]]:
-        """Wrap a sync function as async.
-
-        Args:
-            func: The function to wrap.
-
-        Returns:
-            An async wrapper function.
-        """
-        if is_coroutine_callable(func):
-            return as_coroutine_function(func)
-
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
-
-        return wrapper
 
     async def _execute_action(self, execution: ActionExecution) -> Any:
         """Execute an action with semaphore limiting.

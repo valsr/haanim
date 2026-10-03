@@ -415,12 +415,10 @@ class TestServiceHandler:
     async def test_service_handler_calls_sync_handler(
         self, service_manager: ServiceManager, mock_hass: MagicMock
     ) -> None:
-        """Test service handler wraps sync handler."""
+        """Test service handler calls a sync handler on the event loop, not in a thread."""
 
         def sync_handler(**kwargs: Any) -> str:
             return "sync_result"
-
-        mock_hass.async_add_executor_job.return_value = "sync_result"
 
         await service_manager.async_register_service("my_service", sync_handler)
 
@@ -433,5 +431,5 @@ class TestServiceHandler:
 
         result = await registered_handler(mock_call)
 
-        mock_hass.async_add_executor_job.assert_called_once()
+        mock_hass.async_add_executor_job.assert_not_called()
         assert result == "sync_result"

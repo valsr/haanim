@@ -5,13 +5,17 @@ from __future__ import annotations
 import ast
 import inspect
 import types
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Generator
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from haanim.engine.symbol_table import SCOPE_FUNCTION, SymbolTable
 
 if TYPE_CHECKING:
     from haanim.engine.ast_evaluator import AstEvaluator
+
+# How long a function called from outside the interpreter may run before a warning is logged.
+NATIVE_CALL_WARNING_SECONDS = 1.0
 
 # Attribute of the Python function that holds the EvalFunction it belongs to.
 FUNCTION_ATTRIBUTE = "__haanim_function__"
@@ -38,7 +42,26 @@ class ReturnValue(ControlFlow):
         self.value = value
 
 
-def run_to_completion(coro: Coroutine[Any, Any, Any], name: str) -> Any:
+class Checkpoint:
+    """Awaitable that gives the event loop one turn.
+
+    This is where an action can be suspended, cancelled or timed out without
+    an ``await`` in the automation's code.
+    """
+
+    def __await__(self) -> Generator[None]:
+        """Yield to whatever is running the coroutine, once."""
+        yield
+
+
+CHECKPOINT = Checkpoint()
+
+
+def run_to_completion(
+    coro: Coroutine[Any, Any, Any],
+    name: str,
+    on_checkpoint: Callable[[], None] | None = None,
+) -> Any:
     """Run a coroutine of a ``def`` function to its end without an event loop.
 
     Used when code outside the interpreter calls a function of an automation.
@@ -48,6 +71,7 @@ def run_to_completion(coro: Coroutine[Any, Any, Any], name: str) -> Any:
     Args:
         coro: The coroutine to run.
         name: Function name for the error message.
+        on_checkpoint: Called at every skipped checkpoint.
 
     Returns:
         The coroutine's result.
@@ -62,8 +86,40 @@ def run_to_completion(coro: Coroutine[Any, Any, Any], name: str) -> Any:
                 raise RuntimeError(
                     f"Function '{name}' cannot wait for anything: it was called from outside the interpreter"
                 )
+            if on_checkpoint is not None:
+                on_checkpoint()
     except StopIteration as stop:
         return stop.value
+
+
+class NativeCallWatch:
+    """Warns when a function called from outside the interpreter runs long.
+
+    Such a call runs without yielding to the event loop, so it blocks the host
+    for as long as it takes. The time is read at the skipped checkpoints only.
+    """
+
+    def __init__(self, function: EvalFunction) -> None:
+        """Initialize the watch for one call.
+
+        Args:
+            function: The function being called.
+        """
+        self._function = function
+        self._started: datetime | None = None
+        self._warned = False
+
+    def __call__(self) -> None:
+        """Check the elapsed time at a skipped checkpoint."""
+        clock = self._function.engine.clock
+        if clock is None or self._warned:
+            return
+        now = clock.now()
+        if self._started is None:
+            self._started = now
+        elif (now - self._started).total_seconds() > NATIVE_CALL_WARNING_SECONDS:
+            self._warned = True
+            self._function.engine.warn_blocking(self._function)
 
 
 class EvalFunction:
@@ -88,6 +144,7 @@ class EvalFunction:
         defaults: list[Any] | None = None,
         kw_defaults: dict[str, Any] | None = None,
         doc: str | None = None,
+        lineno: int | None = None,
     ) -> None:
         """Initialize an evaluated function.
 
@@ -101,6 +158,7 @@ class EvalFunction:
             defaults: Values of the positional defaults, evaluated at definition.
             kw_defaults: Values of the keyword-only defaults, evaluated at definition.
             doc: The function's docstring.
+            lineno: Line the function is defined on.
         """
         self.name = name
         self.args = args
@@ -108,6 +166,7 @@ class EvalFunction:
         self.engine = engine
         self.closure = closure
         self.is_async = is_async
+        self.lineno = lineno
         self.defaults = defaults or []
         self.kw_defaults = kw_defaults or {}
         self._positional = [arg.arg for arg in (*args.posonlyargs, *args.args)]
@@ -127,7 +186,7 @@ class EvalFunction:
         else:
 
             def sync_function(*args: Any, **kwargs: Any) -> Any:
-                return run_to_completion(self.invoke(*args, **kwargs), self.name)
+                return run_to_completion(self.invoke(*args, **kwargs), self.name, NativeCallWatch(self))
 
             function = sync_function
 
@@ -246,6 +305,8 @@ class EvalFunction:
             The function return value.
         """
         scope = self.bind(args, kwargs)
+        if self.engine.checkpoint_due():
+            await CHECKPOINT
 
         if isinstance(self.body, ast.expr):
             return await self.engine.aeval(self.body, scope)

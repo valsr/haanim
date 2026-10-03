@@ -727,13 +727,13 @@ class TestRelativeImports:
         files = FakeFileSystem()
         files.write(Path("/auto/main.py"), "try:\n    from . import helper\nexcept Exception:\n    pass\n")
         files.write(Path("/auto/helper.py"), "x = 1 / 0\n")
-        modules: dict[Path, AutomationModule] = {}
-        evaluator = AstEvaluator(name="auto", files=files, path=Path("/auto/main.py"), modules=modules)
+        evaluator = self.evaluator(files)
         evaluator.parse(await files.read_text(Path("/auto/main.py")))
 
         await evaluator.execute()
 
-        assert modules == {}
+        assert evaluator.loader is not None
+        assert evaluator.loader.modules == {}
 
     async def test_relative_import_is_allowed_statically(self) -> None:
         """Relative imports are never reported by the static check."""

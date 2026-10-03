@@ -6,8 +6,6 @@ symbol tables, metadata, and lifecycle management.
 
 from __future__ import annotations
 
-import asyncio
-import functools
 import logging
 import os
 from collections.abc import Callable
@@ -25,7 +23,7 @@ from haanim.engine import (
     decorators,
 )
 from haanim.engine.ast_evaluator import AstEvaluator
-from haanim.engine.callables import accepted_kwargs, as_coroutine_function, is_coroutine_callable
+from haanim.engine.callables import accepted_kwargs, as_coroutine_function
 from haanim.engine.decorators import FunctionMetadata, get_metadata, has_metadata
 from haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
 from haanim.engine.logging_wrapper import create_logger_wrapper
@@ -335,6 +333,7 @@ class AutomationContext:
             logger=self._logger,
             files=self.host.files,
             path=path,
+            clock=self.host.clock,
         )
 
         # Parse the source
@@ -498,12 +497,7 @@ class AutomationContext:
         )
 
         try:
-            if is_coroutine_callable(action.func):
-                return await as_coroutine_function(action.func)(*args, **kwargs)
-            else:
-                # Wrap sync function in async
-                loop = asyncio.get_running_loop()
-                return await loop.run_in_executor(None, functools.partial(action.func, *args, **kwargs))
+            return await as_coroutine_function(action.func)(*args, **kwargs)
         except Exception as err:
             self._logger.error("Action '%s' failed: %s", action_name, err)
             raise HAAnimError(f"Action '{action_name}' failed: {err}") from err
@@ -530,11 +524,7 @@ class AutomationContext:
         func = self._functions[func_name]
 
         try:
-            if is_coroutine_callable(func):
-                return await as_coroutine_function(func)(*args, **kwargs)
-
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
+            return await as_coroutine_function(func)(*args, **kwargs)
         except Exception as err:
             self._logger.error("Function '%s' failed: %s", func_name, err)
             raise HAAnimError(f"Function '{func_name}' failed: {err}") from err

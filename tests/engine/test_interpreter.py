@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from haanim.engine.ast_evaluator import AstEvaluator
-from haanim.engine.callables import accepted_kwargs, as_coroutine_function, is_coroutine_callable
+from haanim.engine.callables import accepted_kwargs, as_coroutine_function
 from haanim.engine.errors import AutomationRuntimeError, AutomationSyntaxError
 from haanim.engine.eval_function import FUNCTION_ATTRIBUTE, get_eval_function, run_to_completion
 from haanim.engine.import_controller import ImportController
@@ -672,19 +672,17 @@ class TestFunctionObjects:
         assert wrapper is None or wrapper[0].name == "wrapped"
         assert symbols["wrapped"]() == "wrapper"
 
-    async def test_is_coroutine_callable(self) -> None:
+    async def test_as_coroutine_function(self) -> None:
         """Both kinds of automation function can be run as a coroutine."""
         symbols = await load(
             "def f(v):\n    return v\nasync def g(v):\n    return v\nclass A:\n    def m(self, v):\n        return v\na = A()\n"
         )
 
         for name in ("f", "g"):
-            assert is_coroutine_callable(symbols[name])
             assert await as_coroutine_function(symbols[name])(3) == 3
         assert await as_coroutine_function(symbols["a"].m)(4) == 4
         assert as_coroutine_function(symbols["g"]) is symbols["g"]
-        assert as_coroutine_function(len) is len
-        assert not is_coroutine_callable(len)
+        assert await as_coroutine_function(len)("ab") == 2
 
     async def test_run_to_completion_refuses_to_wait(self) -> None:
         """A function called from outside the interpreter cannot wait for anything."""

@@ -6,7 +6,6 @@ expose automation functions as Home Assistant services.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -27,6 +26,8 @@ from custom_components.haanim.const import (
     SERVICE_RUN_ACTION,
     VERSION,
 )
+from haanim.engine.callables import as_coroutine_function
+
 from custom_components.haanim.automation_manager import async_get_manager, get_config_manager
 
 _LOGGER = logging.getLogger(__name__)
@@ -283,9 +284,7 @@ class ServiceManager:
         async def service_handler(call: ServiceCall) -> Any:
             """Handle the service call."""
             try:
-                if asyncio.iscoroutinefunction(handler):
-                    return await handler(**call.data)
-                return await self.hass.async_add_executor_job(lambda: handler(**call.data))
+                return await as_coroutine_function(handler)(**call.data)
             except Exception as err:
                 _LOGGER.error("Service %s failed: %s", full_name, err)
                 raise

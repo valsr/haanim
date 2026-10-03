@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import functools
+import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from haanim.engine.callables import as_coroutine_function, is_coroutine_callable
+from haanim.engine.callables import as_coroutine_function
 from tests.engine.helpers import make_context
 
 
@@ -36,22 +37,19 @@ class AsyncCallable:
         return 1
 
 
-class TestIsCoroutineCallable:
-    """Tests for is_coroutine_callable."""
+class TestAsCoroutineFunction:
+    """Tests for as_coroutine_function."""
 
     @pytest.mark.parametrize(
-        ("func", "expected"),
+        "func",
         [
-            (sync_function, False),
-            (async_function, True),
-            (SyncCallable(), False),
-            (AsyncCallable(), True),
-            (functools.partial(async_function), True),
-            (functools.partial(sync_function), False),
-            (lambda: 1, False),
-            (len, False),
-            (42, False),
-            (None, False),
+            sync_function,
+            async_function,
+            SyncCallable(),
+            AsyncCallable(),
+            functools.partial(async_function),
+            functools.partial(sync_function),
+            lambda: 1,
         ],
         ids=[
             "def",
@@ -61,14 +59,36 @@ class TestIsCoroutineCallable:
             "partial of async def",
             "partial of def",
             "lambda",
-            "builtin",
-            "not callable",
-            "None",
         ],
     )
-    def test_is_coroutine_callable(self, func: Any, expected: bool) -> None:
-        """Test which callables need awaiting."""
-        assert is_coroutine_callable(func) is expected
+    async def test_runs_any_callable(self, func: Any) -> None:
+        """Test every kind of callable is run by awaiting the result of the wrapper."""
+        assert await as_coroutine_function(func)() == 1
+
+    async def test_sync_callable_runs_on_the_calling_thread(self) -> None:
+        """Test a plain function is called directly, not handed to a thread."""
+        assert await as_coroutine_function(threading.get_ident)() == threading.get_ident()
+
+    def test_coroutine_function_is_returned_unchanged(self) -> None:
+        """Test an async def needs no wrapper."""
+        assert as_coroutine_function(async_function) is async_function
+
+    async def test_arguments_are_passed(self) -> None:
+        """Test positional and keyword arguments reach the callable."""
+
+        def add(a: int, *, b: int) -> int:
+            return a + b
+
+        assert await as_coroutine_function(add)(1, b=2) == 3
+
+    async def test_exception_propagates(self) -> None:
+        """Test an exception of the callable is raised to the awaiting caller."""
+
+        def fail() -> None:
+            raise KeyError("boom")
+
+        with pytest.raises(KeyError, match="boom"):
+            await as_coroutine_function(fail)()
 
     @pytest.mark.parametrize("definition", ["def", "async def"])
     async def test_automation_functions_need_awaiting(self, tmp_path: Path, definition: str) -> None:
@@ -80,7 +100,6 @@ class TestIsCoroutineCallable:
 
         action = context.get_action("compute")
         assert action is not None
-        assert is_coroutine_callable(action.func) is True
         assert await as_coroutine_function(action.func)() == 7
 
 
