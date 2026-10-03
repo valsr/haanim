@@ -610,9 +610,40 @@ class TestFileSystemContract:
             file_setup.files.modified_time(path)
 
     async def test_empty_file(self, file_setup: FileSetup) -> None:
-        """Test an empty file is read as an empty string."""
+        """Test an empty file is read as an empty string and has no size."""
         path = file_setup.write("empty.py", "")
         assert await file_setup.files.read_text(path) == ""
+        assert file_setup.files.size(path) == 0
+
+    async def test_size_is_in_bytes(self, file_setup: FileSetup) -> None:
+        """Test the size counts bytes of the UTF-8 file, not characters."""
+        path = file_setup.write("main.py", "héllo")
+        assert file_setup.files.size(path) == 6
+        with pytest.raises(OSError):
+            file_setup.files.size(file_setup.root / "missing.py")
+
+    async def test_fingerprint_on_each_file_system(self, file_setup: FileSetup) -> None:
+        """Test the hot reloader's view of an automation's files is the same through each implementation."""
+        from haanim.engine.hot_reload import fingerprint  # pylint: disable=import-outside-toplevel
+
+        for name in (
+            "lights/main.py",
+            "lights/lib/helper.py",
+            "lights/metadata.json",
+            "lights/assets/pic.png",
+        ):
+            file_setup.write(name, "x")
+        folder = file_setup.root / "lights"
+
+        seen = await fingerprint(file_setup.files, folder)
+
+        assert sorted(path.relative_to(folder).as_posix() for path in seen) == [
+            "lib/helper.py",
+            "main.py",
+            "metadata.json",
+        ]
+        assert all(size == 1 and isinstance(modified, datetime) for modified, size in seen.values())
+        assert await fingerprint(file_setup.files, folder) == seen
 
     async def test_directories(self, file_setup: FileSetup) -> None:
         """Test a directory exists, is a directory, and a file is not one."""

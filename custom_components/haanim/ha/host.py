@@ -168,6 +168,10 @@ class HAFileSystem:
         """Return when the file was last modified."""
         return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
 
+    def size(self, path: Path) -> int:
+        """Return the size of the file in bytes."""
+        return path.stat().st_size
+
     async def read_text(self, path: Path) -> str:
         """Return the file's contents decoded as UTF-8."""
         return await self._hass.async_add_executor_job(_read_text, path)

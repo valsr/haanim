@@ -194,6 +194,13 @@ class FileSystem(Protocol):
             OSError: If the file cannot be inspected.
         """
 
+    def size(self, path: Path) -> int:
+        """Return the size of the file in bytes.
+
+        Raises:
+            OSError: If the file cannot be inspected.
+        """
+
     async def read_text(self, path: Path) -> str:
         """Return the file's contents decoded as UTF-8.
 

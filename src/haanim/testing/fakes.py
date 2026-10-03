@@ -589,6 +589,14 @@ class FakeFileSystem:
         """
         return self._entry(path)[1]
 
+    def size(self, path: Path) -> int:
+        """Return the size of the file's contents in bytes.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+        """
+        return len(self._entry(path)[0].encode("utf-8"))
+
     async def read_text(self, path: Path) -> str:
         """Return the file's contents.
 
@@ -653,6 +661,10 @@ class LocalFileSystem:
     def modified_time(self, path: Path) -> datetime:
         """Return when the file was last modified."""
         return datetime.fromtimestamp(Path(path).stat().st_mtime, tz=timezone.utc)
+
+    def size(self, path: Path) -> int:
+        """Return the size of the file in bytes."""
+        return Path(path).stat().st_size
 
     async def read_text(self, path: Path) -> str:
         """Return the file's contents decoded as UTF-8."""

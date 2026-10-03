@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,7 +12,7 @@ import pytest
 
 from haanim.engine.automation_context import AutomationContext
 from haanim.engine.lifecycle import AutomationState
-from haanim.testing import LocalFileSystem, make_host
+from haanim.testing import FakeClock, FakeFileSystem, LocalFileSystem, make_host
 
 from custom_components.haanim.const import DOMAIN
 from haanim.engine import HAAnimError
@@ -1323,8 +1324,9 @@ class TestAutomationManagerLifecycle:
         assert manager.get_failed_automations() == {
             str(folder): "main.py:1: import of module 'os' is not allowed"
         }
-        assert manager.get_automation_state("lights") is AutomationState.UNAVAILABLE
+        assert manager.get_automation_state("lights") is AutomationState.ERROR
         assert manager.get_automation_state("heating") is AutomationState.ON
+        assert manager.get_context_by_name("lights") is None
         assert log == ["start heating"]
 
     async def test_failed_start_leaves_the_automation_in_error(
@@ -1476,3 +1478,133 @@ class TestAutomationManagerLifecycle:
         assert manager.automation_message("failing") == "@startup failed: KeyError: 'x'"
         assert manager.automation_message("fine") is None
         assert manager.automation_message("unknown") is None
+
+
+class TestAutomationManagerHotReload:
+    """The manager is kept in step with the files by the engine's hot reloader."""
+
+    ROOT = Path("/config/haanim/automations")
+    SOURCE = "from haanim import action\n\n@action\ndef version():\n    return {version}\n"
+
+    @pytest.fixture
+    def clock(self) -> FakeClock:
+        """The clock the manager and the file system share."""
+        return FakeClock()
+
+    @pytest.fixture
+    def files(self, clock: FakeClock) -> FakeFileSystem:
+        """An in-memory automations folder."""
+        return FakeFileSystem(clock)
+
+    @pytest.fixture
+    def manager(self, files: FakeFileSystem, clock: FakeClock, tmp_path: Path) -> AutomationManager:
+        """A manager over the in-memory folder, rescanning every 10 seconds."""
+        hass = MagicMock()
+        hass.config.path = MagicMock(side_effect=lambda *parts: str(tmp_path.joinpath(*parts)))
+        tasks: list[Any] = []
+        hass.async_create_task = MagicMock(
+            side_effect=lambda coro, **_: tasks.append(asyncio.ensure_future(coro))
+        )
+        mock_config = MagicMock()
+        mock_config.get_automation_path.return_value = str(self.ROOT)
+        mock_config.get_import_allowlist.return_value = []
+        mock_config.get_allow_all_imports.return_value = False
+        mock_config.get_automation_refresh_interval.return_value = 10
+        with patch(
+            "custom_components.haanim.automation_manager.get_config_manager", return_value=mock_config
+        ):
+            return AutomationManager(hass=hass, entry=MagicMock(), host=make_host(files=files, clock=clock))
+
+    async def test_changed_automation_is_reloaded_after_settling(
+        self, manager: AutomationManager, files: FakeFileSystem, clock: FakeClock
+    ) -> None:
+        """An edit is picked up by the rescans: seen at one, acted on at the next."""
+        files.write(self.ROOT / "lights" / "main.py", self.SOURCE.format(version=1))
+        await manager._on_ha_started(MagicMock())
+        assert await manager.async_call_action("lights", "version") == 1
+
+        await clock.advance(seconds=25)
+        assert manager.hass.bus.async_fire.call_count == 1
+
+        files.write(self.ROOT / "lights" / "main.py", self.SOURCE.format(version=2))
+        await clock.advance(seconds=5)
+        assert await manager.async_call_action("lights", "version") == 1
+        await clock.advance(seconds=10)
+
+        assert await manager.async_call_action("lights", "version") == 2
+        await manager._on_ha_stop(MagicMock())
+
+    async def test_broken_version_is_in_error_and_fixed_version_runs_again(
+        self, manager: AutomationManager, files: FakeFileSystem, clock: FakeClock
+    ) -> None:
+        """A broken edit leaves the automation in error with the old version stopped; a fix reloads it."""
+        files.write(self.ROOT / "lights" / "main.py", self.SOURCE.format(version=1))
+        await manager._on_ha_started(MagicMock())
+
+        files.write(self.ROOT / "lights" / "main.py", "def broken(:\n")
+        await clock.advance(seconds=20)
+
+        assert manager.get_automation_state("lights") is AutomationState.ERROR
+        assert (manager.automation_message("lights") or "").startswith("main.py:1: invalid syntax")
+        with pytest.raises(AutomationNotRunningError):
+            await manager.async_call_action("lights", "version")
+
+        await clock.advance(seconds=60)
+        assert manager.get_automation_state("lights") is AutomationState.ERROR
+
+        files.write(self.ROOT / "lights" / "main.py", self.SOURCE.format(version=3))
+        await clock.advance(seconds=20)
+        assert manager.get_automation_state("lights") is AutomationState.ON
+        assert await manager.async_call_action("lights", "version") == 3
+        assert manager.get_failed_automations() == {}
+        await manager._on_ha_stop(MagicMock())
+
+    async def test_folders_added_removed_and_renamed(
+        self, manager: AutomationManager, files: FakeFileSystem, clock: FakeClock
+    ) -> None:
+        """Folders that appear are loaded and started; folders that go are stopped and unloaded."""
+        files.write(self.ROOT / "lights" / "main.py", self.SOURCE.format(version=1))
+        await manager._on_ha_started(MagicMock())
+
+        files.write(self.ROOT / "heating" / "main.py", self.SOURCE.format(version=5))
+        await clock.advance(seconds=20)
+        assert await manager.async_call_action("heating", "version") == 5
+
+        files.delete(self.ROOT / "lights" / "main.py")
+        files.write(self.ROOT / "lamps" / "main.py", self.SOURCE.format(version=1))
+        await clock.advance(seconds=20)
+
+        assert manager.get_automation_state("lights") is AutomationState.UNAVAILABLE
+        assert manager.get_automation_state("lamps") is AutomationState.ON
+        assert sorted(context.automation_id for context in manager.get_all_contexts()) == ["heating", "lamps"]
+        await manager._on_ha_stop(MagicMock())
+
+    async def test_asset_change_does_not_reload(
+        self, manager: AutomationManager, files: FakeFileSystem, clock: FakeClock
+    ) -> None:
+        """Changing a file under assets leaves the automation running."""
+        files.write(self.ROOT / "lights" / "main.py", self.SOURCE.format(version=1))
+        await manager._on_ha_started(MagicMock())
+        context = manager.get_context_by_name("lights")
+
+        files.write(self.ROOT / "lights" / "assets" / "sound.txt", "new asset")
+        await clock.advance(seconds=40)
+
+        assert manager.get_context_by_name("lights") is context
+        await manager._on_ha_stop(MagicMock())
+
+    async def test_rejected_folder_appearing_later_is_reported(
+        self, manager: AutomationManager, files: FakeFileSystem, clock: FakeClock
+    ) -> None:
+        """A folder that cannot be loaded because of its name raises its issue at the rescan, and clears it when gone."""
+        files.write(self.ROOT / "lights" / "main.py", self.SOURCE.format(version=1))
+        await manager._on_ha_started(MagicMock())
+
+        files.write(self.ROOT / "---" / "main.py", "x = 1\n")
+        await clock.advance(seconds=10)
+        assert list(manager.host.issues.issues) == ["rejected_folder_---"]
+
+        files.delete(self.ROOT / "---" / "main.py")
+        await clock.advance(seconds=10)
+        assert manager.host.issues.issues == {}
+        await manager._on_ha_stop(MagicMock())
