@@ -29,6 +29,9 @@ __all__ = [
     "DEFAULT_ACTION_TIMEOUT",
     "DEFAULT_MAX_CONCURRENT_ACTIONS",
     "DEFAULT_WORKER_SHUTDOWN_TIMEOUT",
+    "DEFAULT_STARTUP_TIMEOUT",
+    "DEFAULT_SHUTDOWN_TIMEOUT",
+    "DEFAULT_STOP_GRACE_PERIOD",
     "DEFAULT_IMPORT_ALLOWLIST",
     # Security
     "RESTRICTED_BUILTINS",
@@ -140,3 +143,8 @@ DISABLED_LOOP_MEMBERS: Final[dict[str, str]] = {
 
 # Functions of asyncio that return the event loop
 LOOP_GETTERS: Final[set[str]] = {"get_event_loop", "get_running_loop"}
+
+# Lifecycle time limits, in seconds (see "Automation Lifecycle" in the design)
+DEFAULT_STARTUP_TIMEOUT: Final = 30.0
+DEFAULT_SHUTDOWN_TIMEOUT: Final = 10.0
+DEFAULT_STOP_GRACE_PERIOD: Final = 0.5

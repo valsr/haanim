@@ -65,6 +65,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     host = build_host(hass, state_manager, event_manager)
     automation_manager = AutomationManager(hass, entry, host)
     trigger_manager = TriggerManager(host, automation_manager.action_pool)
+    automation_manager.set_trigger_registrar(trigger_manager)
 
     # Set up managers
     await state_manager.async_setup()

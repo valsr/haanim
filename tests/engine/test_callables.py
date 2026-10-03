@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 from haanim.engine.callables import as_coroutine_function
-from tests.engine.helpers import automation_file, make_context
+from tests.engine.helpers import automation_file, load_and_run, make_context
 
 
 def sync_function() -> int:
@@ -99,7 +99,7 @@ class TestAsCoroutineFunction:
             encoding="utf-8",
         )
         context = make_context(str(path))
-        await context.load()
+        await load_and_run(context)
 
         action = context.get_action("compute")
         assert action is not None
@@ -138,7 +138,7 @@ class TestAutomationFunctionsActuallyRun:
         path = automation_file(tmp_path, "auto")
         path.write_text(AUTOMATION, encoding="utf-8")
         context = make_context(str(path))
-        await context.load()
+        await load_and_run(context)
         return context
 
     @pytest.mark.parametrize(

@@ -27,7 +27,7 @@ from haanim.engine.haanim_api import (
 )
 from haanim.interfaces import Host
 from haanim.testing import FakeAutomationRegistry, FakeServiceCaller, FakeStateProvider, make_host
-from tests.engine.helpers import automation_file, make_context
+from tests.engine.helpers import automation_file, load_and_run, make_context
 
 AUTOMATION_SOURCE = """
 from haanim import action
@@ -86,7 +86,7 @@ async def other(registry: FakeAutomationRegistry, tmp_path: Path) -> AutomationC
     path = automation_file(tmp_path, "other")
     path.write_text(AUTOMATION_SOURCE, encoding="utf-8")
     context = make_context(str(path), registry=registry)
-    await context.load()
+    await load_and_run(context)
     registry.add(context)
     return context
 
@@ -367,7 +367,7 @@ class TestCallingActions:
         path = automation_file(tmp_path, "other")
         path.write_text(AUTOMATION_SOURCE, encoding="utf-8")
         context = make_context(str(path), registry=registry)
-        await context.load()
+        await load_and_run(context)
         registry.add(context)
         own_haa = HAAnim(host, "other", registry, str(tmp_path / "storage"))
 

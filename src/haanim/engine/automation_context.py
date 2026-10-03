@@ -24,7 +24,7 @@ from haanim.engine.automation_ids import automation_id as derive_automation_id
 from haanim.engine.callables import accepted_kwargs, as_coroutine_function
 from haanim.engine.decorators import FunctionMetadata, get_metadata
 from haanim.engine.discovery import MAIN_FILENAME, has_main, last_modified, source_files
-from haanim.engine.errors import HAAnimError
+from haanim.engine.errors import AutomationNotLoadedError, HAAnimError
 from haanim.engine.haanim_module import DecoratorRegistry, build_haanim_module
 from haanim.engine.logging_wrapper import create_logger_wrapper
 from haanim.engine.metadata import DEFAULT_VERSION, load_metadata
@@ -242,48 +242,59 @@ class AutomationContext:
         if self.host.hass is not None:
             self._import_controller.register_virtual_module("hass", self.host.hass)
 
-    def unload(self) -> None:
+    def discard(self) -> None:
         """Discard everything the automation's code created.
 
         After this the automation's ``haa`` instance, its ``haanim`` module and
-        its namespace are no longer referenced by the engine.
+        its namespace are no longer referenced by the engine. The automation
+        stays loaded and can be executed again.
         """
         self._import_controller.clear_virtual_modules()
         self._decorators.clear()
         self._global_symbols = SymbolTable()
         self._evaluator = None
         self._haa = None
-        self._metadata = None
         self._actions = {}
         self._triggers = []
         self._functions = {}
         self._startup_func = None
         self._shutdown_func = None
+        if self._metadata is not None:
+            self._metadata.actions = []
+            self._metadata.triggers = []
+            self._metadata.has_startup = False
+            self._metadata.has_shutdown = False
+
+    def unload(self) -> None:
+        """Discard the automation's namespace and release its checked code."""
+        self.discard()
+        self._metadata = None
+        self._source = None
 
     async def load(self) -> AutomationMetadata:
-        """Load the automation from its folder.
+        """Load the automation from its folder without running any of it.
 
-        Reads ``metadata.json``, checks every Python file of the folder, and
-        only then runs ``main.py``.
+        Reads ``metadata.json`` and checks every Python file of the folder for
+        syntax errors, unsupported constructs and disallowed imports and
+        builtins.
 
         Returns:
-            AutomationMetadata with information about the loaded automation.
+            AutomationMetadata of the loaded automation. Its actions and
+            triggers are empty until the automation's code is executed.
 
         Raises:
-            HAAnimError: If loading or parsing fails.
+            HAAnimError: If the folder has no ``main.py``, the metadata is
+                invalid, or a file does not pass the checks.
         """
         files = self.host.files
         path = self.folder / MAIN_FILENAME
+        self.unload()
 
         if not has_main(files, self.folder):
             raise HAAnimError(f"Automation has no {MAIN_FILENAME}: {self.automation_path}")
 
         info = await load_metadata(files, self.folder)
 
-        # Build the automation's own haanim module
-        self._build_modules()
-
-        # Check every file of the automation before any of it runs
         try:
             sources = await source_files(files, self.folder)
             await validate_files(
@@ -293,43 +304,12 @@ class AutomationContext:
                 restricted_builtins=self._safe_builtins.restricted,
                 relative_to=self.folder,
             )
-            self._source = await files.read_text(path)
+            source = await files.read_text(path)
             modified_at = await last_modified(files, self.folder)
         except OSError as err:
             raise HAAnimError(f"Failed to read automation '{self.automation_id}': {err}") from err
 
-        # Create evaluator
-        self._evaluator = AstEvaluator(
-            name=self.automation_id,
-            global_symbols=self._global_symbols,
-            import_controller=self._import_controller,
-            safe_builtins=self._safe_builtins,
-            logger=self._logger,
-            files=files,
-            path=path,
-            clock=self.host.clock,
-        )
-
-        # Parse the source
-        try:
-            self._evaluator.parse(self._source, filename=self.filename)
-        except HAAnimError:
-            raise
-        except Exception as err:
-            raise HAAnimError(f"Failed to parse automation: {err}") from err
-
-        # Execute the automation to define functions and variables
-        try:
-            await self._evaluator.execute()
-        except HAAnimError:
-            raise
-        except Exception as err:
-            raise HAAnimError(f"Failed to execute automation: {err}") from err
-
-        # Extract definitions from the global scope
-        self._extract_definitions()
-
-        # Create metadata
+        self._source = source
         self._metadata = AutomationMetadata(
             id=self.automation_id,
             path=self.automation_path,
@@ -340,21 +320,61 @@ class AutomationContext:
             version=info.version,
             loaded_at=self.host.clock.now(),
             modified_at=modified_at,
-            actions=list(self._actions.values()),
-            triggers=self._triggers,
-            has_startup=self._startup_func is not None,
-            has_shutdown=self._shutdown_func is not None,
+        )
+        return self._metadata
+
+    async def execute(self) -> AutomationMetadata:
+        """Run ``main.py`` from top to bottom in a fresh namespace.
+
+        This runs the decorators, which collect the automation's actions,
+        triggers and lifecycle handlers. A namespace left from an earlier
+        execution is discarded first. If the code raises, the new namespace is
+        discarded too.
+
+        Returns:
+            The automation's metadata, now with its actions and triggers.
+
+        Raises:
+            AutomationNotLoadedError: If the automation has not been loaded.
+            HAAnimError: If the code cannot be run.
+        """
+        if self._metadata is None or self._source is None:
+            raise AutomationNotLoadedError(self.automation_id)
+
+        self.discard()
+        self._build_modules()
+        self._evaluator = AstEvaluator(
+            name=self.automation_id,
+            global_symbols=self._global_symbols,
+            import_controller=self._import_controller,
+            safe_builtins=self._safe_builtins,
+            logger=self._logger,
+            files=self.host.files,
+            path=self.folder / MAIN_FILENAME,
+            clock=self.host.clock,
         )
 
+        try:
+            self._evaluator.parse(self._source, filename=self.filename)
+            await self._evaluator.execute()
+            self._extract_definitions()
+        except BaseException:
+            self.discard()
+            raise
+
+        self._metadata.actions = list(self._actions.values())
+        self._metadata.triggers = self._triggers
+        self._metadata.has_startup = self._startup_func is not None
+        self._metadata.has_shutdown = self._shutdown_func is not None
+
         self._logger.info(
-            "Automation loaded: %s (%d actions, %d triggers, startup=%s, shutdown=%s)",
+            "Automation executed: %s (%d actions, %d triggers, startup=%s, shutdown=%s)",
             self.automation_id,
             len(self._actions),
             len(self._triggers),
             self._startup_func is not None,
             self._shutdown_func is not None,
         )
-
         return self._metadata
 
     def _extract_definitions(self) -> None:
@@ -570,8 +590,13 @@ class AutomationContext:
 
     @property
     def is_loaded(self) -> bool:
-        """Check if the automation is loaded."""
+        """Check if the automation is loaded: its files have passed the checks."""
         return self._metadata is not None
+
+    @property
+    def is_executed(self) -> bool:
+        """Check if the automation's code has been run and its namespace exists."""
+        return self._evaluator is not None
 
     @property
     def source(self) -> str | None:

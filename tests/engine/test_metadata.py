@@ -18,7 +18,7 @@ from haanim.engine.metadata import (
     parse_metadata,
 )
 from haanim.testing import FakeFileSystem
-from tests.engine.helpers import automation_file, make_context
+from tests.engine.helpers import automation_file, load_and_run, make_context
 
 # The example file of the design's "Metadata" section.
 DESIGN_EXAMPLE = """{
@@ -220,7 +220,7 @@ class TestMetadataAtLoad:
         path.write_text("x = 1\n", encoding="utf-8")
         (path.parent / "metadata.json").write_text(DESIGN_EXAMPLE, encoding="utf-8")
 
-        metadata = await make_context(str(path)).load()
+        metadata = await load_and_run(make_context(str(path)))
 
         assert metadata.id == "lights"
         assert (metadata.name, metadata.description, metadata.author, metadata.version) == (
@@ -235,7 +235,7 @@ class TestMetadataAtLoad:
         path = automation_file(tmp_path, "Garden Pump")
         path.write_text("x = 1\n", encoding="utf-8")
 
-        metadata = await make_context(str(path)).load()
+        metadata = await load_and_run(make_context(str(path)))
 
         assert metadata.id == "garden_pump"
         assert (metadata.name, metadata.description, metadata.author, metadata.version) == (
@@ -256,7 +256,7 @@ class TestMetadataAtLoad:
         context = make_context(str(path))
 
         with pytest.raises(AutomationMetadataError, match="^metadata.json"):
-            await context.load()
+            await load_and_run(context)
 
         assert context.get_symbol("ran") is None
         assert not context.is_loaded

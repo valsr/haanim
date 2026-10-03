@@ -25,7 +25,7 @@ from haanim.testing import (
     make_host,
 )
 from haanim.testing.fakes import DEFAULT_NOW
-from tests.engine.helpers import automation_file, make_context
+from tests.engine.helpers import automation_file, load_and_run, make_context
 
 UTC = timezone.utc
 
@@ -816,7 +816,7 @@ class TestFakeAutomationRegistry:
             encoding="utf-8",
         )
         context = make_context(str(path))
-        await context.load()
+        await load_and_run(context)
         return context
 
     def test_empty(self) -> None:

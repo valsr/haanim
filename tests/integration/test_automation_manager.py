@@ -9,15 +9,17 @@ from pathlib import Path
 
 import pytest
 
+from haanim.engine.automation_context import AutomationContext
+from haanim.engine.lifecycle import AutomationState
 from haanim.testing import LocalFileSystem, make_host
 
 from custom_components.haanim.const import DOMAIN
 from haanim.engine import HAAnimError
 from haanim.engine.errors import (
-    ActionCancelledError,
     ActionNotFoundError,
+    AutomationAlreadyRunningError,
+    AutomationNotRunningError,
     NonExistingAutomationError,
-    ShutdownTimeoutError,
 )
 from custom_components.haanim.automation_manager import AutomationManager, async_get_manager
 
@@ -713,6 +715,10 @@ class TestAutomationManagerRunAction:
 
         manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._contexts["/tmp/test.py"] = mock_context
+        running = MagicMock()
+        running.automation_id = "test_automation"
+        running.accepts_calls.return_value = True
+        manager._automations["/tmp/test.py"] = running
 
         with pytest.raises(HAAnimError, match="not found"):
             await manager.async_run_action("test_automation", "missing_action")
@@ -822,6 +828,9 @@ async def add(a, b):
         manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         await manager.async_load_automation(str(automation))
 
+        await manager.async_start_automation("maths")
+        assert manager.get_automation_state("maths") is AutomationState.ON
+
         assert await manager.async_call_action("maths", "add", 2, 3) == 5
         assert await manager.async_call_action("maths", "Add numbers", a=4, b=5) == 9
 
@@ -853,6 +862,10 @@ async def add(a, b):
             await manager.async_call_action("nope", "add")
         assert automation_error.value.automation_id == "nope"
 
+        with pytest.raises(AutomationNotRunningError):
+            await manager.async_call_action("maths", "add")
+
+        await manager.async_start_automation("maths")
         with pytest.raises(ActionNotFoundError) as action_error:
             await manager.async_call_action("maths", "missing")
         assert (action_error.value.automation_id, action_error.value.action_name) == ("maths", "missing")
@@ -910,84 +923,6 @@ class TestAutomationManagerStartupShutdown:
         return entry
 
     @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_all_startup_actions_no_automations(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_all_startup_actions with no automations."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        # Should not raise
-        await manager._run_all_startup_actions()
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_all_shutdown_actions_no_automations(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_all_shutdown_actions with no automations."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        # Should not raise
-        await manager._run_all_shutdown_actions()
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_automation_startup_action_no_func(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_automation_startup_action when no startup func."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        mock_context = MagicMock()
-        mock_context.get_startup_func.return_value = None
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        # Should not raise when no startup func
-        await manager._run_automation_startup_action(mock_context)
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_automation_shutdown_action_no_func(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_automation_shutdown_action when no shutdown func."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        mock_context = MagicMock()
-        mock_context.get_shutdown_func.return_value = None
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        # Should not raise when no shutdown func
-        await manager._run_automation_shutdown_action(mock_context)
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
     async def test_async_load_automation_exception(
         self,
         mock_get_config: MagicMock,
@@ -1014,32 +949,6 @@ class TestAutomationManagerStartupShutdown:
 
         # Should be in failed automations
         assert str(automation) in manager.get_failed_automations()
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_async_unload_automation_runs_shutdown(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test async_unload_automation runs shutdown action."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        # Create mock context
-        mock_context = MagicMock()
-        mock_context.name = "test_automation"
-        mock_context.get_shutdown_func.return_value = None
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        manager._contexts["/tmp/test.py"] = mock_context
-
-        result = await manager.async_unload_automation("/tmp/test.py")
-        assert result is True
-        assert "/tmp/test.py" not in manager._contexts
 
     @patch("custom_components.haanim.automation_manager.get_config_manager")
     def test_get_context_returns_context(
@@ -1160,164 +1069,6 @@ class TestAutomationManagerActionsAdvanced:
         return entry
 
     @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_all_startup_actions(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_all_startup_actions runs startup for all automations."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        startup_func = AsyncMock()
-        mock_context = MagicMock()
-        mock_context.automation_id = "test_automation"
-        mock_context.get_startup_func.return_value = startup_func
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        manager._contexts["/tmp/test.py"] = mock_context
-        manager._action_pool.run_startup_action = AsyncMock()
-
-        await manager._run_all_startup_actions()
-
-        manager._action_pool.run_startup_action.assert_called_once()
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_all_startup_actions_no_startup(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_all_startup_actions skips automations without startup."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        mock_context = MagicMock()
-        mock_context.automation_id = "test_automation"
-        mock_context.get_startup_func.return_value = None
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        manager._contexts["/tmp/test.py"] = mock_context
-        manager._action_pool.run_startup_action = AsyncMock()
-
-        await manager._run_all_startup_actions()
-
-        manager._action_pool.run_startup_action.assert_not_called()
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_all_shutdown_actions(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_all_shutdown_actions runs shutdown for all automations."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        shutdown_func = AsyncMock()
-        mock_context = MagicMock()
-        mock_context.automation_id = "test_automation"
-        mock_context.get_shutdown_func.return_value = shutdown_func
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        manager._contexts["/tmp/test.py"] = mock_context
-        manager._action_pool.run_shutdown_action = AsyncMock()
-
-        await manager._run_all_shutdown_actions()
-
-        manager._action_pool.run_shutdown_action.assert_called_once()
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_all_shutdown_actions_no_shutdown(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_all_shutdown_actions skips automations without shutdown."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        mock_context = MagicMock()
-        mock_context.automation_id = "test_automation"
-        mock_context.get_shutdown_func.return_value = None
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        manager._contexts["/tmp/test.py"] = mock_context
-        manager._action_pool.run_shutdown_action = AsyncMock()
-
-        await manager._run_all_shutdown_actions()
-
-        manager._action_pool.run_shutdown_action.assert_not_called()
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_automation_startup_action(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_automation_startup_action runs startup for single automation."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        startup_func = AsyncMock()
-        mock_context = MagicMock()
-        mock_context.automation_id = "test_automation"
-        mock_context.get_startup_func.return_value = startup_func
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        manager._action_pool.run_startup_action = AsyncMock()
-
-        await manager._run_automation_startup_action(mock_context)
-
-        manager._action_pool.run_startup_action.assert_called_once()
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_automation_shutdown_action(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_automation_shutdown_action runs shutdown for single automation."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        shutdown_func = AsyncMock()
-        mock_context = MagicMock()
-        mock_context.automation_id = "test_automation"
-        mock_context.get_shutdown_func.return_value = shutdown_func
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        manager._action_pool.run_shutdown_action = AsyncMock()
-
-        await manager._run_automation_shutdown_action(mock_context)
-
-        manager._action_pool.run_shutdown_action.assert_called_once()
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
     def test_get_all_automation_statuses(
         self,
         mock_get_config: MagicMock,
@@ -1419,112 +1170,6 @@ class TestAutomationManagerStartupShutdownActions:
         return entry
 
     @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_automation_startup_action_no_func(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_automation_startup_action does nothing when no startup func."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        mock_action_pool = MagicMock()
-        mock_action_pool.run_startup_action = AsyncMock()
-        manager._action_pool = mock_action_pool
-
-        # Create a context with no startup func
-        mock_context = MagicMock()
-        mock_context.get_startup_func.return_value = None
-
-        # Should complete without error
-        await manager._run_automation_startup_action(mock_context)
-        mock_action_pool.run_startup_action.assert_not_called()
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_automation_shutdown_action_no_func(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_automation_shutdown_action does nothing when no shutdown func."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        mock_action_pool = MagicMock()
-        mock_action_pool.run_shutdown_action = AsyncMock()
-        manager._action_pool = mock_action_pool
-
-        # Create a context with no shutdown func
-        mock_context = MagicMock()
-        mock_context.get_shutdown_func.return_value = None
-
-        # Should complete without error
-        await manager._run_automation_shutdown_action(mock_context)
-        mock_action_pool.run_shutdown_action.assert_not_called()
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_automation_startup_action_success(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_automation_startup_action runs startup func successfully."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        manager._action_pool.run_startup_action = AsyncMock()
-
-        # Create a context with startup func
-        mock_startup = AsyncMock()
-        mock_context = MagicMock()
-        mock_context.get_startup_func.return_value = mock_startup
-        mock_context.automation_id = "test_automation"
-
-        await manager._run_automation_startup_action(mock_context)
-        manager._action_pool.run_startup_action.assert_called_once()
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_automation_shutdown_action_success(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_automation_shutdown_action runs shutdown func successfully."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        manager._action_pool.run_shutdown_action = AsyncMock()
-
-        # Create a context with shutdown func
-        mock_shutdown = AsyncMock()
-        mock_context = MagicMock()
-        mock_context.get_shutdown_func.return_value = mock_shutdown
-        mock_context.automation_id = "test_automation"
-
-        await manager._run_automation_shutdown_action(mock_context)
-        manager._action_pool.run_shutdown_action.assert_called_once()
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
     async def test_get_all_automation_statuses(
         self,
         mock_get_config: MagicMock,
@@ -1546,135 +1191,217 @@ class TestAutomationManagerStartupShutdownActions:
         assert set(result) == {"automation1"}
         assert manager.get_automation_status("automation1") is result["automation1"]
 
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_automation_shutdown_action_timeout_error(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_automation_shutdown_action handles timeout error."""
+
+class TestAutomationManagerLifecycle:
+    """The manager moves automations through the engine's lifecycle."""
+
+    SOURCE = (
+        "from haanim import action, startup, shutdown, state\n\n"
+        "@startup\ndef on_start():\n    record('start ' + __name__)\n\n"
+        "@shutdown\ndef on_stop():\n    record('stop ' + __name__)\n\n"
+        "@action\ndef ping():\n    return 'pong'\n\n"
+        "@state(\"sensor.a == 'on'\")\ndef on_a():\n    pass\n"
+    )
+
+    @pytest.fixture
+    def mock_hass(self, tmp_path: Path) -> MagicMock:
+        """Create a mock Home Assistant instance."""
+        hass = MagicMock()
+        hass.config.path = MagicMock(side_effect=lambda *parts: str(tmp_path.joinpath(".ha", *parts)))
+        hass.async_create_task = MagicMock(side_effect=lambda coro, **_: coro.close())
+        return hass
+
+    @pytest.fixture
+    def log(self) -> list[str]:
+        """What the automations' startup and shutdown handlers recorded."""
+        return []
+
+    @pytest.fixture
+    def manager(self, mock_hass: MagicMock, tmp_path: Path, log: list[str]) -> Any:
+        """A manager over a temporary automations folder, whose automations can record to the log."""
+        automations = tmp_path / "automations"
+        automations.mkdir()
         mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
+        mock_config.get_automation_path.return_value = str(automations)
         mock_config.get_import_allowlist.return_value = []
         mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
+        with patch(
+            "custom_components.haanim.automation_manager.get_config_manager", return_value=mock_config
+        ):
+            manager = AutomationManager(
+                hass=mock_hass, entry=MagicMock(), host=make_host(files=LocalFileSystem())
+            )
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        mock_action_pool = MagicMock()
-        mock_action_pool.run_shutdown_action = AsyncMock(
-            side_effect=ShutdownTimeoutError("test_automation", 10)
+        original = AutomationContext.execute
+
+        async def execute(context: AutomationContext) -> Any:
+            result = await original(context)
+            context.set_symbol("record", log.append)
+            return result
+
+        with patch.object(AutomationContext, "execute", execute):
+            yield manager
+
+    def write(self, tmp_path: Path, name: str, source: str | None = None) -> Path:
+        """Write an automation folder."""
+        folder = tmp_path / "automations" / name
+        folder.mkdir()
+        (folder / "main.py").write_text(source or self.SOURCE)
+        return folder
+
+    async def test_loaded_automations_are_off_until_home_assistant_has_started(
+        self, manager: AutomationManager, tmp_path: Path, log: list[str]
+    ) -> None:
+        """Loading runs no automation code; the automation is off."""
+        self.write(tmp_path, "lights")
+
+        await manager.async_load_all_automations()
+
+        assert manager.get_automation_state("lights") is AutomationState.OFF
+        assert log == []
+        with pytest.raises(AutomationNotRunningError):
+            await manager.async_call_action("lights", "ping")
+
+    async def test_started_in_ascending_order_and_stopped_in_descending_order(
+        self, manager: AutomationManager, tmp_path: Path, log: list[str]
+    ) -> None:
+        """After Home Assistant starts, automations start by ascending ID; on stop, by descending ID."""
+        for name in ("Zeta", "alpha", "Mid"):
+            self.write(tmp_path, name)
+        triggers = MagicMock()
+        triggers.register_trigger = AsyncMock(return_value="id")
+        triggers.unregister_automation_triggers = AsyncMock(return_value=1)
+        manager.set_trigger_registrar(triggers)
+
+        await manager._on_ha_started(MagicMock())
+
+        assert log == ["start alpha", "start mid", "start zeta"]
+        assert [manager.get_automation_state(name) for name in ("alpha", "mid", "zeta")] == [
+            AutomationState.ON
+        ] * 3
+        assert [call.args[0].automation_id for call in triggers.register_trigger.await_args_list] == [
+            "alpha",
+            "mid",
+            "zeta",
+        ]
+        assert await manager.async_call_action("mid", "ping") == "pong"
+
+        log.clear()
+        await manager._on_ha_stop(MagicMock())
+
+        assert log == ["stop zeta", "stop mid", "stop alpha"]
+        assert [call.args[0] for call in triggers.unregister_automation_triggers.await_args_list] == [
+            "zeta",
+            "mid",
+            "alpha",
+        ]
+        assert manager.get_automation_state("alpha") is AutomationState.UNAVAILABLE
+
+    async def test_automation_added_after_start_is_started(
+        self, manager: AutomationManager, tmp_path: Path, log: list[str]
+    ) -> None:
+        """An automation loaded once Home Assistant is running is started right away."""
+        await manager._on_ha_started(MagicMock())
+        folder = self.write(tmp_path, "lights")
+
+        metadata = await manager.async_load_automation(str(folder))
+
+        assert log == ["start lights"]
+        assert manager.get_automation_state("lights") is AutomationState.ON
+        assert [action.name for action in metadata.actions] == ["ping", "on_a"]
+
+    async def test_load_error_is_recorded_and_not_started(
+        self, manager: AutomationManager, tmp_path: Path, log: list[str]
+    ) -> None:
+        """An automation that fails to load is reported and never started."""
+        folder = self.write(tmp_path, "lights", "import os\n")
+        self.write(tmp_path, "heating")
+
+        await manager._on_ha_started(MagicMock())
+
+        assert manager.get_failed_automations() == {
+            str(folder): "main.py:1: import of module 'os' is not allowed"
+        }
+        assert manager.get_automation_state("lights") is AutomationState.UNAVAILABLE
+        assert manager.get_automation_state("heating") is AutomationState.ON
+        assert log == ["start heating"]
+
+    async def test_failed_start_leaves_the_automation_in_error(
+        self, manager: AutomationManager, tmp_path: Path
+    ) -> None:
+        """An automation whose @startup fails is loaded, in error, and cannot be called."""
+        self.write(
+            tmp_path,
+            "lights",
+            "from haanim import startup\n\n@startup\ndef on_start():\n    raise KeyError('x')\n",
         )
-        manager._action_pool = mock_action_pool
 
-        mock_shutdown = AsyncMock()
-        mock_context = MagicMock()
-        mock_context.get_shutdown_func.return_value = mock_shutdown
-        mock_context.automation_id = "test_automation"
+        await manager._on_ha_started(MagicMock())
 
-        # Should not raise, just log error
-        await manager._run_automation_shutdown_action(mock_context)
+        assert manager.get_automation_state("lights") is AutomationState.ERROR
+        with pytest.raises(AutomationNotRunningError):
+            await manager.async_call_action("lights", "ping")
 
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_automation_shutdown_action_cancelled(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
+    async def test_stop_and_start_through_the_manager(
+        self, manager: AutomationManager, tmp_path: Path, log: list[str]
     ) -> None:
-        """Test _run_automation_shutdown_action handles cancelled error."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
+        """Stopping and starting an automation runs its handlers and changes its state."""
+        self.write(tmp_path, "lights")
+        await manager._on_ha_started(MagicMock())
+        log.clear()
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        mock_action_pool = MagicMock()
-        mock_action_pool.run_shutdown_action = AsyncMock(side_effect=ActionCancelledError("cancelled"))
-        manager._action_pool = mock_action_pool
+        await manager.async_stop_automation("lights")
+        assert manager.get_automation_state("lights") is AutomationState.OFF
+        with pytest.raises(AutomationNotRunningError):
+            await manager.async_stop_automation("lights")
 
-        mock_shutdown = AsyncMock()
-        mock_context = MagicMock()
-        mock_context.get_shutdown_func.return_value = mock_shutdown
-        mock_context.automation_id = "test_automation"
+        await manager.async_start_automation("lights")
+        assert manager.get_automation_state("lights") is AutomationState.ON
+        with pytest.raises(AutomationAlreadyRunningError):
+            await manager.async_start_automation("lights")
 
-        await manager._run_automation_shutdown_action(mock_context)
+        await manager.async_restart_automation("lights")
+        assert log == ["stop lights", "start lights", "stop lights", "start lights"]
 
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_automation_shutdown_action_generic_error(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
+    async def test_unknown_automation(self, manager: AutomationManager) -> None:
+        """Operations on an automation that is not loaded name it."""
+        assert manager.get_automation_state("nope") is AutomationState.UNAVAILABLE
+        for operation in (manager.async_start_automation, manager.async_stop_automation):
+            with pytest.raises(NonExistingAutomationError):
+                await operation("nope")
+
+    async def test_removed_folder_is_stopped_and_unloaded_and_storage_is_kept(
+        self, manager: AutomationManager, tmp_path: Path, log: list[str]
     ) -> None:
-        """Test _run_automation_shutdown_action handles generic error."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
+        """Unloading the automation of a removed folder runs @shutdown and leaves its storage in place."""
+        source = (
+            "from haanim import action, shutdown, haa\n\n@action\nasync def remember():\n"
+            "    await haa.set_variable('kept', 'yes')\n\n@action\ndef recall():\n    return haa.get_variable('kept')\n\n"
+            "@shutdown\ndef on_stop():\n    record('stop ' + __name__)\n"
+        )
+        folder = self.write(tmp_path, "lights", source)
+        await manager._on_ha_started(MagicMock())
+        await manager.async_call_action("lights", "remember")
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        mock_action_pool = MagicMock()
-        mock_action_pool.run_shutdown_action = AsyncMock(side_effect=RuntimeError("generic error"))
-        manager._action_pool = mock_action_pool
+        assert await manager.async_unload_automation(str(folder)) is True
 
-        mock_shutdown = AsyncMock()
-        mock_context = MagicMock()
-        mock_context.get_shutdown_func.return_value = mock_shutdown
-        mock_context.automation_id = "test_automation"
+        assert log == ["stop lights"]
+        assert manager.get_automation_state("lights") is AutomationState.UNAVAILABLE
+        assert manager.get_context_by_name("lights") is None
 
-        await manager._run_automation_shutdown_action(mock_context)
+        # Put the folder back: the automation is loaded and started again and finds its storage.
+        await manager.async_load_automation(str(folder))
+        assert await manager.async_call_action("lights", "recall") == "yes"
 
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_automation_startup_action_cancelled(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
+    async def test_run_action_from_the_gui_needs_a_running_automation(
+        self, manager: AutomationManager, tmp_path: Path
     ) -> None:
-        """Test _run_automation_startup_action handles cancelled error."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
+        """Running an action by hand works while the automation is on, and only then."""
+        self.write(tmp_path, "lights")
+        await manager.async_load_all_automations()
+        with pytest.raises(AutomationNotRunningError):
+            await manager.async_run_action("lights", "ping")
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        mock_action_pool = MagicMock()
-        mock_action_pool.run_startup_action = AsyncMock(side_effect=ActionCancelledError("cancelled"))
-        manager._action_pool = mock_action_pool
+        await manager.async_start_automation("lights")
 
-        mock_startup = AsyncMock()
-        mock_context = MagicMock()
-        mock_context.get_startup_func.return_value = mock_startup
-        mock_context.automation_id = "test_automation"
-
-        await manager._run_automation_startup_action(mock_context)
-
-    @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_run_automation_startup_action_generic_error(
-        self,
-        mock_get_config: MagicMock,
-        mock_hass: MagicMock,
-        mock_entry: MagicMock,
-    ) -> None:
-        """Test _run_automation_startup_action handles generic error."""
-        mock_config = MagicMock()
-        mock_config.get_automation_path.return_value = "/tmp"
-        mock_config.get_import_allowlist.return_value = []
-        mock_config.get_allow_all_imports.return_value = False
-        mock_get_config.return_value = mock_config
-
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        mock_action_pool = MagicMock()
-        mock_action_pool.run_startup_action = AsyncMock(side_effect=RuntimeError("generic error"))
-        manager._action_pool = mock_action_pool
-
-        mock_startup = AsyncMock()
-        mock_context = MagicMock()
-        mock_context.get_startup_func.return_value = mock_startup
-        mock_context.automation_id = "test_automation"
-
-        await manager._run_automation_startup_action(mock_context)
+        assert await manager.async_run_action("lights", "ping") == "pong"

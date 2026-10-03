@@ -20,7 +20,7 @@ from haanim.engine.errors import PUBLIC_ERRORS, AutomationRuntimeError
 from haanim.engine.haanim_api import HAAnim
 from haanim.engine.haanim_module import DECORATORS, EVENT_CLASSES, DecoratorRegistry, build_haanim_module
 from haanim.engine.logging_wrapper import LoggerWrapper
-from tests.engine.helpers import automation_file, make_context
+from tests.engine.helpers import automation_file, load_and_run, make_context
 
 # Names the engine used to put into every automation's namespace without an import.
 FORMERLY_INJECTED = [
@@ -54,7 +54,7 @@ async def loaded(path: Path, source: str, **kwargs: Any) -> AutomationContext:
     """Write an automation file and load it."""
     path.write_text(source, encoding="utf-8")
     context = make_context(str(path), **kwargs)
-    await context.load()
+    await load_and_run(context)
     return context
 
 
@@ -133,7 +133,7 @@ class TestNothingIsInjected:
         context = make_context(str(path))
 
         with pytest.raises(AutomationRuntimeError, match=f"name '{name}' is not defined") as raised:
-            await context.load()
+            await load_and_run(context)
 
         assert isinstance(raised.value.__cause__, NameError)
 
@@ -150,7 +150,7 @@ class TestNothingIsInjected:
         path.write_text("@action\ndef go():\n    pass\n", encoding="utf-8")
 
         with pytest.raises(AutomationRuntimeError, match="name 'action' is not defined"):
-            await make_context(str(path)).load()
+            await load_and_run(make_context(str(path)))
 
     async def test_namespace_starts_with_builtins_only(self, tmp_path: Path) -> None:
         """An empty automation defines nothing of HAAnim's."""
@@ -223,7 +223,7 @@ class TestModuleContents:
         path.write_text("from haanim import no_such_name\n", encoding="utf-8")
 
         with pytest.raises(AutomationRuntimeError, match="cannot import name 'no_such_name' from 'haanim'"):
-            await make_context(str(path)).load()
+            await load_and_run(make_context(str(path)))
 
 
 class TestDecoratorRegistry:
@@ -462,7 +462,7 @@ class TestUnload:
         first = weakref.ref(context.get_symbol("haa"))
 
         context.unload()
-        await context.load()
+        await load_and_run(context)
         gc.collect()
 
         assert first() is None

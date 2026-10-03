@@ -20,7 +20,7 @@ from haanim.engine.validation import (
     validate_source,
 )
 from haanim.testing import FakeFileSystem
-from tests.engine.helpers import automation_file, make_context
+from tests.engine.helpers import automation_file, load_and_run, make_context
 
 # Each unsupported construct of the design's "Supported Python" section:
 # (source, line of the construct, text expected in the message).
@@ -369,7 +369,7 @@ class TestLoad:
         context = make_context(str(path))
 
         with pytest.raises(AutomationSyntaxError, match=rf"^main.py:{lineno}: "):
-            await context.load()
+            await load_and_run(context)
 
         assert not context.is_loaded
 
@@ -381,7 +381,7 @@ class TestLoad:
         context = make_context(str(path), allow_all_imports=True)
 
         with pytest.raises(AutomationSyntaxError, match=r"^main.py:5: "):
-            await context.load()
+            await load_and_run(context)
 
         assert not marker.exists()
         assert context.get_symbol("ran") is None
@@ -393,7 +393,7 @@ class TestLoad:
         context = make_context(str(path))
 
         with pytest.raises(AutomationSyntaxError, match=r"^main.py:3: invalid syntax"):
-            await context.load()
+            await load_and_run(context)
 
 
 class TestSupportedConstructs:

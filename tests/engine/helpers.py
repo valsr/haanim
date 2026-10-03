@@ -80,3 +80,19 @@ def make_context(automation_path: str, *, host: Host | None = None, **kwargs: An
         automation_path=str(folder),
         **defaults,
     )
+
+
+async def load_and_run(context: AutomationContext) -> Any:
+    """Load an automation and run its ``main.py``, as starting it does.
+
+    For tests of what an automation's code does. The lifecycle itself (startup
+    handler, triggers, states) is not involved.
+
+    Args:
+        context: The automation's context.
+
+    Returns:
+        The automation's metadata, with its actions and triggers.
+    """
+    await context.load()
+    return await context.execute()

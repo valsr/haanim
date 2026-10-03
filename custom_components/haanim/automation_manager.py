@@ -35,11 +35,19 @@ from haanim.engine.automation_context import (
 from haanim.engine.automation_status import AutomationStatus, AutomationStatusManager
 from haanim.engine.discovery import DiscoveredAutomation, FolderIssues, discover, last_modified
 from haanim.interfaces import Host
+from haanim.engine.callables import accepted_kwargs
 from haanim.engine.errors import (
-    ActionCancelledError,
-    PoolExhaustedError,
+    AutomationNotRunningError,
     HAAnimError,
-    ShutdownTimeoutError,
+    NonExistingAutomationError,
+)
+from haanim.engine.lifecycle import (
+    Automation,
+    AutomationState,
+    NoTriggers,
+    TriggerRegistrar,
+    start_all,
+    stop_all,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -80,8 +88,10 @@ class AutomationManager:
         self._import_allowlist = self._config.get_import_allowlist()
         self._allow_all_imports = self._config.get_allow_all_imports()
 
-        # Automation storage
+        # Automation storage, both keyed by the path of the automation's folder
         self._contexts: dict[str, AutomationContext] = {}
+        self._automations: dict[str, Automation] = {}
+        self._triggers: TriggerRegistrar = NoTriggers()
         self._failed_automations: dict[str, str] = {}  # path -> error message
 
         # File watcher
@@ -131,13 +141,10 @@ class AutomationManager:
         Args:
             event: The started event.
         """
-        self._started = True
-
-        # Load all automations
+        # Load all automations, then start them one at a time in ascending ID order
         await self.async_load_all_automations()
-
-        # Run startup actions for all loaded automations
-        await self._run_all_startup_actions()
+        await start_all(self._automations.values())
+        self._started = True
 
         # Start file watcher
         self._watcher_task = self.hass.async_create_task(
@@ -163,8 +170,8 @@ class AutomationManager:
             except asyncio.CancelledError:
                 pass
 
-        # Run shutdown actions for all automations (with timeout handling)
-        await self._run_all_shutdown_actions()
+        # Stop all automations, one at a time in descending ID order
+        await stop_all(self._automations.values())
 
         # Shutdown the worker pool
         await self._action_pool.shutdown()
@@ -234,7 +241,10 @@ class AutomationManager:
             return None
 
     async def async_load_automation(self, automation_path: str) -> AutomationMetadata:
-        """Load a single automation.
+        """Load a single automation, and start it if Home Assistant has started.
+
+        Loading checks the automation's files; none of its code runs until it
+        is started.
 
         Args:
             automation_path: Path of the automation's folder.
@@ -245,11 +255,10 @@ class AutomationManager:
         Raises:
             HAAnimError: If loading fails.
         """
-        # Unload if already loaded
-        if automation_path in self._contexts:
+        # Stop and unload if already loaded
+        if automation_path in self._automations:
             await self.async_unload_automation(automation_path)
 
-        # Create context
         context = AutomationContext(
             host=self.host,
             automation_path=automation_path,
@@ -260,6 +269,7 @@ class AutomationManager:
             additional_imports=self._import_allowlist,
             allow_all_imports=self._allow_all_imports,
         )
+        automation = Automation(context, pool=self._action_pool, triggers=self._triggers)
 
         # Record when the files last changed, for hot reload; also when loading fails,
         # so that a broken automation is retried only once it has been edited
@@ -267,79 +277,64 @@ class AutomationManager:
         if modified is not None:
             self._file_mtimes[automation_path] = modified
 
-        try:
-            # Load the automation
-            metadata = await context.load()
-
-            # Store context
-            self._contexts[automation_path] = context
-
-            # Remove from failed automations if present
-            self._failed_automations.pop(automation_path, None)
-
-            # Fire loaded event
-            self.hass.bus.async_fire(
-                EVENT_AUTOMATION_LOADED,
-                {
-                    "automation_path": automation_path,
-                    "automation_id": metadata.id,
-                    "actions": [a.name for a in metadata.actions],
-                    "triggers": len(metadata.triggers),
-                    "has_startup": metadata.has_startup,
-                    "has_shutdown": metadata.has_shutdown,
-                },
-            )
-
-            # Run startup action if HA has already started (hot reload scenario)
-            if self._started:
-                await self._run_automation_startup_action(context)
-
-            return metadata
-
-        except HAAnimError as err:
-            # Track failed automation
-            self._failed_automations[automation_path] = str(err)
-
-            # Log the error with traceback for debugging
-            _LOGGER.exception("Automation loading error for %s", automation_path)
-
-            # Fire error event
+        if not await automation.load():
+            message = automation.message or "unknown error"
+            self._failed_automations[automation_path] = message
             self.hass.bus.async_fire(
                 EVENT_AUTOMATION_ERROR,
                 {
                     "automation_path": automation_path,
-                    "error": str(err),
+                    "error": message,
                 },
             )
+            raise HAAnimError(message)
 
-            raise
+        self._contexts[automation_path] = context
+        self._automations[automation_path] = automation
+        self._failed_automations.pop(automation_path, None)
+        metadata = context.get_metadata()
+        assert metadata is not None
+
+        # Start it right away if Home Assistant has already started (hot reload)
+        if self._started:
+            await automation.start()
+
+        self.hass.bus.async_fire(
+            EVENT_AUTOMATION_LOADED,
+            {
+                "automation_path": automation_path,
+                "automation_id": metadata.id,
+                "state": automation.state.value,
+                "actions": [a.name for a in metadata.actions],
+                "triggers": len(metadata.triggers),
+                "has_startup": metadata.has_startup,
+                "has_shutdown": metadata.has_shutdown,
+            },
+        )
+
+        return metadata
 
     async def async_unload_automation(self, automation_path: str) -> bool:
-        """Unload an automation.
+        """Stop and unload an automation.
 
-        This will run the automation's shutdown action (if defined) before unloading.
-        If an action is currently running for this automation, it will be cancelled.
+        A running automation is stopped first: its triggers are unregistered,
+        running actions get the grace period and are then cancelled, and its
+        ``@shutdown`` handler runs.
 
         Args:
-            automation_path: Path to the automation file.
+            automation_path: Path of the automation's folder.
 
         Returns:
             True if the automation was unloaded.
         """
-        if automation_path not in self._contexts:
+        automation = self._automations.pop(automation_path, None)
+        if automation is None:
             return False
 
-        context = self._contexts.get(automation_path)
-        if context:
-            # Run shutdown action before unloading
-            await self._run_automation_shutdown_action(context)
-
-        context = self._contexts.pop(automation_path)
+        self._contexts.pop(automation_path, None)
         self._file_mtimes.pop(automation_path, None)
-        automation_id = context.automation_id
-
-        # Discard the automation's haa instance, haanim module and namespace
-        context.unload()
+        automation_id = automation.automation_id
+        await automation.unload()
 
         # Fire unloaded event
         self.hass.bus.async_fire(
@@ -354,9 +349,9 @@ class AutomationManager:
         return True
 
     async def async_unload_all_automations(self) -> None:
-        """Unload all loaded automations."""
-        paths = list(self._contexts.keys())
-        for path in paths:
+        """Stop and unload all automations, one at a time in descending order of automation ID."""
+        by_id = sorted(self._automations.items(), key=lambda item: item[1].automation_id, reverse=True)
+        for path, _ in by_id:
             await self.async_unload_automation(path)
 
     async def async_reload_automation(self, automation_path: str) -> AutomationMetadata:
@@ -521,6 +516,9 @@ class AutomationManager:
         if not context:
             raise HAAnimError(f"Automation '{automation_id}' not found")
 
+        if not self._automation(context.automation_id).accepts_calls():
+            raise AutomationNotRunningError(context.automation_id)
+
         # Get the action from the context
         actions = {a.name: a for a in context.get_actions()}
         if action_name not in actions:
@@ -532,8 +530,8 @@ class AutomationManager:
         else:
             action = actions[action_name]
 
-        # Add manual flag to kwargs
-        kwargs["manual"] = manual
+        # Offer the manual flag to actions that declare it
+        kwargs.update(accepted_kwargs(action.func, {"manual": manual}))
 
         # Submit to the worker pool
         return await self._action_pool.submit_action(
@@ -544,174 +542,34 @@ class AutomationManager:
             **kwargs,
         )
 
-    async def _run_all_startup_actions(self) -> None:
-        """Run startup actions for all loaded automations.
+    def _automation(self, automation_id: str) -> Automation:
+        """Return the automation with an ID.
 
-        This is called after all automations have been loaded. Each automation's
-        @startup decorated function (if any) is executed through the worker pool.
+        Raises:
+            NonExistingAutomationError: If no such automation is loaded.
         """
-        startup_count = 0
-        error_count = 0
+        for automation in self._automations.values():
+            if automation.automation_id == automation_id:
+                return automation
+        raise NonExistingAutomationError(automation_id)
 
-        for context in self._contexts.values():
-            startup_func = context.get_startup_func()
-            if startup_func is None:
-                continue
+    def get_automation_state(self, automation_id: str) -> AutomationState:
+        """Return the lifecycle state of an automation.
 
-            try:
-                _LOGGER.debug("Running startup action for automation '%s'", context.automation_id)
-                await self._action_pool.run_startup_action(
-                    automation_id=context.automation_id,
-                    startup_func=startup_func,
-                )
-                startup_count += 1
-            except PoolExhaustedError as err:
-                _LOGGER.error(
-                    "Failed to run startup action for automation '%s': %s",
-                    context.automation_id,
-                    err,
-                )
-                error_count += 1
-            except ActionCancelledError:
-                _LOGGER.warning(
-                    "Startup action for automation '%s' was cancelled",
-                    context.automation_id,
-                )
-                error_count += 1
-            except Exception as err:  # pylint: disable=broad-exception-caught
-                _LOGGER.exception(
-                    "Error in startup action for automation '%s': %s",
-                    context.automation_id,
-                    err,
-                )
-                error_count += 1
-
-        _LOGGER.info(
-            "Startup actions completed: %d successful, %d failed",
-            startup_count,
-            error_count,
-        )
-
-    async def _run_all_shutdown_actions(self) -> None:
-        """Run shutdown actions for all loaded automations.
-
-        This is called when Home Assistant is stopping. Each automation's
-        @shutdown decorated function (if any) is executed with a timeout.
-        If the shutdown action exceeds the timeout, it is forcefully terminated.
+        An automation that is not loaded is ``unavailable``.
         """
-        shutdown_count = 0
-        error_count = 0
+        try:
+            return self._automation(automation_id).state
+        except NonExistingAutomationError:
+            return AutomationState.UNAVAILABLE
 
-        for context in self._contexts.values():
-            shutdown_func = context.get_shutdown_func()
-            if shutdown_func is None:
-                continue
-
-            try:
-                _LOGGER.debug("Running shutdown action for automation '%s'", context.automation_id)
-                await self._action_pool.run_shutdown_action(
-                    automation_id=context.automation_id,
-                    shutdown_func=shutdown_func,
-                )
-                shutdown_count += 1
-            except ShutdownTimeoutError as err:
-                _LOGGER.error(
-                    "Shutdown action for automation '%s' timed out: %s",
-                    context.automation_id,
-                    err,
-                )
-                error_count += 1
-            except ActionCancelledError:
-                _LOGGER.warning(
-                    "Shutdown action for automation '%s' was cancelled",
-                    context.automation_id,
-                )
-                error_count += 1
-            except Exception as err:  # pylint: disable=broad-exception-caught
-                _LOGGER.exception(
-                    "Error in shutdown action for automation '%s': %s",
-                    context.automation_id,
-                    err,
-                )
-                error_count += 1
-
-        _LOGGER.info(
-            "Shutdown actions completed: %d successful, %d failed",
-            shutdown_count,
-            error_count,
-        )
-
-    async def _run_automation_shutdown_action(self, context: AutomationContext) -> None:
-        """Run the shutdown action for a single automation.
-
-        This is called when an automation is being unloaded or reloaded.
+    def set_trigger_registrar(self, triggers: TriggerRegistrar) -> None:
+        """Set where the triggers of started automations are registered.
 
         Args:
-            context: The automation context to shut down.
+            triggers: The trigger manager.
         """
-        shutdown_func = context.get_shutdown_func()
-        if shutdown_func is None:
-            return
-
-        try:
-            _LOGGER.debug("Running shutdown action for automation '%s'", context.automation_id)
-            await self._action_pool.run_shutdown_action(
-                automation_id=context.automation_id,
-                shutdown_func=shutdown_func,
-            )
-        except ShutdownTimeoutError as err:
-            _LOGGER.error(
-                "Shutdown action for automation '%s' timed out: %s",
-                context.automation_id,
-                err,
-            )
-        except ActionCancelledError:
-            _LOGGER.warning(
-                "Shutdown action for automation '%s' was cancelled",
-                context.automation_id,
-            )
-        except Exception as err:  # pylint: disable=broad-exception-caught
-            _LOGGER.exception(
-                "Error in shutdown action for automation '%s': %s",
-                context.automation_id,
-                err,
-            )
-
-    async def _run_automation_startup_action(self, context: AutomationContext) -> None:
-        """Run the startup action for a single automation.
-
-        This is called when a new automation is loaded (e.g., during hot reload).
-
-        Args:
-            context: The automation context to start up.
-        """
-        startup_func = context.get_startup_func()
-        if startup_func is None:
-            return
-
-        try:
-            _LOGGER.debug("Running startup action for automation '%s'", context.automation_id)
-            await self._action_pool.run_startup_action(
-                automation_id=context.automation_id,
-                startup_func=startup_func,
-            )
-        except PoolExhaustedError as err:
-            _LOGGER.error(
-                "Failed to run startup action for automation '%s': %s",
-                context.automation_id,
-                err,
-            )
-        except ActionCancelledError:
-            _LOGGER.warning(
-                "Startup action for automation '%s' was cancelled",
-                context.automation_id,
-            )
-        except Exception as err:  # pylint: disable=broad-exception-caught
-            _LOGGER.exception(
-                "Error in startup action for automation '%s': %s",
-                context.automation_id,
-                err,
-            )
+        self._triggers = triggers
 
     async def async_call_action(
         self,
@@ -733,36 +591,10 @@ class AutomationManager:
 
         Raises:
             NonExistingAutomationError: If automation not found.
+            AutomationNotRunningError: If the automation is not running.
             ActionNotFoundError: If action not found.
         """
-        from haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
-            NonExistingAutomationError,
-            ActionNotFoundError,
-        )
-
-        # Find automation context
-        context = None
-        for ctx in self._contexts.values():
-            if ctx.automation_id == automation_id:
-                context = ctx
-                break
-
-        if context is None:
-            raise NonExistingAutomationError(automation_id)
-
-        # Find action
-        action_def = context.get_action(action_name)
-        if action_def is None:
-            raise ActionNotFoundError(automation_id, action_name)
-
-        # Execute action through the action pool
-        return await self._action_pool.submit_action(
-            automation_id,
-            action_name,
-            action_def.func,
-            *args,
-            **kwargs,
-        )
+        return await self._automation(automation_id).call_action(action_name, *args, **kwargs)
 
     async def async_enable_automation(self, automation_id: str) -> None:
         """Enable an automation.
@@ -773,10 +605,6 @@ class AutomationManager:
         Raises:
             NonExistingAutomationError: If automation not found.
         """
-        from haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
-            NonExistingAutomationError,
-        )
-
         # Find automation context
         context = None
         for ctx in self._contexts.values():
@@ -799,10 +627,6 @@ class AutomationManager:
         Raises:
             NonExistingAutomationError: If automation not found.
         """
-        from haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
-            NonExistingAutomationError,
-        )
-
         # Find automation context
         context = None
         for ctx in self._contexts.values():
@@ -817,58 +641,29 @@ class AutomationManager:
         _LOGGER.info("Disabled automation: %s", automation_id)
 
     async def async_start_automation(self, automation_id: str) -> None:
-        """Start an automation (run startup action if present).
+        """Start an automation.
 
         Args:
             automation_id: Automation identifier.
 
         Raises:
             NonExistingAutomationError: If automation not found.
+            AutomationAlreadyRunningError: If the automation is running.
         """
-        from haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
-            NonExistingAutomationError,
-        )
-
-        # Find automation context
-        context = None
-        for ctx in self._contexts.values():
-            if ctx.automation_id == automation_id:
-                context = ctx
-                break
-
-        if context is None:
-            raise NonExistingAutomationError(automation_id)
-
-        context.metadata.state = "running"
-        context.metadata.run_time = datetime.now()
-        await self._run_automation_startup_action(context)
+        await self._automation(automation_id).start()
         _LOGGER.info("Started automation: %s", automation_id)
 
     async def async_stop_automation(self, automation_id: str) -> None:
-        """Stop an automation (run shutdown action if present).
+        """Stop an automation.
 
         Args:
             automation_id: Automation identifier.
 
         Raises:
             NonExistingAutomationError: If automation not found.
+            AutomationNotRunningError: If the automation is not running.
         """
-        from haanim.engine.errors import (  # pylint: disable=import-outside-toplevel
-            NonExistingAutomationError,
-        )
-
-        # Find automation context
-        context = None
-        for ctx in self._contexts.values():
-            if ctx.automation_id == automation_id:
-                context = ctx
-                break
-
-        if context is None:
-            raise NonExistingAutomationError(automation_id)
-
-        context.metadata.state = "stopped"
-        await self._run_automation_shutdown_action(context)
+        await self._automation(automation_id).stop()
         _LOGGER.info("Stopped automation: %s", automation_id)
 
     async def async_restart_automation(self, automation_id: str) -> None:

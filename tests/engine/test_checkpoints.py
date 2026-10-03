@@ -20,7 +20,7 @@ from haanim.engine.callables import as_coroutine_function
 from haanim.engine.errors import ActionCancelledError
 from haanim.engine.eval_function import CHECKPOINT, NATIVE_CALL_WARNING_SECONDS, run_to_completion
 from haanim.testing import FakeClock, LocalFileSystem, make_host
-from tests.engine.helpers import automation_file, make_context
+from tests.engine.helpers import automation_file, load_and_run, make_context
 
 ENGINE_DIR = Path(__file__).parents[2] / "src" / "haanim" / "engine"
 
@@ -305,7 +305,7 @@ class TestCancellation:
             encoding="utf-8",
         )
         context = make_context(str(path))
-        await context.load()
+        await load_and_run(context)
         endless = asyncio.create_task(context.run_action("forever"))
         await asyncio.sleep(0)
 
@@ -409,8 +409,8 @@ class TestSingleLoop:
             encoding="utf-8",
         )
         context = make_context(str(path), host=make_host(files=LocalFileSystem()))
+        await load_and_run(context)
         context.set_symbol("record", lambda: threads.append(threading.get_ident()))
-        await context.load()
 
         await context.run_action("where")
         await context.run_function("where")
@@ -524,7 +524,7 @@ class TestBlockingWarning:
             encoding="utf-8",
         )
         context = make_context(str(path), host=host)
-        await context.load()
+        await load_and_run(context)
 
         with caplog.at_level(logging.WARNING):
             assert await context.run_action("order") == [1, 2]

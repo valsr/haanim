@@ -28,7 +28,7 @@ from haanim.engine.triggers import CronTrigger, IntervalTrigger, StateTrigger
 from haanim.interfaces import Host
 from haanim.testing import FakeAutomationRegistry, FakeClock, FakeServiceCaller, FakeStateProvider, make_host
 from haanim.testing.fakes import DEFAULT_NOW
-from tests.engine.helpers import automation_file, make_context
+from tests.engine.helpers import automation_file, load_and_run, make_context
 
 UTC = timezone.utc
 
@@ -459,7 +459,7 @@ class TestAutomationOnClock:
         await clock.advance(hours=1)
 
         context = make_context(str(path), host=_host_reading_disk(clock))
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         assert metadata.loaded_at == DEFAULT_NOW + timedelta(hours=1)
 
@@ -478,7 +478,7 @@ class TestAutomationOnClock:
             encoding="utf-8",
         )
         context = make_context(str(path), host=_host_reading_disk(clock))
-        await context.load()
+        await load_and_run(context)
 
         task = asyncio.create_task(context.run_action("wait_a_minute"))
         await clock.advance(seconds=59)

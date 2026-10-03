@@ -27,7 +27,7 @@ from haanim.engine.safe_builtins import SafeBuiltins
 from haanim.engine.symbol_table import SymbolTable
 from haanim.engine.validation import check_source, find_disallowed, validate_files, validate_source
 from haanim.testing import FakeFileSystem, make_host
-from tests.engine.helpers import automation_file, make_context
+from tests.engine.helpers import automation_file, load_and_run, make_context
 
 # The lists of the design's Imports section, written out here on purpose:
 # the code must be changed together with the design, not on its own.
@@ -289,10 +289,10 @@ class TestImportOptions:
         path.write_text("import colorsys\nvalue = colorsys.rgb_to_hls(1, 0, 0)[0]\n", encoding="utf-8")
 
         with pytest.raises(AutomationSecurityError, match=r"^main.py:1: import of module 'colorsys'"):
-            await make_context(str(path)).load()
+            await load_and_run(make_context(str(path)))
 
         context = make_context(str(path), additional_imports=["colorsys"])
-        await context.load()
+        await load_and_run(context)
         assert context.get_symbol("value") == 0.0
 
     async def test_allow_all_in_an_automation(self, tmp_path: Path) -> None:
@@ -301,7 +301,7 @@ class TestImportOptions:
         path.write_text("import os.path\nname = os.path.basename('/a/b')\n", encoding="utf-8")
         context = make_context(str(path), allow_all_imports=True)
 
-        await context.load()
+        await load_and_run(context)
 
         assert context.get_symbol("name") == "b"
 
@@ -534,7 +534,7 @@ class TestEngineSuppliedModules:
         context = make_context(str(path))
 
         with caplog.at_level(logging.INFO):
-            await context.load()
+            await load_and_run(context)
 
         assert context.get_symbol("same") is True
         assert isinstance(context.get_symbol("logging"), LoggerWrapper)
@@ -551,7 +551,7 @@ class TestEngineSuppliedModules:
         )
         context = make_context(str(path), host=make_host(files=_disk(), hass=instance))
 
-        await context.load()
+        await load_and_run(context)
 
         assert context.get_symbol("hass") is instance
         assert context.get_symbol("same") is True
@@ -563,7 +563,7 @@ class TestEngineSuppliedModules:
         context = make_context(str(path))
 
         with pytest.raises(AutomationRuntimeError, match="No module named 'hass'"):
-            await context.load()
+            await load_and_run(context)
 
     async def test_haanim_module_is_supplied(self, tmp_path: Path) -> None:
         """``from haanim import ...`` gives the automation's own objects."""
@@ -573,7 +573,7 @@ class TestEngineSuppliedModules:
         )
         context = make_context(str(path))
 
-        await context.load()
+        await load_and_run(context)
 
         assert context.get_symbol("same") is True
 
@@ -757,7 +757,7 @@ class TestRelativeImports:
             encoding="utf-8",
         )
         context = make_context(str(path))
-        await context.load()
+        await load_and_run(context)
 
         assert context.get_symbol("same") is True
         assert await context.run_action("which") == "auto"
@@ -770,7 +770,7 @@ class TestRelativeImports:
         path.write_text("from ..heating.main import SECRET\n", encoding="utf-8")
 
         with pytest.raises(AutomationSecurityError, match="outside the automation"):
-            await make_context(str(path)).load()
+            await load_and_run(make_context(str(path)))
 
 
 class TestSymbolsForModules:

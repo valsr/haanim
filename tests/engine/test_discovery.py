@@ -21,7 +21,7 @@ from haanim.engine.discovery import (
 )
 from haanim.engine.errors import AutomationSecurityError, AutomationSyntaxError, HAAnimError
 from haanim.testing import FakeClock, FakeFileSystem, FakeIssueReporter, make_host
-from tests.engine.helpers import automation_file, make_context
+from tests.engine.helpers import automation_file, load_and_run, make_context
 
 ROOT = Path("/config/haanim/automations")
 
@@ -328,7 +328,7 @@ class TestFolderAtLoad:
         path.write_text("value = 1\n", encoding="utf-8")
         context = make_context(str(path))
 
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         assert context.automation_id == metadata.id == "cafe_lights_v2"
         assert metadata.path == str(path.parent)
@@ -354,14 +354,14 @@ class TestFolderAtLoad:
         (tmp_path / "lights").mkdir()
 
         with pytest.raises(HAAnimError, match="Automation has no main.py"):
-            await make_context(str(tmp_path / "lights")).load()
+            await load_and_run(make_context(str(tmp_path / "lights")))
 
     async def test_empty_main(self, tmp_path: Path) -> None:
         """An empty main.py is a valid automation with nothing in it."""
         path = automation_file(tmp_path, "lights")
         path.write_text("", encoding="utf-8")
 
-        metadata = await make_context(str(path)).load()
+        metadata = await load_and_run(make_context(str(path)))
 
         assert metadata.actions == []
 
@@ -390,7 +390,7 @@ class TestFolderAtLoad:
         context = make_context(str(path))
 
         with pytest.raises(error, match=message):
-            await context.load()
+            await load_and_run(context)
 
         assert context.get_symbol("ran") is None
         assert not context.is_loaded
@@ -402,7 +402,7 @@ class TestFolderAtLoad:
         (path.parent / "helper.py").write_text("import sys\n", encoding="utf-8")
 
         with pytest.raises(AutomationSecurityError) as raised:
-            await make_context(str(path)).load()
+            await load_and_run(make_context(str(path)))
 
         assert str(raised.value).splitlines() == [
             "main.py:1: import of module 'os' is not allowed",
@@ -416,7 +416,7 @@ class TestFolderAtLoad:
         (path.parent / "assets").mkdir()
         (path.parent / "assets" / "example.py").write_text("this is not python (\n", encoding="utf-8")
 
-        assert (await make_context(str(path)).load()).id == "lights"
+        assert (await load_and_run(make_context(str(path)))).id == "lights"
 
     async def test_sub_package_import(self, tmp_path: Path) -> None:
         """Files in sub-folders are imported relative to the automation's folder."""
@@ -427,7 +427,7 @@ class TestFolderAtLoad:
         (path.parent / "scenes" / "evening.py").write_text("LEVEL = 40\n", encoding="utf-8")
         context = make_context(str(path))
 
-        await context.load()
+        await load_and_run(context)
 
         assert context.get_symbol("LEVEL") == 40
 
@@ -441,7 +441,7 @@ class TestFolderAtLoad:
         host = make_host(files=files, clock=clock)
         context = make_context("/automations/lights", host=host, storage_path=str(tmp_path))
 
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         assert metadata.modified_at == clock.now()
         assert metadata.loaded_at == clock.now()

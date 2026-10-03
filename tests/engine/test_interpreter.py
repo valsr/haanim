@@ -17,7 +17,7 @@ from haanim.engine.eval_function import FUNCTION_ATTRIBUTE, get_eval_function, r
 from haanim.engine.import_controller import ImportController
 from haanim.engine.symbol_table import SCOPE_CLASS, SCOPE_COMPREHENSION, SCOPE_FUNCTION, SymbolTable
 from haanim.engine.validation import validate_source
-from tests.engine.helpers import automation_file, make_context
+from tests.engine.helpers import automation_file, load_and_run, make_context
 
 
 async def load(source: str) -> dict[str, Any]:
@@ -745,7 +745,7 @@ class TestEngineCalls:
             encoding="utf-8",
         )
         context = make_context(str(path))
-        await context.load()
+        await load_and_run(context)
 
         assert await context.run_action("compute") == 7
 
@@ -759,7 +759,7 @@ class TestEngineCalls:
             encoding="utf-8",
         )
         context = make_context(str(path))
-        await context.load()
+        await load_and_run(context)
 
         assert await context.run_action("compute", manual=True, extra=5) == (True, 5)
 
@@ -783,7 +783,7 @@ class TestEngineCalls:
             encoding="utf-8",
         )
         context = make_context(str(path))
-        await context.load()
+        await load_and_run(context)
 
         assert await context.run_action("bump") == 5
 
@@ -796,7 +796,7 @@ class TestEngineCalls:
         with pytest.raises(
             AutomationSyntaxError, match=r"^main.py:3: invalid syntax: 'await' outside function"
         ):
-            await context.load()
+            await load_and_run(context)
 
         assert context.get_symbol("ran") is None
 

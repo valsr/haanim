@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from haanim.testing import make_host
-from tests.engine.helpers import automation_file, make_context
+from tests.engine.helpers import automation_file, load_and_run, make_context
 from haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
 from haanim.engine.automation_context import (
     ActionDefinition,
@@ -253,7 +253,7 @@ class TestAutomationContextLoad:
         )
 
         with pytest.raises(HAAnimError, match="Automation has no main.py"):
-            await context.load()
+            await load_and_run(context)
 
     async def test_load_simple_automation(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading a simple valid automation."""
@@ -271,7 +271,7 @@ def my_action():
             automation_path=str(automation_path),
         )
 
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         assert metadata is not None
         assert metadata.id == "test_automation"
@@ -288,7 +288,7 @@ def my_action():
         automation_path.write_text(f"from haanim import {name}\nimported = {name}\n")
 
         context = make_context(str(automation_path))
-        await context.load()
+        await load_and_run(context)
 
         assert context.get_symbol("imported") is error_class
 
@@ -301,7 +301,7 @@ def my_action():
 
         context = make_context(str(automation_path))
         with pytest.raises(HAAnimError):
-            await context.load()
+            await load_and_run(context)
 
     async def test_load_automation_with_triggers(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading an automation with triggers."""
@@ -323,7 +323,7 @@ def on_hour():
             automation_path=str(automation_path),
         )
 
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         assert len(metadata.triggers) == 2
         trigger_types = {t.trigger_type for t in metadata.triggers}
@@ -350,7 +350,7 @@ def on_shutdown():
             automation_path=str(automation_path),
         )
 
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         assert metadata.has_startup is True
         assert metadata.has_shutdown is True
@@ -374,7 +374,7 @@ def broken(:
         )
 
         with pytest.raises(HAAnimError, match=r"^main.py:2: invalid syntax"):
-            await context.load()
+            await load_and_run(context)
 
 
 class TestAutomationContextGetters:
@@ -406,7 +406,7 @@ def second():
         )
 
         context = make_context(str(automation_path))
-        await context.load()
+        await load_and_run(context)
 
         actions = context.get_actions()
         assert len(actions) == 2
@@ -424,7 +424,7 @@ def on_high():
         )
 
         context = make_context(str(automation_path))
-        await context.load()
+        await load_and_run(context)
 
         triggers = context.get_triggers()
         assert len(triggers) == 1
@@ -442,7 +442,7 @@ def test():
         )
 
         context = make_context(str(automation_path))
-        await context.load()
+        await load_and_run(context)
 
         metadata = context.get_metadata()
         assert metadata is not None
@@ -489,7 +489,7 @@ class TestAutomationContextEdgeCases:
         automation_path.write_text("x = 1")
 
         context = make_context(str(automation_path))
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         assert metadata.id == "minimal"
         assert len(metadata.actions) == 0
@@ -508,7 +508,7 @@ def do_something():
         )
 
         context = make_context(str(automation_path))
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         # Should have an action with custom name
         assert len(metadata.actions) == 1
@@ -521,7 +521,7 @@ def do_something():
         context = make_context("/nonexistent/path")
 
         with pytest.raises(HAAnimError, match="has no main.py"):
-            await context.load()
+            await load_and_run(context)
 
     async def test_get_startup_func_none(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test get_startup_func returns None when no startup defined."""
@@ -529,7 +529,7 @@ def do_something():
         automation_path.write_text("x = 1")
 
         context = make_context(str(automation_path))
-        await context.load()
+        await load_and_run(context)
 
         assert context.get_startup_func() is None
 
@@ -539,7 +539,7 @@ def do_something():
         automation_path.write_text("x = 1")
 
         context = make_context(str(automation_path))
-        await context.load()
+        await load_and_run(context)
 
         assert context.get_shutdown_func() is None
 
@@ -569,7 +569,7 @@ def on_high():
         )
 
         context = make_context(str(automation_path))
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         # Should have both a trigger and an action
         assert len(metadata.triggers) == 1
@@ -591,7 +591,7 @@ def multi_trigger():
         )
 
         context = make_context(str(automation_path))
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         # Should have 3 triggers but only 1 action
         assert len(metadata.triggers) == 3
@@ -612,7 +612,7 @@ def custom_action():
         )
 
         context = make_context(str(automation_path))
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         # Should have trigger and action with custom metadata
         assert len(metadata.triggers) == 1
@@ -634,7 +634,7 @@ def evening_lights():
         )
 
         context = make_context(str(automation_path))
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         # Should have action with default settings
         assert len(metadata.actions) == 1
@@ -655,7 +655,7 @@ def manual_only():
         )
 
         context = make_context(str(automation_path))
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         # Should have action but no triggers
         assert len(metadata.actions) == 1
@@ -684,7 +684,7 @@ def both():
         )
 
         context = make_context(str(automation_path))
-        metadata = await context.load()
+        metadata = await load_and_run(context)
 
         # Should have 3 actions (all callable) and 2 triggers
         assert len(metadata.actions) == 3
