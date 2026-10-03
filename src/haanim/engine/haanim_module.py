@@ -22,16 +22,11 @@ DECORATORS: dict[str, Callable[..., Any]] = {
     "action": decorators.action,
     "startup": decorators.startup,
     "shutdown": decorators.shutdown,
-    "state": decorators.state,
-    "state_trigger": decorators.state_trigger,
-    "time": decorators.time,
-    "time_trigger": decorators.time_trigger,
-    "interval": decorators.interval,
-    "cron": decorators.cron,
-    "event": decorators.event,
-    "event_trigger": decorators.event_trigger,
-    "time_active": decorators.time_active,
-    "state_active": decorators.state_active,
+    "on_time": decorators.on_time,
+    "on_interval": decorators.on_interval,
+    "on_cron": decorators.on_cron,
+    "on_event": decorators.on_event,
+    "on_state": decorators.on_state,
 }
 
 EVENT_CLASSES = (

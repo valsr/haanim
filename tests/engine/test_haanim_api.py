@@ -31,7 +31,7 @@ from tests.engine.helpers import automation_file, load_and_run, make_context
 
 AUTOMATION_SOURCE = """
 from haanim import action
-@action("Add numbers", description="Adds two numbers")
+@action(name="Add numbers", description="Adds two numbers")
 def add(a, b):
     return a + b
 

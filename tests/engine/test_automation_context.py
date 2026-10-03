@@ -308,12 +308,12 @@ def my_action():
         automation_path = automation_file(tmp_path, "trigger_automation")
         automation_path.write_text(
             """
-from haanim import state_trigger, time_trigger
-@state_trigger("sensor.test > 50")
+from haanim import on_state, on_time
+@on_state("sensor.test > 50")
 def on_temp_high():
     pass
 
-@time_trigger("cron(0 * * * *)")
+@on_time("cron(0 * * * *)")
 def on_hour():
     pass
 """
@@ -327,8 +327,8 @@ def on_hour():
 
         assert len(metadata.triggers) == 2
         trigger_types = {t.trigger_type for t in metadata.triggers}
-        assert "state_trigger" in trigger_types
-        assert "time_trigger" in trigger_types
+        assert "state" in trigger_types
+        assert "time" in trigger_types
 
     async def test_load_automation_with_startup_shutdown(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading an automation with startup and shutdown."""
@@ -395,11 +395,11 @@ class TestAutomationContextGetters:
         automation_path.write_text(
             """
 from haanim import action
-@action("First Action")
+@action(name="First Action")
 def first():
     pass
 
-@action("Second Action")
+@action(name="Second Action")
 def second():
     pass
 """
@@ -416,8 +416,8 @@ def second():
         automation_path = automation_file(tmp_path, "trigger_automation")
         automation_path.write_text(
             """
-from haanim import state_trigger
-@state_trigger("sensor.test > 50")
+from haanim import on_state
+@on_state("sensor.test > 50")
 def on_high():
     pass
 """
@@ -435,7 +435,7 @@ def on_high():
         automation_path.write_text(
             """
 from haanim import action
-@action("Test")
+@action(name="Test")
 def test():
     pass
 """
@@ -501,7 +501,7 @@ class TestAutomationContextEdgeCases:
         automation_path.write_text(
             """
 from haanim import action
-@action("My Custom Action")
+@action(name="My Custom Action")
 def do_something():
     pass
 """
@@ -561,8 +561,8 @@ class TestTriggersAsActions:
         automation_path = automation_file(tmp_path, "trigger_automation")
         automation_path.write_text(
             """
-from haanim import state_trigger
-@state_trigger("sensor.test > 50")
+from haanim import on_state
+@on_state("sensor.test > 50")
 def on_high():
     pass
 """
@@ -581,10 +581,10 @@ def on_high():
         automation_path = automation_file(tmp_path, "multi_trigger")
         automation_path.write_text(
             """
-from haanim import state_trigger, time_trigger
-@state_trigger("sensor.a > 10")
-@state_trigger("sensor.b < 5")
-@time_trigger("cron(0 8 * * *)")
+from haanim import on_state, on_time
+@on_state("sensor.a > 10")
+@on_state("sensor.b < 5")
+@on_time("cron(0 8 * * *)")
 def multi_trigger():
     pass
 """
@@ -603,9 +603,9 @@ def multi_trigger():
         automation_path = automation_file(tmp_path, "trigger_with_action")
         automation_path.write_text(
             """
-from haanim import action, state_trigger
-@action("Custom Name", description="Custom description")
-@state_trigger("sensor.test > 50")
+from haanim import action, on_state
+@action(name="Custom Name", description="Custom description")
+@on_state("sensor.test > 50")
 def custom_action():
     pass
 """
@@ -626,8 +626,8 @@ def custom_action():
         automation_path = automation_file(tmp_path, "trigger_only")
         automation_path.write_text(
             """
-from haanim import time_trigger
-@time_trigger("sunset")
+from haanim import on_time
+@on_time("sunset")
 def evening_lights():
     pass
 """
@@ -648,7 +648,7 @@ def evening_lights():
         automation_path.write_text(
             """
 from haanim import action
-@action("Manual Action")
+@action(name="Manual Action")
 def manual_only():
     pass
 """
@@ -667,17 +667,17 @@ def manual_only():
         automation_path = automation_file(tmp_path, "mixed")
         automation_path.write_text(
             """
-from haanim import action, state_trigger, time_trigger
-@action("Manual Only")
+from haanim import action, on_state, on_time
+@action(name="Manual Only")
 def manual():
     pass
 
-@state_trigger("sensor.a > 10")
+@on_state("sensor.a > 10")
 def auto_only():
     pass
 
-@action("Both", description="Has both")
-@time_trigger("sunset")
+@action(name="Both", description="Has both")
+@on_time("sunset")
 def both():
     pass
 """

@@ -24,26 +24,11 @@ _LOGGER = logging.getLogger(__name__)
 F = Callable[..., Any]
 
 
-@dataclass
-class TriggerInfo:
-    """Information about a trigger attached to a function.
-
-    Args:
-        trigger_type: The type of trigger (state_trigger, time_trigger, event_trigger).
-        trigger_expr: The trigger expression or configuration.
-        kwargs: Additional keyword arguments for the trigger.
-    """
-
-    trigger_type: str
-    trigger_expr: str | list[str]
-    kwargs: dict[str, Any] = field(default_factory=dict[str, Any])
-
-
 class BaseTrigger(ABC):
     """Base class for all trigger types.
 
     Provides common functionality for state, time, and event triggers including:
-    - Constraint checking (time_active, state_active)
+    - Constraint checking (time and state constraints)
     - Function execution
     - Lifecycle management (start/stop)
     """
@@ -94,18 +79,18 @@ class BaseTrigger(ABC):
         for constraint in self._constraints:
             constraint_type = constraint.get("type")
 
-            if constraint_type == const.DECORATOR_TIME_ACTIVE:
+            if constraint_type == const.CONSTRAINT_TIME:
                 if not await self._check_time_constraint(constraint):
                     return False
 
-            elif constraint_type == const.DECORATOR_STATE_ACTIVE:
+            elif constraint_type == const.CONSTRAINT_STATE:
                 if not await self._check_state_constraint(constraint):
                     return False
 
         return True
 
     async def _check_time_constraint(self, constraint: dict[str, Any]) -> bool:
-        """Check a time_active constraint.
+        """Check a time constraint.
 
         Args:
             constraint: The constraint definition.
@@ -182,7 +167,7 @@ class BaseTrigger(ABC):
         return None
 
     async def _check_state_constraint(self, constraint: dict[str, Any]) -> bool:
-        """Check a state_active constraint.
+        """Check a state constraint.
 
         Args:
             constraint: The constraint definition.

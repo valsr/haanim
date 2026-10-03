@@ -3,7 +3,7 @@
 This example demonstrates:
 - Action execution with different modes
 - All trigger types (time, state, interval, cron, event)
-- Constraints (time_active, state_active)
+- Constraints (keyword arguments of the trigger decorators)
 - HAAnim API (haa instance) usage
 - Persistent storage
 - Service calls
@@ -14,13 +14,11 @@ This example demonstrates:
 from haanim import (
     ActionMode,
     action,
-    time,
-    state,
-    interval,
-    cron,
-    event,
-    time_active,
-    state_active,
+    on_time,
+    on_state,
+    on_interval,
+    on_cron,
+    on_event,
     startup,
     shutdown,
     haa,
@@ -57,8 +55,8 @@ async def on_shutdown():
 # =============================================================================
 
 
-@action("Morning Routine", description="Activates morning scene")
-@time("sunrise", offset="-00:15:00")  # 15 minutes before sunrise
+@action(name="Morning Routine", description="Activates morning scene")
+@on_time("sunrise - 15 minutes")
 async def morning_routine():
     """Morning automation."""
     log.info("Good morning!")
@@ -70,8 +68,7 @@ async def morning_routine():
     await haa.set_variable("last_morning", str(haa.id))
 
 
-@time("sunset")
-@state_active("binary_sensor.presence", "state == 'on'")
+@on_time("sunset", when="binary_sensor.presence == 'on'")
 async def evening_routine():
     """Evening automation - only when someone is home."""
     log.info("Evening routine starting")
@@ -84,7 +81,7 @@ async def evening_routine():
 # =============================================================================
 
 
-@state("sensor.temperature", condition="new_state > 25")
+@on_state("sensor.temperature > 25")
 async def temperature_high(event):
     """Triggered when temperature exceeds 25°C."""
     temp = event.new_state.state
@@ -94,8 +91,7 @@ async def temperature_high(event):
     await haa.service.climate.set_temperature(entity_id="climate.ac", temperature=22)
 
 
-@state("binary_sensor.motion", to_state="on")
-@time_active("sunset", "sunrise")  # Only at night
+@on_state("binary_sensor.motion == 'on'", start_time="sunset", end_time="sunrise")  # Only at night
 async def motion_at_night(event):
     """Motion detected at night."""
     log.info(f"Motion detected in {event.entity_id}")
@@ -109,7 +105,7 @@ async def motion_at_night(event):
 # =============================================================================
 
 
-@interval("00:05:00")  # Every 5 minutes
+@on_interval("00:05:00")  # Every 5 minutes
 async def periodic_check():
     """Regular status check."""
     # Increment counter
@@ -130,7 +126,7 @@ async def periodic_check():
 # =============================================================================
 
 
-@cron("0 */2 * * *")  # Every 2 hours
+@on_cron("0 */2 * * *")  # Every 2 hours
 async def hourly_cleanup():
     """Clean up old data every 2 hours."""
     log.info("Running cleanup task")
@@ -145,7 +141,7 @@ async def hourly_cleanup():
 # =============================================================================
 
 
-@event("custom_event", event_data={"source": "automation"})
+@on_event("custom_event", data={"source": "automation"})
 async def handle_custom_event(event):
     """Handle custom Home Assistant events."""
     log.info(f"Received custom event: {event.event_data}")
@@ -156,14 +152,14 @@ async def handle_custom_event(event):
 # =============================================================================
 
 
-@action("Quick Action", execution_mode=ActionMode.DROP)
+@action(name="Quick Action", execution_mode=ActionMode.DROP)
 async def quick_action():
     """Drop new executions if already running."""
     log.info("Quick action started")
     await haa.service.script.turn_on(entity_id="script.quick_task")
 
 
-@action("Queued Task", execution_mode=ActionMode.QUEUE, queue_size=10)
+@action(name="Queued Task", execution_mode=ActionMode.QUEUE)
 async def queued_task():
     """Queue up to 10 executions."""
     log.info("Processing queued task")
@@ -174,7 +170,7 @@ async def queued_task():
     log.info("Queued task complete")
 
 
-@action("Emergency Stop", execution_mode=ActionMode.CANCEL)
+@action(name="Emergency Stop", execution_mode=ActionMode.CANCEL)
 async def emergency_stop():
     """Cancel current execution and start new one."""
     log.warning("EMERGENCY STOP ACTIVATED")
@@ -193,7 +189,7 @@ async def emergency_stop():
 # =============================================================================
 
 
-@action("Call Other Script")
+@action(name="Call Other Script")
 async def call_other_script():
     """Demonstrate calling another script."""
     # Get reference to another script
@@ -212,7 +208,7 @@ async def call_other_script():
 # =============================================================================
 
 
-@action("Entity Demo")
+@action(name="Entity Demo")
 async def entity_demo():
     """Demonstrate entity access."""
     # Read entity states
@@ -229,7 +225,7 @@ async def entity_demo():
         await haa.service.climate.turn_on(entity_id="climate.ac")
 
 
-@action("Service Demo")
+@action(name="Service Demo")
 async def service_demo():
     """Demonstrate service calls."""
     # Call service with parameters
@@ -248,7 +244,7 @@ async def service_demo():
 # =============================================================================
 
 
-@action("Storage Demo")
+@action(name="Storage Demo")
 async def storage_demo():
     """Demonstrate persistent storage."""
     # Store values
@@ -273,7 +269,7 @@ async def storage_demo():
 # =============================================================================
 
 
-@action("Test Button", description="A simple test action for UI")
+@action(name="Test Button", description="A simple test action for UI")
 async def test_button():
     """Manual action for testing."""
     log.info("Test button pressed!")

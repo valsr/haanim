@@ -821,7 +821,7 @@ def test_action():
         (automation / "main.py").write_text(
             """
 from haanim import action
-@action("Add numbers")
+@action(name="Add numbers", aliases=["add"])
 async def add(a, b):
     return a + b
 """
@@ -1198,11 +1198,11 @@ class TestAutomationManagerLifecycle:
     """The manager moves automations through the engine's lifecycle."""
 
     SOURCE = (
-        "from haanim import action, startup, shutdown, state\n\n"
+        "from haanim import action, startup, shutdown, on_state\n\n"
         "@startup\ndef on_start():\n    record('start ' + __name__)\n\n"
         "@shutdown\ndef on_stop():\n    record('stop ' + __name__)\n\n"
         "@action\ndef ping():\n    return 'pong'\n\n"
-        "@state(\"sensor.a == 'on'\")\ndef on_a():\n    pass\n"
+        "@on_state(\"sensor.a == 'on'\")\ndef on_a():\n    pass\n"
     )
 
     @pytest.fixture

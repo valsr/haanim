@@ -500,16 +500,10 @@ class AutomationManager:
         if not self._automation(context.automation_id).accepts_calls():
             raise AutomationNotRunningError(context.automation_id)
 
-        # Get the action from the context
-        actions = {a.name: a for a in context.get_actions()}
-        if action_name not in actions:
-            # Also try by function name
-            actions_by_func = {a.func_name: a for a in context.get_actions()}
-            if action_name not in actions_by_func:
-                raise HAAnimError(f"Action '{action_name}' not found in automation '{automation_id}'")
-            action = actions_by_func[action_name]
-        else:
-            action = actions[action_name]
+        # A disabled action is listed but cannot be run
+        action = context.get_action(action_name)
+        if action is None or action.disabled:
+            raise HAAnimError(f"Action '{action_name}' not found in automation '{automation_id}'")
 
         # Offer the manual flag to actions that declare it
         kwargs.update(accepted_kwargs(action.func, {"manual": manual}))

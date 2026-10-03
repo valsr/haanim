@@ -19,6 +19,7 @@ from haanim.const import DEFAULT_SHUTDOWN_TIMEOUT, DEFAULT_STARTUP_TIMEOUT, DEFA
 from haanim.engine.errors import (
     ActionNotFoundError,
     AutomationAlreadyRunningError,
+    AutomationDefinitionError,
     AutomationNotLoadedError,
     AutomationNotRunningError,
 )
@@ -235,7 +236,8 @@ class Automation:
                 await self._triggers.register_trigger(trigger)
         except Exception as err:  # pylint: disable=broad-exception-caught
             await self._abandon_start()
-            self._fail(str(err) if isinstance(err, _StartupFailure) else _describe(err))
+            own_message = isinstance(err, (_StartupFailure, AutomationDefinitionError))
+            self._fail(str(err) if own_message else _describe(err))
             return False
         except BaseException:
             await self._abandon_start()
@@ -383,8 +385,9 @@ class Automation:
         if not self.accepts_calls():
             raise AutomationNotRunningError(self.automation_id)
 
+        # A disabled action is listed but cannot be called
         action = self.context.get_action(action_name)
-        if action is None:
+        if action is None or action.disabled:
             raise ActionNotFoundError(self.automation_id, action_name)
 
         # The action runs in a task of its own: if the caller is cancelled (its

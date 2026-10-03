@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from haanim.const import DECORATOR_CRON_TRIGGER, DECORATOR_INTERVAL_TRIGGER, DECORATOR_STATE_TRIGGER
+from haanim.const import TRIGGER_CRON, TRIGGER_INTERVAL, TRIGGER_STATE
 from haanim.engine.action_pool import (
     CANCEL_CLEANUP_SECONDS,
     POOL_SHUTDOWN_WAIT_SECONDS,
@@ -301,7 +301,7 @@ class TestIntervalTriggerOnClock:
             fired.append(clock.now())
 
         trigger = IntervalTrigger(
-            make_host(clock=clock), trigger_definition(DECORATOR_INTERVAL_TRIGGER, "00:01:00", on_trigger)
+            make_host(clock=clock), trigger_definition(TRIGGER_INTERVAL, "00:01:00", on_trigger)
         )
         await trigger.async_start()
 
@@ -322,7 +322,7 @@ class TestIntervalTriggerOnClock:
 
         trigger = IntervalTrigger(
             make_host(clock=clock),
-            trigger_definition(DECORATOR_INTERVAL_TRIGGER, "00:05:00", on_trigger, delay="00:01:00"),
+            trigger_definition(TRIGGER_INTERVAL, "00:05:00", on_trigger, delay="00:01:00"),
         )
         await trigger.async_start()
         await clock.advance(minutes=12)
@@ -338,7 +338,7 @@ class TestIntervalTriggerOnClock:
             fired.append(clock.now())
 
         trigger = IntervalTrigger(
-            make_host(clock=clock), trigger_definition(DECORATOR_INTERVAL_TRIGGER, "60", on_trigger)
+            make_host(clock=clock), trigger_definition(TRIGGER_INTERVAL, "60", on_trigger)
         )
         await trigger.async_start()
         await clock.settle()
@@ -363,7 +363,7 @@ class TestCronTriggerOnClock:
             fired.append(clock.now())
 
         trigger = CronTrigger(
-            make_host(clock=clock), trigger_definition(DECORATOR_CRON_TRIGGER, "*/5 * * * *", on_trigger)
+            make_host(clock=clock), trigger_definition(TRIGGER_CRON, "*/5 * * * *", on_trigger)
         )
         await trigger.async_start()
 
@@ -391,7 +391,7 @@ class TestStateHoldOnClock:
         states.set_state("sensor.temp", "10")
         host = make_host(clock=clock, states=states)
         trigger = StateTrigger(
-            host, trigger_definition(DECORATOR_STATE_TRIGGER, "sensor.temp > 25", on_trigger, state_hold=60)
+            host, trigger_definition(TRIGGER_STATE, "sensor.temp > 25", on_trigger, hold=60)
         )
         await trigger.async_start()
         await clock.settle()
@@ -502,30 +502,32 @@ class TestIntervalAndCronDetails:
     def test_interval_decorator_records_trigger(self) -> None:
         """Test the interval decorator records the interval, delay and constraints on the function."""
         from haanim.engine.decorators import get_metadata  # pylint: disable=import-outside-toplevel
-        from haanim.engine.triggers import interval  # pylint: disable=import-outside-toplevel
+        from haanim.engine.decorators import on_interval  # pylint: disable=import-outside-toplevel
 
-        @interval("00:05:00", delay="00:01:00", when="person.john == 'home'")
+        @on_interval("00:05:00", delay="00:01:00", when="person.john == 'home'")
         def task() -> None:
             """Decorated function."""
 
         (info,) = get_metadata(task).triggers
-        assert info.trigger_type == DECORATOR_INTERVAL_TRIGGER
+        assert info.trigger_type == TRIGGER_INTERVAL
         assert info.trigger_expr == "00:05:00"
-        assert info.kwargs == {"delay": "00:01:00", "when": "person.john == 'home'"}
+        assert info.kwargs == {"delay": "00:01:00"}
+        assert info.constraints == {"when": "person.john == 'home'"}
 
     def test_cron_decorator_records_trigger(self) -> None:
         """Test the cron decorator records the expression and constraints on the function."""
         from haanim.engine.decorators import get_metadata  # pylint: disable=import-outside-toplevel
-        from haanim.engine.triggers import cron  # pylint: disable=import-outside-toplevel
+        from haanim.engine.decorators import on_cron  # pylint: disable=import-outside-toplevel
 
-        @cron("0 9 * * 1-5", when="person.john == 'home'")
+        @on_cron("0 9 * * 1-5", when="person.john == 'home'")
         def task() -> None:
             """Decorated function."""
 
         (info,) = get_metadata(task).triggers
-        assert info.trigger_type == DECORATOR_CRON_TRIGGER
+        assert info.trigger_type == TRIGGER_CRON
         assert info.trigger_expr == "0 9 * * 1-5"
-        assert info.kwargs == {"when": "person.john == 'home'"}
+        assert info.kwargs == {}
+        assert info.constraints == {"when": "person.john == 'home'"}
 
     @pytest.mark.parametrize(
         ("spec", "seconds"),
@@ -534,7 +536,7 @@ class TestIntervalAndCronDetails:
     def test_interval_formats(self, clock: FakeClock, spec: str, seconds: float) -> None:
         """Test each interval format accepted today gives the expected number of seconds."""
         trigger = IntervalTrigger(
-            make_host(clock=clock), trigger_definition(DECORATOR_INTERVAL_TRIGGER, spec, lambda: None)
+            make_host(clock=clock), trigger_definition(TRIGGER_INTERVAL, spec, lambda: None)
         )
         assert trigger._interval_seconds == seconds
         assert trigger._delay_seconds == seconds
@@ -542,21 +544,19 @@ class TestIntervalAndCronDetails:
     def test_invalid_cron_expression(self, clock: FakeClock) -> None:
         """Test an invalid cron expression is rejected when the trigger is created."""
         with pytest.raises(ValueError, match="Invalid cron expression"):
-            CronTrigger(
-                make_host(clock=clock), trigger_definition(DECORATOR_CRON_TRIGGER, "not a cron", lambda: None)
-            )
+            CronTrigger(make_host(clock=clock), trigger_definition(TRIGGER_CRON, "not a cron", lambda: None))
 
     async def test_interval_stop_before_start(self, clock: FakeClock) -> None:
         """Test stopping an interval trigger that was never started does nothing."""
         trigger = IntervalTrigger(
-            make_host(clock=clock), trigger_definition(DECORATOR_INTERVAL_TRIGGER, "60", lambda: None)
+            make_host(clock=clock), trigger_definition(TRIGGER_INTERVAL, "60", lambda: None)
         )
         await trigger.async_stop()
 
     async def test_cron_stop_before_start(self, clock: FakeClock) -> None:
         """Test stopping a cron trigger that was never started does nothing."""
         trigger = CronTrigger(
-            make_host(clock=clock), trigger_definition(DECORATOR_CRON_TRIGGER, "* * * * *", lambda: None)
+            make_host(clock=clock), trigger_definition(TRIGGER_CRON, "* * * * *", lambda: None)
         )
         await trigger.async_stop()
 
@@ -571,9 +571,9 @@ class TestIntervalAndCronDetails:
         states.set_state("input_boolean.enabled", "off")
         trigger = IntervalTrigger(
             make_host(clock=clock, states=states),
-            trigger_definition(DECORATOR_INTERVAL_TRIGGER, "60", on_trigger),
+            trigger_definition(TRIGGER_INTERVAL, "60", on_trigger),
         )
-        trigger.set_constraints([{"type": "state_active", "exprs": ["input_boolean.enabled == 'on'"]}])
+        trigger.set_constraints([{"type": "state", "exprs": ["input_boolean.enabled == 'on'"]}])
         await trigger.async_start()
 
         await clock.advance(minutes=2)
@@ -595,7 +595,7 @@ class TestIntervalAndCronDetails:
             raise ValueError("boom")
 
         trigger = IntervalTrigger(
-            make_host(clock=clock), trigger_definition(DECORATOR_INTERVAL_TRIGGER, "60", on_trigger)
+            make_host(clock=clock), trigger_definition(TRIGGER_INTERVAL, "60", on_trigger)
         )
         await trigger.async_start()
         await clock.advance(minutes=3)
@@ -613,7 +613,7 @@ class TestIntervalAndCronDetails:
             raise ValueError("boom")
 
         trigger = CronTrigger(
-            make_host(clock=clock), trigger_definition(DECORATOR_CRON_TRIGGER, "* * * * *", on_trigger)
+            make_host(clock=clock), trigger_definition(TRIGGER_CRON, "* * * * *", on_trigger)
         )
         await trigger.async_start()
         await clock.advance(minutes=3)

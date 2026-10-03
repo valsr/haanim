@@ -66,6 +66,13 @@ class AutomationMetadataError(HAAnimError):
     """Exception raised when an automation's ``metadata.json`` cannot be used."""
 
 
+class AutomationDefinitionError(HAAnimError):
+    """Exception raised when what an automation's decorators define does not fit together.
+
+    For example two actions with one name, or two ``@startup`` handlers.
+    """
+
+
 class AutomationRuntimeError(HAAnimError):
     """Exception raised for runtime errors in automations."""
 

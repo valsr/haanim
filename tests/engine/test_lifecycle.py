@@ -137,7 +137,7 @@ def world(tmp_path: Path) -> World:
 
 
 SIMPLE = """
-from haanim import action, startup, shutdown, state, haa
+from haanim import action, startup, shutdown, on_state, haa
 
 executed = ["main"]
 
@@ -153,7 +153,7 @@ def on_stop():
 def ping():
     return "pong"
 
-@state("sensor.a == 'on'")
+@on_state("sensor.a == 'on'")
 def on_a():
     pass
 """
@@ -319,8 +319,8 @@ class TestStart:
         """main.py, then @startup, then the triggers."""
         automation = world.add(
             "lights",
-            "from haanim import startup, state\nseen = []\n\n@startup\ndef on_start():\n    seen.append(probe())\n\n"
-            "@state(\"sensor.a == 'on'\")\ndef on_a():\n    pass\n\nseen.append('main')\n",
+            "from haanim import startup, on_state\nseen = []\n\n@startup\ndef on_start():\n    seen.append(probe())\n\n"
+            "@on_state(\"sensor.a == 'on'\")\ndef on_a():\n    pass\n\nseen.append('main')\n",
         )
         await automation.load()
         original = automation.context.execute
@@ -436,8 +436,8 @@ class TestStartFailure:
 
     FAILURES = {
         "main.py raises": (
-            "from haanim import shutdown, state\n\n@shutdown\ndef on_stop():\n    record('shutdown')\n\n"
-            "@state(\"sensor.a == 'on'\")\ndef on_a():\n    pass\n\nraise KeyError('boom')\n",
+            "from haanim import shutdown, on_state\n\n@shutdown\ndef on_stop():\n    record('shutdown')\n\n"
+            "@on_state(\"sensor.a == 'on'\")\ndef on_a():\n    pass\n\nraise KeyError('boom')\n",
             "AutomationRuntimeError: Runtime error: 'boom'",
         ),
         "name not imported": (
@@ -445,8 +445,8 @@ class TestStartFailure:
             "AutomationRuntimeError: Runtime error: name 'action' is not defined",
         ),
         "@startup raises": (
-            "from haanim import startup, shutdown, state\n\n@startup\ndef on_start():\n    raise KeyError('boom')\n\n"
-            "@shutdown\ndef on_stop():\n    record('shutdown')\n\n@state(\"sensor.a == 'on'\")\ndef on_a():\n    pass\n",
+            "from haanim import startup, shutdown, on_state\n\n@startup\ndef on_start():\n    raise KeyError('boom')\n\n"
+            "@shutdown\ndef on_stop():\n    record('shutdown')\n\n@on_state(\"sensor.a == 'on'\")\ndef on_a():\n    pass\n",
             "@startup failed: KeyError: 'boom'",
         ),
         "@startup raises without a message": (
@@ -475,9 +475,9 @@ class TestStartFailure:
         """A @startup that takes longer than the startup timeout fails the start."""
         automation = world.add(
             "lights",
-            "from haanim import startup, shutdown, sleep, state\nlog = []\n\n@startup\nasync def on_start():\n"
+            "from haanim import startup, shutdown, sleep, on_state\nlog = []\n\n@startup\nasync def on_start():\n"
             "    try:\n        await sleep(1000)\n    finally:\n        log.append('cancelled')\n\n"
-            "@shutdown\ndef on_stop():\n    log.append('shutdown')\n\n@state(\"sensor.a == 'on'\")\ndef on_a():\n    pass\n",
+            "@shutdown\ndef on_stop():\n    log.append('shutdown')\n\n@on_state(\"sensor.a == 'on'\")\ndef on_a():\n    pass\n",
         )
         await automation.load()
         starting = asyncio.create_task(automation.start())
@@ -521,8 +521,8 @@ class TestStartFailure:
         world.triggers.fail_on = "second"
         automation = world.add(
             "lights",
-            "from haanim import state\n\n@state(\"sensor.a == 'on'\")\ndef first():\n    pass\n\n"
-            "@state(\"sensor.b == 'on'\")\ndef second():\n    pass\n",
+            "from haanim import on_state\n\n@on_state(\"sensor.a == 'on'\")\ndef first():\n    pass\n\n"
+            "@on_state(\"sensor.b == 'on'\")\ndef second():\n    pass\n",
         )
         await automation.load()
 
@@ -563,7 +563,7 @@ class TestStartFailure:
 
 
 RUNNING = """
-from haanim import action, shutdown, sleep, state, haa
+from haanim import action, shutdown, sleep, on_state, haa
 
 @action
 async def work(seconds):
@@ -584,7 +584,7 @@ def ping():
 async def on_stop():
     log.append("shutdown")
 
-@state("sensor.a == 'on'")
+@on_state("sensor.a == 'on'")
 def on_a():
     pass
 """
@@ -723,7 +723,7 @@ class TestStop:
     async def test_failing_shutdown(self, world: World, body: str, error: str) -> None:
         """A @shutdown that raises is recorded in last_error and stopping continues."""
         automation = await world.started(
-            "lights", "from haanim import shutdown, state\n\n@shutdown\ndef on_stop():\n" + body
+            "lights", "from haanim import shutdown, on_state\n\n@shutdown\ndef on_stop():\n" + body
         )
 
         await automation.stop()

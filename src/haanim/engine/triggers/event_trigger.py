@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 
 from haanim import const
-from haanim.engine.triggers.base import BaseTrigger, TriggerInfo
+from haanim.engine.triggers.base import BaseTrigger
 from haanim.interfaces import Host
 from haanim.types import EventData
 
@@ -30,80 +30,6 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
-
-
-def _get_or_create_metadata(func: Callable[..., Any]) -> Any:
-    """Get or create FunctionMetadata for a function.
-
-    This imports from decorators to avoid circular imports.
-
-    Args:
-        func: The function to get/create metadata for.
-
-    Returns:
-        The FunctionMetadata instance attached to the function.
-    """
-    # Import here to avoid circular dependency
-    from haanim.engine.decorators import (
-        _get_or_create_metadata as get_metadata,
-    )
-
-    return get_metadata(func)
-
-
-def event_trigger(
-    event_type: str,
-    *,
-    event_data: dict[str, Any] | None = None,
-    **kwargs: Any,
-) -> Callable[[F], F]:
-    """Decorator to trigger a function when a Home Assistant event fires.
-
-    Listen for Home Assistant events and trigger the decorated function when
-    an event of the specified type fires. Optionally filter by event data.
-
-    Args:
-        event_type: The event type to listen for. Common types include:
-            - "state_changed": Entity state changes (usually use @state_trigger instead)
-            - "call_service": Service calls
-            - "automation_triggered": Automation triggers
-            - Custom event types from integrations or automations
-        event_data: Optional dictionary to filter events by their data fields.
-            Only events with matching data will trigger the function.
-            Partial matches are supported - only specified fields are checked.
-        **kwargs: Additional trigger configuration.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @event_trigger("zha_event")
-        def handle_any_zha_event(event_type, data):
-            '''Called for any ZHA event.'''
-            pass
-
-        @event_trigger("custom_event", event_data={"action": "button_press"})
-        def handle_button():
-            '''Only called when action is "button_press".'''
-            pass
-
-        @event_trigger("timer.finished", event_data={"entity_id": "timer.kitchen"})
-        def kitchen_timer_done(event_type, data):
-            '''Called when kitchen timer finishes.'''
-            pass
-    """
-
-    def decorator(func: F) -> F:
-        metadata = _get_or_create_metadata(func)
-        trigger_info = TriggerInfo(
-            trigger_type=const.DECORATOR_EVENT_TRIGGER,
-            trigger_expr=event_type,
-            kwargs={"event_data": event_data, **kwargs},
-        )
-        metadata.triggers.append(trigger_info)
-        return func
-
-    return decorator
 
 
 class EventTrigger(BaseTrigger):
@@ -127,7 +53,7 @@ class EventTrigger(BaseTrigger):
         super().__init__(host, trigger_def)
 
         self._event_type = trigger_def.trigger_expr
-        self._event_filter = trigger_def.kwargs.get("event_data")
+        self._event_filter = trigger_def.kwargs.get("data")
         self._queue: asyncio.Queue[EventData | None] | None = None
 
     async def async_start(self) -> None:

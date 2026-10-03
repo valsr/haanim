@@ -22,9 +22,9 @@ from haanim.engine import (
 from haanim.engine.ast_evaluator import AstEvaluator
 from haanim.engine.automation_ids import automation_id as derive_automation_id
 from haanim.engine.callables import accepted_kwargs, as_coroutine_function
-from haanim.engine.decorators import FunctionMetadata, get_metadata
+from haanim.engine.decorators import ActionInfo, FunctionMetadata, get_metadata
 from haanim.engine.discovery import MAIN_FILENAME, has_main, last_modified, source_files
-from haanim.engine.errors import AutomationNotLoadedError, HAAnimError
+from haanim.engine.errors import AutomationDefinitionError, AutomationNotLoadedError, HAAnimError
 from haanim.engine.haanim_module import DecoratorRegistry, build_haanim_module
 from haanim.engine.logging_wrapper import create_logger_wrapper
 from haanim.engine.metadata import DEFAULT_VERSION, load_metadata
@@ -37,14 +37,18 @@ _LOGGER = logging.getLogger(__name__)
 
 @dataclass
 class ActionDefinition:
-    """Definition of a manually executable action from an automation.
+    """An action of an automation.
 
     Args:
-        name: Display name for the action.
-        func_name: The function name in the automation.
-        func: The callable function.
-        description: Optional description.
-        automation_id: Name of the parent automation.
+        name: The name the action is addressed by.
+        func_name: The name of the function in the automation.
+        func: The function.
+        description: What the action does.
+        automation_id: ID of the automation the action belongs to.
+        aliases: Additional names the action is addressed by.
+        execution_mode: How concurrent calls are handled.
+        timeout: Time limit in seconds; None for the default timeout.
+        disabled: Whether the action is listed but cannot be called.
     """
 
     name: str
@@ -52,27 +56,38 @@ class ActionDefinition:
     func: Callable[..., Any]
     description: str | None = None
     automation_id: str | None = None
+    aliases: tuple[str, ...] = ()
+    execution_mode: const.ActionMode = const.ActionMode.DROP
+    timeout: float | None = None
+    disabled: bool = False
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """Every name the action is addressed by: its name, then its aliases."""
+        return (self.name, *self.aliases)
 
 
 @dataclass
 class TriggerDefinition:
-    """Definition of a trigger attached to a function.
+    """A trigger attached to an action.
 
     Args:
-        trigger_type: Type of trigger (state_trigger, time_trigger, event_trigger).
-        trigger_expr: The trigger expression or configuration.
-        func_name: The function name in the automation.
-        func: The callable function.
-        kwargs: Additional trigger configuration.
-        automation_id: Id of the parent automation.
+        trigger_type: The kind of trigger: one of the ``TRIGGER_*`` constants.
+        trigger_expr: The trigger's expression, or the event type.
+        func_name: The name of the function in the automation.
+        func: The function.
+        kwargs: The trigger's own options.
+        automation_id: ID of the automation the trigger belongs to.
+        constraints: The constraint arguments given to the trigger decorator, by name.
     """
 
     trigger_type: str
-    trigger_expr: str | list[str]
+    trigger_expr: Any
     func_name: str
     func: Callable[..., Any]
     kwargs: dict[str, Any] = field(default_factory=dict[str, Any])
     automation_id: str | None = None
+    constraints: dict[str, Any] = field(default_factory=dict[str, Any])
 
 
 @dataclass
@@ -181,6 +196,8 @@ class AutomationContext:
 
         # Extracted definitions
         self._actions: dict[str, ActionDefinition] = {}
+        self._action_names: dict[str, ActionDefinition] = {}
+        self._startup_name = self._shutdown_name = ""
         self._triggers: list[TriggerDefinition] = []
         self._functions: dict[str, Callable[..., Any]] = {}
 
@@ -255,10 +272,12 @@ class AutomationContext:
         self._evaluator = None
         self._haa = None
         self._actions = {}
+        self._action_names = {}
         self._triggers = []
         self._functions = {}
         self._startup_func = None
         self._shutdown_func = None
+        self._startup_name = self._shutdown_name = ""
         if self._metadata is not None:
             self._metadata.actions = []
             self._metadata.triggers = []
@@ -378,10 +397,14 @@ class AutomationContext:
         return self._metadata
 
     def _extract_definitions(self) -> None:
-        """Collect the actions, triggers and lifecycle handlers of the loaded automation.
+        """Collect the actions, triggers and lifecycle handlers of the executed automation.
 
         They are the functions decorated with this automation's decorators, in
         any of its files.
+
+        Raises:
+            AutomationDefinitionError: If two actions share a name or alias, or
+                there is more than one ``@startup`` or ``@shutdown`` handler.
         """
         for func in self._decorators.functions:
             metadata = get_metadata(func)
@@ -399,58 +422,64 @@ class AutomationContext:
         func: Callable[..., Any],
         metadata: FunctionMetadata,
     ) -> None:
-        """Process metadata from a decorated function.
+        """Turn what the decorators recorded on one function into definitions.
 
         Args:
             func_name: Name of the function.
             func: The function object.
-            metadata: Extracted metadata from decorators.
+            metadata: What the decorators recorded.
         """
-        # Process actions (@action) OR functions with triggers (implicit action)
-        # Any function with triggers is automatically callable as an action
-        if metadata.is_marked_as_action or metadata.triggers:
-            action_info = metadata.action_info
-            action_name = (action_info.name if action_info else None) or func_name
-
-            self._actions[func_name] = ActionDefinition(
-                name=action_name,
+        # A function with @action or with a trigger is one action
+        if metadata.is_action:
+            info = metadata.action_info or ActionInfo()
+            definition = ActionDefinition(
+                name=info.name or func_name,
                 func_name=func_name,
                 func=func,
-                description=action_info.description if action_info else None,
+                description=info.description,
                 automation_id=self.automation_id,
+                aliases=info.aliases,
+                execution_mode=info.execution_mode,
+                timeout=info.timeout,
+                disabled=info.disabled,
             )
+            for name in dict.fromkeys(definition.names):
+                other = self._action_names.get(name)
+                if other is not None:
+                    raise AutomationDefinitionError(
+                        f"Action name '{name}' is used by both '{other.func_name}' and '{func_name}'"
+                    )
+                self._action_names[name] = definition
+            self._actions[func_name] = definition
 
-        # Process triggers
-        for trigger_info in metadata.triggers:
-            self._triggers.append(
-                TriggerDefinition(
-                    trigger_type=trigger_info.trigger_type,
-                    trigger_expr=trigger_info.trigger_expr,
-                    func_name=func_name,
-                    func=func,
-                    kwargs=trigger_info.kwargs,
-                    automation_id=self.automation_id,
-                )
-            )
+            # The triggers of a disabled action are not registered
+            if not definition.disabled:
+                for trigger_info in metadata.triggers:
+                    self._triggers.append(
+                        TriggerDefinition(
+                            trigger_type=trigger_info.trigger_type,
+                            trigger_expr=trigger_info.trigger_expr,
+                            func_name=func_name,
+                            func=func,
+                            kwargs=trigger_info.kwargs,
+                            automation_id=self.automation_id,
+                            constraints=trigger_info.constraints,
+                        )
+                    )
 
-        # Process lifecycle handlers
         if metadata.is_startup:
             if self._startup_func is not None:
-                self._logger.warning(
-                    "Multiple @startup handlers found in automation '%s'. Only the last one will be used.",
-                    self.automation_id,
+                raise AutomationDefinitionError(
+                    f"More than one @startup handler: '{self._startup_name}' and '{func_name}'"
                 )
-            self._startup_func = func
-            self._logger.debug("Registered startup handler: %s", func_name)
+            self._startup_func, self._startup_name = func, func_name
 
         if metadata.is_shutdown:
             if self._shutdown_func is not None:
-                self._logger.warning(
-                    "Multiple @shutdown handlers found in automation '%s'. Only the last one will be used.",
-                    self.automation_id,
+                raise AutomationDefinitionError(
+                    f"More than one @shutdown handler: '{self._shutdown_name}' and '{func_name}'"
                 )
-            self._shutdown_func = func
-            self._logger.debug("Registered shutdown handler: %s", func_name)
+            self._shutdown_func, self._shutdown_name = func, func_name
 
     async def run_action(
         self,
@@ -473,10 +502,9 @@ class AutomationContext:
         Raises:
             HAAnimError: If the action is not found or execution fails.
         """
-        if action_name not in self._actions:
+        action = self.get_action(action_name)
+        if action is None or action.disabled:
             raise HAAnimError(f"Action '{action_name}' not found in automation '{self.automation_id}'")
-
-        action = self._actions[action_name]
 
         # Offer the manual flag to actions that declare it
         kwargs.update(accepted_kwargs(action.func, {"manual": manual}))
@@ -521,21 +549,17 @@ class AutomationContext:
             raise HAAnimError(f"Function '{func_name}' failed: {err}") from err
 
     def get_action(self, name: str) -> ActionDefinition | None:
-        """Get one action by name.
+        """Get one action by its name or one of its aliases.
 
         Args:
-            name: The action's name.
+            name: A name of the action.
 
         Returns:
-            The action definition, or None if the automation has no such action.
-            The name may be the function name or the action's display name.
+            The action definition, or None if the automation has no action by
+            that name. A disabled action is returned; it is listed but cannot
+            be called.
         """
-        if name in self._actions:
-            return self._actions[name]
-        for action in self._actions.values():
-            if action.name == name:
-                return action
-        return None
+        return self._action_names.get(name)
 
     def get_actions(self) -> list[ActionDefinition]:
         """Get all actions defined in this automation.

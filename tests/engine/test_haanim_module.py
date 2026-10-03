@@ -27,16 +27,11 @@ FORMERLY_INJECTED = [
     "action",
     "startup",
     "shutdown",
-    "state",
-    "state_trigger",
-    "time",
-    "time_trigger",
-    "interval",
-    "cron",
-    "event",
-    "event_trigger",
-    "time_active",
-    "state_active",
+    "on_state",
+    "on_time",
+    "on_interval",
+    "on_cron",
+    "on_event",
     "haa",
     "ActionMode",
     "set_status",
@@ -48,6 +43,19 @@ FORMERLY_INJECTED = [
     "log",
     "sleep",
 ]
+
+# The decorator names of before the design's naming; none of them exists any more.
+OLD_DECORATORS = [
+    "state",
+    "state_trigger",
+    "time",
+    "time_trigger",
+    "interval",
+    "cron",
+    "event",
+    "event_trigger",
+]
+OLD_DECORATORS += ["time_active", "state_active"]
 
 
 async def loaded(path: Path, source: str, **kwargs: Any) -> AutomationContext:
@@ -143,6 +151,18 @@ class TestNothingIsInjected:
         context = await loaded(automation_file(tmp_path, "auto"), f"from haanim import {name}\n")
 
         assert context.get_symbol(name) is not None
+
+    @pytest.mark.parametrize("name", OLD_DECORATORS)
+    async def test_old_decorator_names_do_not_exist(self, tmp_path: Path, name: str) -> None:
+        """The decorator names of before the design cannot be imported."""
+        path = automation_file(tmp_path, "auto")
+        path.write_text(f"from haanim import {name}\n", encoding="utf-8")
+
+        with pytest.raises(AutomationRuntimeError, match=f"cannot import name '{name}' from 'haanim'"):
+            await load_and_run(make_context(str(path)))
+
+        assert name not in DECORATORS
+        assert not hasattr(decorators, name)
 
     async def test_decorator_without_import_fails_the_load(self, tmp_path: Path) -> None:
         """``@action`` without the import does not load."""
@@ -240,27 +260,26 @@ class TestDecoratorRegistry:
         assert action(go) is go
         assert registry.functions == [go]
         metadata = get_metadata(go)
-        assert metadata is not None and metadata.is_marked_as_action
+        assert metadata is not None and metadata.is_action
 
     def test_factory_form(self) -> None:
-        """``@action("Name")`` registers the function when the returned decorator is applied."""
+        """``@action(name="Name")`` registers the function when the returned decorator is applied."""
         registry = DecoratorRegistry()
         action = registry.bind(decorators.action)
 
         def go() -> None:
             pass
 
-        decorator = action("Go now", timeout=5)
+        decorator = action(name="Go now", timeout=5)
         assert registry.functions == []
         assert decorator(go) is go
         assert registry.functions == [go]
         metadata = get_metadata(go)
-        assert metadata is not None and metadata.custom_name == "Go now"
+        assert metadata is not None and metadata.action_info is not None
+        assert metadata.action_info.name == "Go now"
 
-    @pytest.mark.parametrize(
-        "name", ["state", "time", "interval", "cron", "event", "time_active", "state_active"]
-    )
-    def test_trigger_and_constraint_decorators(self, name: str) -> None:
+    @pytest.mark.parametrize("name", ["on_state", "on_time", "on_interval", "on_cron", "on_event"])
+    def test_trigger_decorators(self, name: str) -> None:
         """Decorators that always take arguments register too."""
         registry = DecoratorRegistry()
         decorator = registry.bind(DECORATORS[name])
@@ -268,7 +287,9 @@ class TestDecoratorRegistry:
         def go() -> None:
             pass
 
-        argument = {"interval": "00:01:00", "cron": "* * * * *", "event": "my_event"}.get(name, "12:00")
+        argument = {"on_interval": "00:01:00", "on_cron": "* * * * *", "on_event": "my_event"}.get(
+            name, "12:00"
+        )
         decorator(argument)(go)
 
         assert registry.functions == [go]
@@ -288,7 +309,7 @@ class TestDecoratorRegistry:
     def test_stacked_decorators_register_once(self) -> None:
         """A function under several decorators is one registration, in first-decorated order."""
         registry = DecoratorRegistry()
-        action, state = registry.bind(decorators.action), registry.bind(decorators.state)
+        action, state = registry.bind(decorators.action), registry.bind(decorators.on_state)
 
         def first() -> None:
             pass
@@ -298,7 +319,7 @@ class TestDecoratorRegistry:
 
         action(state("sensor.a == 'on'")(first))
         action(second)
-        action(first)
+        state("sensor.b == 'on'")(first)
 
         assert registry.functions == [first, second]
 

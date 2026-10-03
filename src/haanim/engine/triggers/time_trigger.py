@@ -23,8 +23,8 @@ from collections.abc import Callable
 
 from typing import TYPE_CHECKING
 
-from haanim.const import DECORATOR_TIME_TRIGGER
-from haanim.engine.triggers.base import BaseTrigger, TriggerInfo
+from haanim.const import TRIGGER_TIME
+from haanim.engine.triggers.base import BaseTrigger
 from haanim.interfaces import Host
 
 if TYPE_CHECKING:
@@ -33,81 +33,6 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
-
-
-def _get_or_create_metadata(func: Callable[..., Any]) -> Any:
-    """Get or create FunctionMetadata for a function.
-
-    This imports from decorators to avoid circular imports.
-
-    Args:
-        func: The function to get/create metadata for.
-
-    Returns:
-        The FunctionMetadata instance attached to the function.
-    """
-    # Import here to avoid circular dependency
-    from haanim.engine.decorators import _get_or_create_metadata as get_metadata
-
-    return get_metadata(func)
-
-
-def time_trigger(
-    *trigger_specs: str,
-    **kwargs: Any,
-) -> Callable[[F], F]:
-    """Decorator to trigger a function at specific times.
-
-    Schedule functions to run at specific times using various time specifications.
-    Multiple specifications can be provided - the function triggers at whichever
-    time comes next.
-
-    Args:
-        trigger_specs: One or more time specifications. Supports:
-            - Cron expressions: "cron(0 8 * * *)" (8 AM daily)
-            - Time of day: "time(08:00:00)" or "time(08:00)"
-            - Periods: "period(0:00, 1 hour)" (every hour starting at midnight)
-            - Sunrise/sunset: "sunrise", "sunset", "sunrise + 30m", "sunset - 15m"
-            - Startup: "startup" (run when Home Assistant starts)
-        **kwargs: Additional trigger configuration.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @time_trigger("cron(0 8 * * *)")  # 8 AM daily
-        def morning_routine():
-            '''Runs every morning at 8 AM.'''
-            pass
-
-        @time_trigger("sunrise + 30m", "sunset - 15m")
-        def lighting_automation():
-            '''Runs 30 min after sunrise AND 15 min before sunset.'''
-            pass
-
-        @time_trigger("period(6:00, 30 min)")
-        def every_30_minutes():
-            '''Runs every 30 minutes starting at 6 AM.'''
-            pass
-
-        @time_trigger("startup")
-        def on_startup():
-            '''Runs once when Home Assistant starts.'''
-            pass
-    """
-
-    def decorator(func: F) -> F:
-        metadata = _get_or_create_metadata(func)
-        trigger_expr: str | list[str] = list(trigger_specs) if len(trigger_specs) != 1 else trigger_specs[0]
-        trigger_info = TriggerInfo(
-            trigger_type=DECORATOR_TIME_TRIGGER,
-            trigger_expr=trigger_expr,
-            kwargs=kwargs,
-        )
-        metadata.triggers.append(trigger_info)
-        return func
-
-    return decorator
 
 
 class TimeTrigger(BaseTrigger):

@@ -158,11 +158,11 @@ class TriggerManager:
         }
 
         # Handle different trigger types
-        if trigger_def.trigger_type == const.DECORATOR_STATE_TRIGGER:
+        if trigger_def.trigger_type == const.TRIGGER_STATE:
             self._register_state_trigger(trigger_id, trigger_def, metadata)
-        elif trigger_def.trigger_type == const.DECORATOR_TIME_TRIGGER:
+        elif trigger_def.trigger_type == const.TRIGGER_TIME:
             self._register_time_trigger(trigger_id, trigger_def, metadata)
-        elif trigger_def.trigger_type == const.DECORATOR_EVENT_TRIGGER:
+        elif trigger_def.trigger_type == const.TRIGGER_EVENT:
             self._register_event_trigger(trigger_id, trigger_def, metadata)
         else:
             _LOGGER.error("Unknown trigger type: %s", trigger_def.trigger_type)
@@ -173,9 +173,9 @@ class TriggerManager:
 
         # If already started, begin watching immediately
         if self._started:
-            if trigger_def.trigger_type == const.DECORATOR_STATE_TRIGGER:
+            if trigger_def.trigger_type == const.TRIGGER_STATE:
                 await self._start_state_watching()
-            elif trigger_def.trigger_type == const.DECORATOR_TIME_TRIGGER:
+            elif trigger_def.trigger_type == const.TRIGGER_TIME:
                 await self._start_time_watching()
 
         _LOGGER.debug("Registered trigger: %s", trigger_id)
@@ -195,7 +195,7 @@ class TriggerManager:
             metadata: Trigger metadata dictionary to populate.
         """
         # Extract state_hold and state_check_now from kwargs
-        state_hold = trigger_def.kwargs.get("state_hold")
+        state_hold = trigger_def.kwargs.get("hold")
         if state_hold is not None:
             try:
                 state_hold = float(state_hold)
@@ -296,18 +296,18 @@ class TriggerManager:
             del self._hold_tasks[trigger_id]
 
         # Remove from tracking structures
-        if trigger_def.trigger_type == const.DECORATOR_STATE_TRIGGER:
+        if trigger_def.trigger_type == const.TRIGGER_STATE:
             for entity_id in metadata.get("watch_entities", []):
                 if entity_id in self._entity_triggers:
                     self._entity_triggers[entity_id].remove(trigger_id)
                     if not self._entity_triggers[entity_id]:
                         del self._entity_triggers[entity_id]
 
-        elif trigger_def.trigger_type == const.DECORATOR_TIME_TRIGGER:
+        elif trigger_def.trigger_type == const.TRIGGER_TIME:
             if trigger_id in self._time_triggers:
                 self._time_triggers.remove(trigger_id)
 
-        elif trigger_def.trigger_type == const.DECORATOR_EVENT_TRIGGER:
+        elif trigger_def.trigger_type == const.TRIGGER_EVENT:
             event_type = metadata.get("event_type", "")
             if event_type in self._event_triggers:
                 self._event_triggers[event_type].remove(trigger_id)

@@ -339,247 +339,117 @@ hass: Any
 # =============================================================================
 
 @overload
-def action(func: F) -> F:
-    """Mark a function as an action (no arguments)."""
-    ...
-
+def action(func: F, /) -> F: ...
 @overload
 def action(
+    *,
     name: str | None = None,
-    *,
+    aliases: list[str] | tuple[str, ...] | None = None,
     description: str | None = None,
     execution_mode: ActionMode = ActionMode.DROP,
-    timeout: float = 0,
-    queue_size: int = 100,
+    timeout: float | None = None,
+    disabled: bool = False,
 ) -> Callable[[F], F]:
-    """Expose a function as an action with configuration."""
-    ...
+    """Make a function an action, or configure the action of a trigger function.
 
-def action(
-    name_or_func: str | F | None = None,
-    *,
-    description: str | None = None,
-    execution_mode: ActionMode = ActionMode.DROP,
-    timeout: float = 0,
-    queue_size: int = 100,
-) -> F | Callable[[F], F]:
-    """Decorator to mark a function as an action.
+    A function with a trigger decorator is an action without ``@action``. The
+    order of ``@action`` and the trigger decorators does not matter.
 
     Args:
-        name_or_func: Optional display name for the action, or the function if used without arguments.
-        description: Optional description of what the action does.
-        execution_mode: How to handle concurrent executions (DROP/QUEUE/CANCEL).
-        timeout: Timeout in seconds (0 = no timeout).
-        queue_size: Maximum queue size when execution_mode is QUEUE.
-
-    Returns:
-        Decorated function or decorator.
-
-    Examples:
-        @action
-        async def turn_on_lights():
-            pass
-
-        @action("Evening Scene", description="Activates evening lighting")
-        async def evening_action():
-            pass
-
-        @action(execution_mode=ActionMode.CANCEL)
-        async def emergency_stop():
-            pass
+        name: The action's name. The function name if omitted.
+        aliases: Additional names for the action.
+        description: What the action does.
+        execution_mode: How concurrent calls are handled.
+        timeout: Time limit in seconds. The default timeout if omitted.
+        disabled: List the action but do not let it be called, and do not register its triggers.
     """
     ...
 
-def time_trigger(
-    time_spec: str | list[str],
+def on_time(
+    expr: str,
     *,
-    offset: str | None = None,
+    day_of_week: str | int | None = None,
+    day_of_month: str | int | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    when: str | None = None,
+    when_not: str | None = None,
 ) -> Callable[[F], F]:
-    """Trigger at specific time(s).
-
-    Args:
-        time_spec: Time specification (e.g., "sunrise", "sunset", "12:00:00").
-        offset: Optional time offset (e.g., "+00:30:00" for 30 minutes after).
-
-    Returns:
-        Decorator function.
-
-    Examples:
-        @time_trigger("sunrise")
-        async def morning():
-            pass
-
-        @time_trigger("sunset", offset="-00:30:00")
-        async def before_sunset():
-            pass
-    """
+    """Call the function at a date and/or time, such as ``"09:00"`` or ``"sunset - 30 minutes"``."""
     ...
 
-# Alias for time_trigger
-time = time_trigger
-
-def state_trigger(
-    entity_id: str | list[str],
+def on_interval(
+    interval: str | float,
     *,
-    condition: str | None = None,
-    from_state: str | None = None,
-    to_state: str | None = None,
+    delay: str | float | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    day_of_week: str | int | None = None,
+    when: str | None = None,
+    when_not: str | None = None,
 ) -> Callable[[F], F]:
-    """Trigger on entity state change.
-
-    Args:
-        entity_id: Entity ID or list of entity IDs to monitor.
-        condition: Optional expression condition (e.g., "new_state > 20").
-        from_state: Optional previous state value.
-        to_state: Optional new state value.
-
-    Returns:
-        Decorator function.
-
-    Examples:
-        @state_trigger("sensor.temperature")
-        async def temp_changed():
-            pass
-
-        @state_trigger("sensor.temperature", condition="new_state > 25")
-        async def temp_high():
-            pass
-    """
+    """Call the function repeatedly, a fixed time apart: seconds, or ``"HH:MM:SS"``."""
     ...
 
-# Alias for state_trigger
-state = state_trigger
-
-def interval(
-    interval_spec: str,
+def on_cron(
+    expr: str,
     *,
-    delay: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    day_of_week: str | int | None = None,
+    when: str | None = None,
+    when_not: str | None = None,
 ) -> Callable[[F], F]:
-    """Trigger at regular intervals.
-
-    Args:
-        interval_spec: Interval as "HH:MM:SS" or seconds.
-        delay: Optional initial delay before first execution.
-
-    Returns:
-        Decorator function.
-
-    Examples:
-        @interval("00:05:00")  # Every 5 minutes
-        async def check_status():
-            pass
-
-        @interval(60)  # Every 60 seconds
-        async def fast_check():
-            pass
-    """
+    """Call the function when a cron expression matches."""
     ...
 
-def cron(cron_expr: str) -> Callable[[F], F]:
-    """Trigger using cron expression.
-
-    Args:
-        cron_expr: Cron expression (e.g., "0 * * * *" for top of every hour).
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @cron("0 */2 * * *")  # Every 2 hours
-        async def periodic_task():
-            pass
-    """
-    ...
-
-def event_trigger(
+def on_event(
     event_type: str,
     *,
-    event_data: dict[str, Any] | None = None,
+    data: dict[str, Any] | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    day_of_week: str | int | None = None,
+    when: str | None = None,
+    when_not: str | None = None,
 ) -> Callable[[F], F]:
-    """Trigger on Home Assistant events.
-
-    Args:
-        event_type: Event type to listen for.
-        event_data: Optional event data filter.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @event_trigger("custom_event")
-        async def handle_event():
-            pass
-    """
+    """Call the function when an event of a type is fired, optionally only with matching data."""
     ...
 
-# Alias for event_trigger
-event = event_trigger
-
-def time_active(
-    time_spec: str | list[str],
+def on_state(
+    expr: str,
     *,
-    offset: str | None = None,
+    every_change: bool = False,
+    hold: str | float | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    day_of_week: str | int | None = None,
+    when: str | None = None,
+    when_not: str | None = None,
 ) -> Callable[[F], F]:
-    """Constraint: only execute during specific times.
-
-    Args:
-        time_spec: Time specification.
-        offset: Optional time offset.
-
-    Returns:
-        Decorator function.
-    """
+    """Call the function when a state expression becomes true."""
     ...
 
-def state_active(
-    entity_id: str,
-    condition: str,
-) -> Callable[[F], F]:
-    """Constraint: only execute when entity state matches condition.
-
-    Args:
-        entity_id: Entity ID to check.
-        condition: Expression condition.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @state_active("sensor.temperature", "state > 20")
-        @time_trigger("12:00:00")
-        async def noon_if_warm():
-            pass
-    """
+def startup(func: F) -> F:
+    """Mark the function as the automation's startup handler. An automation has at most one."""
     ...
 
-def startup() -> Callable[[F], F]:
-    """Mark function to run when automation is loaded.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @startup
-        async def init():
-            pass
-    """
-    ...
-
-def shutdown() -> Callable[[F], F]:
-    """Mark function to run when automation is unloaded.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @shutdown
-        async def cleanup():
-            pass
-    """
+def shutdown(func: F) -> F:
+    """Mark the function as the automation's shutdown handler. An automation has at most one."""
     ...
 
 # =============================================================================
-# Utility Functions
+# Status and logging
 # =============================================================================
 
 def set_status(message: str | None) -> None:

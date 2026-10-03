@@ -19,11 +19,11 @@ from haanim.engine.triggers import (
 )
 from haanim.engine.automation_context import TriggerDefinition
 from haanim.const import (
-    DECORATOR_STATE_ACTIVE,
-    DECORATOR_STATE_TRIGGER,
-    DECORATOR_TIME_ACTIVE,
-    DECORATOR_TIME_TRIGGER,
-    DECORATOR_EVENT_TRIGGER,
+    CONSTRAINT_STATE,
+    TRIGGER_STATE,
+    CONSTRAINT_TIME,
+    TRIGGER_TIME,
+    TRIGGER_EVENT,
     EVENT_HOST_STARTED,
 )
 
@@ -97,8 +97,8 @@ class TestBaseTrigger:
     def test_set_constraints(self, trigger: ConcreteTrigger) -> None:
         """Test setting constraints."""
         constraints = [
-            {"type": DECORATOR_TIME_ACTIVE, "specs": ["range(08:00, 18:00)"]},
-            {"type": DECORATOR_STATE_ACTIVE, "exprs": ["light.office == 'on'"]},
+            {"type": CONSTRAINT_TIME, "specs": ["range(08:00, 18:00)"]},
+            {"type": CONSTRAINT_STATE, "exprs": ["light.office == 'on'"]},
         ]
         trigger.set_constraints(constraints)
         assert trigger._constraints == constraints
@@ -110,7 +110,7 @@ class TestBaseTrigger:
 
     async def test_check_time_constraint_no_specs(self, trigger: ConcreteTrigger) -> None:
         """Test time constraint with no specs returns True."""
-        constraint = {"type": DECORATOR_TIME_ACTIVE, "specs": []}
+        constraint = {"type": CONSTRAINT_TIME, "specs": []}
         result = await trigger._check_time_constraint(constraint)
         assert result is True
 
@@ -297,7 +297,7 @@ class TestTriggerManager:
 
     @pytest.mark.parametrize(
         "trigger_type",
-        [DECORATOR_STATE_TRIGGER, DECORATOR_TIME_TRIGGER, DECORATOR_EVENT_TRIGGER],
+        [TRIGGER_STATE, TRIGGER_TIME, TRIGGER_EVENT],
     )
     async def test_register_trigger(
         self,
@@ -419,7 +419,7 @@ class TestStateTrigger:
     def trigger_def(self) -> TriggerDefinition:
         """Create a trigger definition."""
         return TriggerDefinition(
-            trigger_type=DECORATOR_STATE_TRIGGER,
+            trigger_type=TRIGGER_STATE,
             trigger_expr="sensor.test > 50",
             func_name="on_state",
             func=MagicMock(),
@@ -449,11 +449,11 @@ class TestStateTrigger:
     def test_init_with_state_hold(self, mock_hass: MagicMock, mock_state_manager: MagicMock) -> None:
         """Test initialization with state_hold."""
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_STATE_TRIGGER,
+            trigger_type=TRIGGER_STATE,
             trigger_expr="sensor.test > 50",
             func_name="on_state",
             func=MagicMock(),
-            kwargs={"state_hold": 5.0, "state_check_now": True},
+            kwargs={"hold": 5.0, "state_check_now": True},
             automation_id="test_automation",
         )
         trigger = StateTrigger(
@@ -478,11 +478,11 @@ class TestStateTrigger:
     ) -> None:
         """Test _get_state_hold_from_trigger validation."""
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_STATE_TRIGGER,
+            trigger_type=TRIGGER_STATE,
             trigger_expr="sensor.test > 50",
             func_name="on_state",
             func=MagicMock(),
-            kwargs={"state_hold": state_hold},
+            kwargs={"hold": state_hold},
             automation_id="test_automation",
         )
         trigger = StateTrigger(
@@ -530,7 +530,7 @@ class TestTimeTrigger:
     def trigger_def(self) -> TriggerDefinition:
         """Create a trigger definition."""
         return TriggerDefinition(
-            trigger_type=DECORATOR_TIME_TRIGGER,
+            trigger_type=TRIGGER_TIME,
             trigger_expr="time(08:00)",
             func_name="on_time",
             func=MagicMock(),
@@ -607,7 +607,7 @@ class TestEventTrigger:
     def trigger_def(self) -> TriggerDefinition:
         """Create a trigger definition."""
         return TriggerDefinition(
-            trigger_type=DECORATOR_EVENT_TRIGGER,
+            trigger_type=TRIGGER_EVENT,
             trigger_expr="custom_event",
             func_name="on_event",
             func=MagicMock(),
@@ -668,7 +668,7 @@ class TestTimeTriggerParsing:
     def time_trigger(self, mock_hass: MagicMock) -> TimeTrigger:
         """Create a TimeTrigger instance."""
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_TIME_TRIGGER,
+            trigger_type=TRIGGER_TIME,
             trigger_expr="time(08:00)",
             func_name="on_time",
             func=MagicMock(),
@@ -793,7 +793,7 @@ class TestStateTriggerAdvanced:
     def state_trigger(self, mock_hass: MagicMock, mock_state_manager: MagicMock) -> StateTrigger:
         """Create a StateTrigger instance."""
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_STATE_TRIGGER,
+            trigger_type=TRIGGER_STATE,
             trigger_expr="sensor.test > 50",
             func_name="on_state",
             func=MagicMock(),
@@ -820,7 +820,7 @@ class TestStateTriggerAdvanced:
     def test_evaluate_trigger_list_expr(self, mock_hass: MagicMock, mock_state_manager: MagicMock) -> None:
         """Test evaluating list of trigger expressions."""
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_STATE_TRIGGER,
+            trigger_type=TRIGGER_STATE,
             trigger_expr=["sensor.a > 50", "sensor.b < 10"],
             func_name="on_state",
             func=MagicMock(),
@@ -863,7 +863,7 @@ class TestStateTriggerAdvanced:
     def test_init_with_watch_entities(self, mock_hass: MagicMock, mock_state_manager: MagicMock) -> None:
         """Test initialization with explicit watch entities."""
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_STATE_TRIGGER,
+            trigger_type=TRIGGER_STATE,
             trigger_expr="sensor.test > 50",
             func_name="on_state",
             func=MagicMock(),
@@ -901,7 +901,7 @@ class TestTriggerManagerAdvanced:
     async def test_unregister_trigger(self, trigger_manager: TriggerManager) -> None:
         """Test unregistering a trigger."""
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_STATE_TRIGGER,
+            trigger_type=TRIGGER_STATE,
             trigger_expr="sensor.test > 50",
             func_name="func",
             func=MagicMock(),
@@ -927,7 +927,7 @@ class TestTriggerManagerAdvanced:
         assert trigger_manager.get_trigger_count() == 0
 
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_STATE_TRIGGER,
+            trigger_type=TRIGGER_STATE,
             trigger_expr="sensor.test > 50",
             func_name="func",
             func=MagicMock(),
@@ -942,7 +942,7 @@ class TestTriggerManagerAdvanced:
     async def test_unregister_automation_triggers(self, trigger_manager: TriggerManager) -> None:
         """Test unregistering all triggers for an automation."""
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_STATE_TRIGGER,
+            trigger_type=TRIGGER_STATE,
             trigger_expr="sensor.test > 50",
             func_name="func",
             func=MagicMock(),
@@ -960,14 +960,14 @@ class TestTriggerManagerAdvanced:
     async def test_register_trigger_with_constraints(self, trigger_manager: TriggerManager) -> None:
         """Test registering a trigger with constraints."""
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_STATE_TRIGGER,
+            trigger_type=TRIGGER_STATE,
             trigger_expr="sensor.test > 50",
             func_name="func",
             func=MagicMock(),
             kwargs={},
             automation_id="test",
         )
-        constraints = [{"type": DECORATOR_TIME_ACTIVE, "specs": ["range(08:00, 18:00)"]}]
+        constraints = [{"type": CONSTRAINT_TIME, "specs": ["range(08:00, 18:00)"]}]
 
         trigger_id = await trigger_manager.register_trigger(trigger_def, constraints)
 
@@ -1019,7 +1019,7 @@ class TestBaseTriggerConstraints:
             host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
         )
-        trigger.set_constraints([{"type": DECORATOR_TIME_ACTIVE, "specs": []}])
+        trigger.set_constraints([{"type": CONSTRAINT_TIME, "specs": []}])
         result = await trigger._check_constraints()
         assert result is True
 
@@ -1040,7 +1040,7 @@ class TestBaseTriggerConstraints:
             host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
         )
-        trigger.set_constraints([{"type": DECORATOR_STATE_ACTIVE, "exprs": ["light.test == 'on'"]}])
+        trigger.set_constraints([{"type": CONSTRAINT_STATE, "exprs": ["light.test == 'on'"]}])
         result = await trigger._check_constraints()
         assert result is True
 
@@ -1212,7 +1212,7 @@ class TestTimeTriggerTimeLoop:
     ) -> None:
         """Test _parse_interval with various formats."""
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_TIME_TRIGGER,
+            trigger_type=TRIGGER_TIME,
             trigger_expr=f"every({interval_str})",
             func_name="on_time",
             func=MagicMock(),
@@ -1235,7 +1235,7 @@ class TestTimeTriggerTimeLoop:
     ) -> None:
         """Test _parse_interval with invalid format."""
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_TIME_TRIGGER,
+            trigger_type=TRIGGER_TIME,
             trigger_expr="every(invalid)",
             func_name="on_time",
             func=MagicMock(),
@@ -1281,7 +1281,7 @@ class TestEventTriggerAdvanced:
     ) -> None:
         """Test EventTrigger async_start."""
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_EVENT_TRIGGER,
+            trigger_type=TRIGGER_EVENT,
             trigger_expr="my_custom_event",
             func_name="on_event",
             func=AsyncMock(),
@@ -1305,7 +1305,7 @@ class TestEventTriggerAdvanced:
     ) -> None:
         """Test EventTrigger async_stop cancels task."""
         trigger_def = TriggerDefinition(
-            trigger_type=DECORATOR_EVENT_TRIGGER,
+            trigger_type=TRIGGER_EVENT,
             trigger_expr="my_custom_event",
             func_name="on_event",
             func=AsyncMock(),
@@ -1354,7 +1354,7 @@ class TestTimeConstraintEvaluation:
     def trigger_def(self) -> TriggerDefinition:
         """Create a trigger definition."""
         return TriggerDefinition(
-            trigger_type=DECORATOR_STATE_TRIGGER,
+            trigger_type=TRIGGER_STATE,
             trigger_expr="sensor.test > 50",
             func_name="on_trigger",
             func=MagicMock(),
@@ -1378,7 +1378,7 @@ class TestTimeConstraintEvaluation:
 
     async def test_check_time_constraint_no_specs(self, trigger: StateTrigger) -> None:
         """Test that time constraint with no specs is always active."""
-        constraint = {"type": DECORATOR_TIME_ACTIVE, "specs": []}
+        constraint = {"type": CONSTRAINT_TIME, "specs": []}
         result = await trigger._check_time_constraint(constraint)
         assert result is True
 
@@ -1441,7 +1441,7 @@ class TestTimeConstraintEvaluation:
             current = datetime(2024, 1, 15, 14, 30, 0)
             mock_now.return_value = current
             # Create constraint that includes 14:30
-            constraint = {"type": DECORATOR_TIME_ACTIVE, "specs": ["range(12:00, 18:00)"]}
+            constraint = {"type": CONSTRAINT_TIME, "specs": ["range(12:00, 18:00)"]}
             result = await trigger._check_time_constraint(constraint)
             assert result is True
 
@@ -1451,7 +1451,7 @@ class TestTimeConstraintEvaluation:
             current = datetime(2024, 1, 15, 20, 30, 0)
             mock_now.return_value = current
             # Create constraint that does not include 20:30
-            constraint = {"type": DECORATOR_TIME_ACTIVE, "specs": ["range(08:00, 18:00)"]}
+            constraint = {"type": CONSTRAINT_TIME, "specs": ["range(08:00, 18:00)"]}
             result = await trigger._check_time_constraint(constraint)
             assert result is False
 
@@ -1461,7 +1461,7 @@ class TestTimeConstraintEvaluation:
             current = datetime(2024, 1, 15, 23, 30, 0)
             mock_now.return_value = current
             # Overnight range from 22:00 to 06:00
-            constraint = {"type": DECORATOR_TIME_ACTIVE, "specs": ["range(22:00, 06:00)"]}
+            constraint = {"type": CONSTRAINT_TIME, "specs": ["range(22:00, 06:00)"]}
             result = await trigger._check_time_constraint(constraint)
             assert result is True
 
@@ -1471,7 +1471,7 @@ class TestTimeConstraintEvaluation:
             current = datetime(2024, 1, 15, 4, 30, 0)
             mock_now.return_value = current
             # Overnight range from 22:00 to 06:00
-            constraint = {"type": DECORATOR_TIME_ACTIVE, "specs": ["range(22:00, 06:00)"]}
+            constraint = {"type": CONSTRAINT_TIME, "specs": ["range(22:00, 06:00)"]}
             result = await trigger._check_time_constraint(constraint)
             assert result is True
 
@@ -1510,7 +1510,7 @@ class TestStateConstraintEvaluation:
     def trigger_def(self) -> TriggerDefinition:
         """Create a trigger definition."""
         return TriggerDefinition(
-            trigger_type=DECORATOR_STATE_TRIGGER,
+            trigger_type=TRIGGER_STATE,
             trigger_expr="sensor.test > 50",
             func_name="on_trigger",
             func=MagicMock(),
@@ -1537,7 +1537,7 @@ class TestStateConstraintEvaluation:
     ) -> None:
         """Test evaluating state constraint with string equality that is true."""
         mock_state_manager.get.return_value = self._create_state_mock("on")
-        constraint = {"type": DECORATOR_STATE_ACTIVE, "exprs": ["light.test == 'on'"]}
+        constraint = {"type": CONSTRAINT_STATE, "exprs": ["light.test == 'on'"]}
         result = await trigger._check_state_constraint(constraint)
         assert result is True
 
@@ -1546,7 +1546,7 @@ class TestStateConstraintEvaluation:
     ) -> None:
         """Test evaluating state constraint with string equality that is false."""
         mock_state_manager.get.return_value = self._create_state_mock("off")
-        constraint = {"type": DECORATOR_STATE_ACTIVE, "exprs": ["light.test == 'on'"]}
+        constraint = {"type": CONSTRAINT_STATE, "exprs": ["light.test == 'on'"]}
         result = await trigger._check_state_constraint(constraint)
         assert result is False
 
@@ -1554,7 +1554,7 @@ class TestStateConstraintEvaluation:
         self, trigger: StateTrigger, mock_state_manager: MagicMock
     ) -> None:
         """Test evaluating state constraint with no expressions."""
-        constraint = {"type": DECORATOR_STATE_ACTIVE, "exprs": []}
+        constraint = {"type": CONSTRAINT_STATE, "exprs": []}
         result = await trigger._check_state_constraint(constraint)
         # No expressions means always true
         assert result is True
@@ -1564,7 +1564,7 @@ class TestStateConstraintEvaluation:
     ) -> None:
         """Test evaluating state constraint with numeric comparison."""
         mock_state_manager.get.return_value = self._create_state_mock("25.5")
-        constraint = {"type": DECORATOR_STATE_ACTIVE, "exprs": ["sensor.temp > 20"]}
+        constraint = {"type": CONSTRAINT_STATE, "exprs": ["sensor.temp > 20"]}
         result = await trigger._check_state_constraint(constraint)
         assert result is True
 
@@ -1573,7 +1573,7 @@ class TestStateConstraintEvaluation:
     ) -> None:
         """Test evaluating state constraint with numeric less than."""
         mock_state_manager.get.return_value = self._create_state_mock("15")
-        constraint = {"type": DECORATOR_STATE_ACTIVE, "exprs": ["sensor.temp < 20"]}
+        constraint = {"type": CONSTRAINT_STATE, "exprs": ["sensor.temp < 20"]}
         result = await trigger._check_state_constraint(constraint)
         assert result is True
 
@@ -1582,6 +1582,6 @@ class TestStateConstraintEvaluation:
     ) -> None:
         """Test evaluating state constraint when state is unavailable."""
         mock_state_manager.get.return_value = self._create_state_mock("on", available=False)
-        constraint = {"type": DECORATOR_STATE_ACTIVE, "exprs": ["light.test == 'on'"]}
+        constraint = {"type": CONSTRAINT_STATE, "exprs": ["light.test == 'on'"]}
         result = await trigger._check_state_constraint(constraint)
         assert result is False

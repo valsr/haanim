@@ -6,18 +6,15 @@ from typing import Final
 __all__ = [
     # Enums
     "ActionMode",
-    # Decorator names
-    "DECORATOR_ACTION",
-    "DECORATOR_STATE_TRIGGER",
-    "DECORATOR_TIME_TRIGGER",
-    "DECORATOR_EVENT_TRIGGER",
-    "DECORATOR_INTERVAL_TRIGGER",
-    "DECORATOR_CRON_TRIGGER",
-    "DECORATOR_TIME_ACTIVE",
-    "DECORATOR_STATE_ACTIVE",
-    "DECORATOR_SERVICE",
-    "DECORATOR_STARTUP",
-    "DECORATOR_SHUTDOWN",
+    # Trigger kinds
+    "TRIGGER_TIME",
+    "TRIGGER_INTERVAL",
+    "TRIGGER_CRON",
+    "TRIGGER_EVENT",
+    "TRIGGER_STATE",
+    # Constraint kinds
+    "CONSTRAINT_TIME",
+    "CONSTRAINT_STATE",
     # Host events
     "EVENT_HOST_STARTED",
     # Execution sources
@@ -54,18 +51,16 @@ class ActionMode(Enum):
     CANCEL = "cancel"
 
 
-# Decorator names
-DECORATOR_ACTION: Final = "action"
-DECORATOR_STATE_TRIGGER: Final = "state_trigger"
-DECORATOR_TIME_TRIGGER: Final = "time_trigger"
-DECORATOR_EVENT_TRIGGER: Final = "event_trigger"
-DECORATOR_INTERVAL_TRIGGER: Final = "interval_trigger"
-DECORATOR_CRON_TRIGGER: Final = "cron_trigger"
-DECORATOR_TIME_ACTIVE: Final = "time_active"
-DECORATOR_STATE_ACTIVE: Final = "state_active"
-DECORATOR_SERVICE: Final = "service"
-DECORATOR_STARTUP: Final = "startup"
-DECORATOR_SHUTDOWN: Final = "shutdown"
+# The kinds of trigger; each is attached with the decorator ``on_<kind>``
+TRIGGER_TIME: Final = "time"
+TRIGGER_INTERVAL: Final = "interval"
+TRIGGER_CRON: Final = "cron"
+TRIGGER_EVENT: Final = "event"
+TRIGGER_STATE: Final = "state"
+
+# The kinds of constraint a trigger can carry
+CONSTRAINT_TIME: Final = "time"
+CONSTRAINT_STATE: Final = "state"
 
 # Event the host fires once it has finished starting
 EVENT_HOST_STARTED: Final = "homeassistant_started"

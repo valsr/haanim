@@ -1,344 +1,553 @@
-"""Decorator definitions for HAAnim automations.
+"""The decorators an automation uses to define its actions, triggers and lifecycle handlers.
 
-This module provides decorators for defining actions, lifecycle hooks, and triggers
-in HAAnim automations.
+See "Actions", "Triggers" and "Special Triggers" in the design:
 
-Decorator Types:
-- Actions: @action (from this module)
-- Lifecycle: @startup, @shutdown (from this module)
-- Triggers: @state, @time, @interval, @cron, @event (from engine/triggers/)
-- Constraints: @state_active, @time_active (from engine/constraints/)
+- ``@action`` makes a function an action and configures it.
+- ``@on_time``, ``@on_interval``, ``@on_cron``, ``@on_event`` and ``@on_state``
+  attach a trigger. A function with a trigger is an action too.
+- ``@startup`` and ``@shutdown`` mark the lifecycle handlers.
+
+A decorator only records what it was given on the function. An automation
+gets these decorators bound to its own registry from its ``haanim`` module.
 """
 
 from __future__ import annotations
 
-import logging
-from dataclasses import dataclass, field
-from typing import Any, TypeVar
 from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any, TypeVar, overload
 
-from haanim.const import ActionMode
-
-_LOGGER = logging.getLogger(__name__)
+from haanim.const import (
+    TRIGGER_CRON,
+    TRIGGER_EVENT,
+    TRIGGER_INTERVAL,
+    TRIGGER_STATE,
+    TRIGGER_TIME,
+    ActionMode,
+)
 
 F = TypeVar("F", bound=Callable[..., Any])
-
-
-# =============================================================================
-# Metadata Classes
-# =============================================================================
-
-
-@dataclass
-class ActionInfo:
-    """Information about an action decorated function.
-
-    Args:
-        name: Display name for the action.
-        description: Optional description of what the action does.
-        func: The decorated function.
-        execution_mode: How to handle concurrent calls (DROP, QUEUE, CANCEL).
-        timeout: Timeout in seconds (0 = no timeout).
-        queue_size: Maximum queue size for QUEUE mode.
-    """
-
-    name: str | None = None
-    description: str | None = None
-    func: Callable[..., Any] | None = None
-    execution_mode: ActionMode = ActionMode.DROP
-    timeout: float = 0
-    queue_size: int = 100
-
-
-@dataclass
-class FunctionMetadata:
-    """Metadata collected from decorators on a function.
-
-    Args:
-        custom_name: Custom name from @action("name") decorator.
-        is_marked_as_action: Whether function is explicitly marked with @action decorator.
-        action_info: Information about the action (name, description, queue settings).
-        triggers: List of triggers attached to this function. Functions with triggers
-            are automatically callable as actions, even without @action decorator.
-        constraints: List of constraints (time_active, state_active).
-        is_startup: Whether function is a startup handler (@startup).
-        is_shutdown: Whether function is a shutdown handler (@shutdown).
-    """
-
-    custom_name: str | None = None
-    is_marked_as_action: bool = False
-    action_info: ActionInfo | None = None
-    triggers: list[Any] = field(default_factory=list)  # TriggerInfo from triggers.base
-    constraints: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
-    is_startup: bool = False
-    is_shutdown: bool = False
-
 
 # Attribute name for storing metadata on decorated functions
 METADATA_ATTRIBUTE = "_haanim_metadata"
 
+# The constraint keyword arguments every trigger decorator accepts
+CONSTRAINT_ARGUMENTS = (
+    "start_time",
+    "end_time",
+    "start_date",
+    "end_date",
+    "day_of_week",
+    "when",
+    "when_not",
+)
 
-def _get_or_create_metadata(func: Callable[..., Any]) -> FunctionMetadata:
-    """Get or create FunctionMetadata for a function.
+
+@dataclass
+class ActionInfo:
+    """What ``@action`` was given.
 
     Args:
-        func: The function to get/create metadata for.
-
-    Returns:
-        The FunctionMetadata instance attached to the function.
+        name: The action's name. The function name if None.
+        aliases: Additional names for the action.
+        description: What the action does.
+        execution_mode: How concurrent calls are handled (DROP, QUEUE, CANCEL).
+        timeout: Time limit in seconds; None for the default timeout.
+        disabled: Whether the action is listed but cannot be called.
     """
+
+    name: str | None = None
+    aliases: tuple[str, ...] = ()
+    description: str | None = None
+    execution_mode: ActionMode = ActionMode.DROP
+    timeout: float | None = None
+    disabled: bool = False
+
+
+@dataclass
+class TriggerInfo:
+    """One trigger attached to a function.
+
+    Args:
+        trigger_type: The kind of trigger: one of the ``TRIGGER_*`` constants.
+        trigger_expr: The trigger's expression: a time, interval, cron or
+            state expression, or an event type.
+        kwargs: The trigger's own options.
+        constraints: The constraint arguments given, by name.
+    """
+
+    trigger_type: str
+    trigger_expr: Any
+    kwargs: dict[str, Any] = field(default_factory=dict)
+    constraints: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class FunctionMetadata:
+    """What the decorators on a function recorded.
+
+    Args:
+        action_info: What ``@action`` was given; None if the function has no ``@action``.
+        triggers: The triggers attached to the function, in source order (top decorator first).
+        is_startup: Whether the function is the ``@startup`` handler.
+        is_shutdown: Whether the function is the ``@shutdown`` handler.
+    """
+
+    action_info: ActionInfo | None = None
+    triggers: list[TriggerInfo] = field(default_factory=list)
+    is_startup: bool = False
+    is_shutdown: bool = False
+
+    @property
+    def is_action(self) -> bool:
+        """Whether the function is an action: it has ``@action`` or a trigger."""
+        return self.action_info is not None or bool(self.triggers)
+
+
+def _get_or_create_metadata(func: Callable[..., Any]) -> FunctionMetadata:
+    """Return the metadata of a function, creating it on first use."""
     if not hasattr(func, METADATA_ATTRIBUTE):
         setattr(func, METADATA_ATTRIBUTE, FunctionMetadata())
-    return getattr(func, METADATA_ATTRIBUTE)
+    metadata: FunctionMetadata = getattr(func, METADATA_ATTRIBUTE)
+    return metadata
 
 
 def get_metadata(func: Callable[..., Any]) -> FunctionMetadata | None:
-    """Get the metadata from a decorated function.
+    """Return what the decorators recorded on a function, or None if it has none.
 
     Args:
-        func: The function to get metadata from.
-
-    Returns:
-        The FunctionMetadata if present, None otherwise.
+        func: The function.
     """
     return getattr(func, METADATA_ATTRIBUTE, None)
 
 
 def has_metadata(func: Callable[..., Any]) -> bool:
-    """Check if a function has HAAnim metadata.
+    """Return whether a function carries a HAAnim decorator.
 
     Args:
-        func: The function to check.
-
-    Returns:
-        True if the function has HAAnim metadata.
+        func: The function.
     """
     return hasattr(func, METADATA_ATTRIBUTE)
 
 
-def action(
-    name_or_func: str | F | None = None,
-    *,
-    description: str | None = None,
-    execution_mode: ActionMode = ActionMode.DROP,
-    timeout: float = 0,
-    queue_size: int = 100,
-) -> F | Callable[[F], F]:
-    """Decorator to mark a function as an action and add metadata.
+def _require_function(decorator: str, func: Any) -> None:
+    """Raise if what is being decorated is not callable."""
+    if not callable(func):
+        raise TypeError(f"@{decorator} must decorate a function, not {type(func).__name__}")
 
-    Functions with triggers are automatically actions and callable from the UI.
-    The @action decorator is optional but allows you to:
-    - Provide a custom display name and description
-    - Control execution mode (DROP, QUEUE, CANCEL)
-    - Set timeout
-    - Configure queue size (for QUEUE mode)
 
-    Note: Functions with only triggers (no @action) are still callable from the UI
-    but use default settings (function name as display name, DROP mode).
-
-    Args:
-        name_or_func: Optional display name for the action, or the function if
-            used without arguments.
-        description: Optional description of what the action does.
-        execution_mode: How to handle concurrent calls (DROP, QUEUE, CANCEL).
-        timeout: Action timeout in seconds (0 = no timeout).
-        queue_size: Maximum queue size for QUEUE mode (default 100).
-
-    Returns:
-        Decorated function or decorator.
-
-    Example:
-        # Triggered function (automatically an action)
-        @time("sunset")
-        def evening_lights():
-            pass
-
-        # Manual action only (no triggers)
-        @action
-        def turn_on_lights():
-            pass
-
-        # Triggered with custom metadata
-        @action("Evening Scene", description="Activates evening lighting")
-        @time("sunset")
-        def evening_action():
-            pass
-
-        # Action with execution mode
-        @action(execution_mode=ActionMode.QUEUE)
-        def queued_action():
-            pass
-
-        # Action with timeout
-        @action(timeout=30)
-        async def timed_action():
-            await long_operation()
-    """
-    # Handle @action without parentheses
-    if callable(name_or_func):
-        func = name_or_func
-        metadata = _get_or_create_metadata(func)
-        metadata.is_marked_as_action = True
-        metadata.action_info = ActionInfo(func=func)
-        return func
-
-    # Handle @action() or @action("name") or @action(description="...")
-    def decorator(func: F) -> F:
-        metadata = _get_or_create_metadata(func)
-        metadata.is_marked_as_action = True
-        metadata.action_info = ActionInfo(
-            name=name_or_func if isinstance(name_or_func, str) else None,
-            description=description,
-            func=func,
-            execution_mode=execution_mode,
-            timeout=timeout,
-            queue_size=queue_size,
-        )
-        # Also set custom_name for consistency
-        if isinstance(name_or_func, str):
-            metadata.custom_name = name_or_func
-        return func
-
-    return decorator
+def _require_name(decorator: str, argument: str, value: Any) -> str:
+    """Return a name argument, raising if it is not a non-empty string."""
+    if not isinstance(value, str):
+        raise TypeError(f"@{decorator}: {argument} must be a string, not {type(value).__name__}")
+    if not value.strip():
+        raise ValueError(f"@{decorator}: {argument} must not be empty")
+    return value
 
 
 # =============================================================================
-# Lifecycle Decorators
+# Actions
+# =============================================================================
+
+
+@overload
+def action(func: F, /) -> F: ...
+
+
+@overload
+def action(
+    *,
+    name: str | None = None,
+    aliases: list[str] | tuple[str, ...] | None = None,
+    description: str | None = None,
+    execution_mode: ActionMode = ActionMode.DROP,
+    timeout: float | None = None,
+    disabled: bool = False,
+) -> Callable[[F], F]: ...
+
+
+def action(
+    func: Any = None,
+    /,
+    *,
+    name: str | None = None,
+    aliases: list[str] | tuple[str, ...] | None = None,
+    description: str | None = None,
+    execution_mode: ActionMode = ActionMode.DROP,
+    timeout: float | None = None,
+    disabled: bool = False,
+) -> Any:
+    """Make a function an action, or configure the action of a trigger function.
+
+    Used as ``@action`` or with keyword arguments. A function with a trigger
+    decorator is an action without ``@action``; add ``@action(...)`` to give it
+    a name, aliases, an execution mode or a timeout. The order of the
+    decorators does not matter.
+
+    Args:
+        func: The function, when used as ``@action`` without arguments.
+        name: The action's name. The function name if omitted.
+        aliases: Additional names for the action.
+        description: What the action does.
+        execution_mode: How concurrent calls are handled (DROP, QUEUE, CANCEL).
+        timeout: Time limit in seconds. The default timeout if omitted.
+        disabled: List the action but do not let it be called, and do not
+            register its triggers.
+
+    Raises:
+        TypeError: If an argument has the wrong type.
+        ValueError: If a name is empty or the timeout is negative.
+
+    Example:
+        @action
+        def my_action():
+            pass
+
+        @action(name="evening scene", aliases=["evening"], timeout=30)
+        @on_time("sunset")
+        async def evening():
+            pass
+    """
+    if func is not None and not callable(func):
+        raise TypeError("@action takes keyword arguments only: write @action(name=...)")
+
+    if name is not None:
+        _require_name("action", "name", name)
+    if aliases is not None and (isinstance(aliases, str) or not isinstance(aliases, (list, tuple))):
+        raise TypeError("@action: aliases must be a list of strings")
+    checked_aliases = tuple(_require_name("action", "an alias", alias) for alias in aliases or ())
+    if description is not None and not isinstance(description, str):
+        raise TypeError(f"@action: description must be a string, not {type(description).__name__}")
+    if not isinstance(execution_mode, ActionMode):
+        raise TypeError("@action: execution_mode must be an ActionMode")
+    if timeout is not None:
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+            raise TypeError(f"@action: timeout must be a number of seconds, not {type(timeout).__name__}")
+        if timeout < 0:
+            raise ValueError("@action: timeout must not be negative")
+    if not isinstance(disabled, bool):
+        raise TypeError(f"@action: disabled must be True or False, not {type(disabled).__name__}")
+
+    info = ActionInfo(
+        name=name,
+        aliases=checked_aliases,
+        description=description,
+        execution_mode=execution_mode,
+        timeout=timeout,
+        disabled=disabled,
+    )
+
+    def decorator(target: F) -> F:
+        _require_function("action", target)
+        metadata = _get_or_create_metadata(target)
+        if metadata.action_info is not None:
+            raise ValueError(f"@action is used more than once on '{getattr(target, '__name__', target)}'")
+        metadata.action_info = info
+        return target
+
+    return decorator(func) if func is not None else decorator
+
+
+# =============================================================================
+# Lifecycle
 # =============================================================================
 
 
 def startup(func: F) -> F:
-    """Decorator to mark a function as a startup handler.
+    """Mark a function as the automation's startup handler.
 
-    Functions decorated with @startup are called once when the automation is loaded
-    and Home Assistant has started. Only one startup handler per automation is allowed.
-    If multiple are defined, only the last one will be executed.
-
-    Startup handlers:
-    - Run after the automation is fully loaded and parsed
-    - Are executed through the action worker pool (count toward concurrency limits)
-    - Should complete quickly to not delay loading of other automations
-    - Cannot be triggered manually from the UI
+    It is called once each time the automation starts, before the triggers
+    are registered. An automation has at most one.
 
     Args:
-        func: The function to mark as a startup handler.
-
-    Returns:
-        The decorated function.
-
-    Example:
-        @startup
-        async def on_startup():
-            log_info("Automation initialized!")
-            # Perform one-time setup tasks
-
-        @startup
-        def sync_startup():
-            # Sync functions are also supported
-            pass
+        func: The function.
     """
-    metadata = _get_or_create_metadata(func)
-    metadata.is_startup = True
+    _require_function("startup", func)
+    _get_or_create_metadata(func).is_startup = True
     return func
 
 
 def shutdown(func: F) -> F:
-    """Decorator to mark a function as a shutdown handler.
+    """Mark a function as the automation's shutdown handler.
 
-    Functions decorated with @shutdown are called when the automation is being unloaded,
-    reloaded, or when Home Assistant is stopping. Only one shutdown handler per
-    automation is allowed.
-
-    Shutdown handlers:
-    - Run when the automation is unloaded, reloaded, or HA stops
-    - Have a strict timeout (200ms by default) - must complete quickly
-    - Will be forcefully terminated if they exceed the timeout
-    - If an action is running when shutdown is requested, it will be cancelled first
-    - Cannot be triggered manually from the UI
-    - Are executed through the action worker pool
+    It is called once each time the automation stops, after its triggers are
+    unregistered and its running actions have ended. An automation has at
+    most one.
 
     Args:
-        func: The function to mark as a shutdown handler.
-
-    Returns:
-        The decorated function.
-
-    Example:
-        @shutdown
-        async def on_shutdown():
-            log_info("Automation shutting down...")
-            # Clean up resources, save state, etc.
-            # Keep it fast! Max 200ms allowed
-
-        @shutdown
-        def sync_shutdown():
-            # Sync functions are also supported
-            pass
+        func: The function.
     """
-    metadata = _get_or_create_metadata(func)
-    metadata.is_shutdown = True
+    _require_function("shutdown", func)
+    _get_or_create_metadata(func).is_shutdown = True
     return func
 
 
 # =============================================================================
-# Re-export Trigger Decorators from engine/triggers/
+# Triggers
 # =============================================================================
 
-# Import trigger decorators from their respective modules
-# These are the primary interface for user automations
-from haanim.engine.triggers.base import TriggerInfo  # pylint: disable=wrong-import-order
-from haanim.engine.triggers.state_trigger import (
-    state_trigger,
-)  # pylint: disable=wrong-import-order
-from haanim.engine.triggers.time_trigger import (
-    time_trigger,
-)  # pylint: disable=wrong-import-order
-from haanim.engine.triggers.interval_trigger import (
-    interval,
-)  # pylint: disable=wrong-import-order
-from haanim.engine.triggers.cron_trigger import (
-    cron,
-)  # pylint: disable=wrong-import-order
-from haanim.engine.triggers.event_trigger import (
-    event_trigger,
-)  # pylint: disable=wrong-import-order
 
-# Import constraint decorators from constraints module
-from haanim.engine.constraints import (
-    state_active,
-    time_active,
-)  # pylint: disable=wrong-import-order
+def _constraints(decorator: str, given: dict[str, Any]) -> dict[str, Any]:
+    """Return the constraint arguments that were given, checking their types.
 
-# Create aliases for more intuitive naming in automations
-time = time_trigger
-state = state_trigger
-event = event_trigger
+    The values are stored as written. They are parsed and evaluated when the
+    trigger fires.
+    """
+    constraints: dict[str, Any] = {}
+    for name in CONSTRAINT_ARGUMENTS:
+        value = given.get(name)
+        if value is None:
+            continue
+        allowed: tuple[type, ...] = (str, int) if name == "day_of_week" else (str,)
+        if isinstance(value, bool) or not isinstance(value, allowed):
+            raise TypeError(f"@{decorator}: {name} must be a string, not {type(value).__name__}")
+        constraints[name] = value
+    return constraints
 
-# Export all decorators for use in automations
+
+def _trigger(
+    decorator: str,
+    trigger_type: str,
+    expr: Any,
+    kwargs: dict[str, Any],
+    constraints: dict[str, Any],
+) -> Callable[[F], F]:
+    """Build the decorator that attaches one trigger to a function."""
+    info = TriggerInfo(
+        trigger_type=trigger_type,
+        trigger_expr=expr,
+        kwargs={name: value for name, value in kwargs.items() if value is not None},
+        constraints=_constraints(decorator, constraints),
+    )
+
+    def decorate(func: F) -> F:
+        _require_function(decorator, func)
+        # Decorators run bottom up; inserting at the front keeps source order.
+        _get_or_create_metadata(func).triggers.insert(0, info)
+        return func
+
+    return decorate
+
+
+def _require_duration(decorator: str, argument: str, value: Any) -> None:
+    """Raise if a duration is neither a number of seconds nor a string."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise TypeError(f"@{decorator}: {argument} must be seconds or 'HH:MM:SS', not {type(value).__name__}")
+
+
+def on_time(
+    expr: str,
+    *,
+    day_of_week: str | int | None = None,
+    day_of_month: str | int | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    when: str | None = None,
+    when_not: str | None = None,
+) -> Callable[[F], F]:
+    """Call the function at a date and/or time.
+
+    Args:
+        expr: The date and/or time expression, such as ``"09:00"`` or ``"sunset - 30 minutes"``.
+        day_of_week: Only on these days of the week.
+        day_of_month: Only on these days of the month.
+        start_time: Constraint: only from this time of day.
+        end_time: Constraint: only before this time of day.
+        start_date: Constraint: only from this date.
+        end_date: Constraint: only before this date.
+        when: Constraint: only while this state expression is true.
+        when_not: Constraint: only while this state expression is false.
+    """
+    _require_name("on_time", "the time expression", expr)
+    if day_of_month is not None and (
+        isinstance(day_of_month, bool) or not isinstance(day_of_month, (str, int))
+    ):
+        raise TypeError(f"@on_time: day_of_month must be a string, not {type(day_of_month).__name__}")
+    constraints: dict[str, Any] = {
+        "start_time": start_time,
+        "end_time": end_time,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    constraints.update(when=when, when_not=when_not)
+    options: dict[str, Any] = {"day_of_week": day_of_week, "day_of_month": day_of_month}
+    # day_of_week does the same job for the trigger and as a constraint; it is checked once, here.
+    _constraints("on_time", {"day_of_week": day_of_week})
+    return _trigger("on_time", TRIGGER_TIME, expr, options, constraints)
+
+
+def on_interval(
+    interval: str | float,
+    *,
+    delay: str | float | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    day_of_week: str | int | None = None,
+    when: str | None = None,
+    when_not: str | None = None,
+) -> Callable[[F], F]:
+    """Call the function repeatedly, a fixed time apart.
+
+    Args:
+        interval: Time between calls: seconds, or ``"HH:MM:SS"``.
+        delay: Time before the first call, in the same formats. The interval if omitted.
+        start_time: Constraint: only from this time of day.
+        end_time: Constraint: only before this time of day.
+        start_date: Constraint: only from this date.
+        end_date: Constraint: only before this date.
+        day_of_week: Constraint: only on these days of the week.
+        when: Constraint: only while this state expression is true.
+        when_not: Constraint: only while this state expression is false.
+    """
+    _require_duration("on_interval", "the interval", interval)
+    if delay is not None:
+        _require_duration("on_interval", "delay", delay)
+    constraints: dict[str, Any] = {
+        "start_time": start_time,
+        "end_time": end_time,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    constraints.update(day_of_week=day_of_week, when=when, when_not=when_not)
+    return _trigger("on_interval", TRIGGER_INTERVAL, interval, {"delay": delay}, constraints)
+
+
+def on_cron(
+    expr: str,
+    *,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    day_of_week: str | int | None = None,
+    when: str | None = None,
+    when_not: str | None = None,
+) -> Callable[[F], F]:
+    """Call the function when a cron expression matches.
+
+    Args:
+        expr: The cron expression, such as ``"30 8 * * 1-5"``.
+        start_time: Constraint: only from this time of day.
+        end_time: Constraint: only before this time of day.
+        start_date: Constraint: only from this date.
+        end_date: Constraint: only before this date.
+        day_of_week: Constraint: only on these days of the week.
+        when: Constraint: only while this state expression is true.
+        when_not: Constraint: only while this state expression is false.
+    """
+    _require_name("on_cron", "the cron expression", expr)
+    constraints: dict[str, Any] = {
+        "start_time": start_time,
+        "end_time": end_time,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    constraints.update(day_of_week=day_of_week, when=when, when_not=when_not)
+    return _trigger("on_cron", TRIGGER_CRON, expr, {}, constraints)
+
+
+def on_event(
+    event_type: str,
+    *,
+    data: dict[str, Any] | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    day_of_week: str | int | None = None,
+    when: str | None = None,
+    when_not: str | None = None,
+) -> Callable[[F], F]:
+    """Call the function when an event of a type is fired.
+
+    Args:
+        event_type: The type of event.
+        data: Only for events whose data has these keys with these values.
+        start_time: Constraint: only from this time of day.
+        end_time: Constraint: only before this time of day.
+        start_date: Constraint: only from this date.
+        end_date: Constraint: only before this date.
+        day_of_week: Constraint: only on these days of the week.
+        when: Constraint: only while this state expression is true.
+        when_not: Constraint: only while this state expression is false.
+    """
+    _require_name("on_event", "the event type", event_type)
+    if data is not None and not isinstance(data, dict):
+        raise TypeError(f"@on_event: data must be a dict, not {type(data).__name__}")
+    constraints: dict[str, Any] = {
+        "start_time": start_time,
+        "end_time": end_time,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    constraints.update(day_of_week=day_of_week, when=when, when_not=when_not)
+    return _trigger(
+        "on_event", TRIGGER_EVENT, event_type, {"data": dict(data) if data else None}, constraints
+    )
+
+
+def on_state(
+    expr: str,
+    *,
+    every_change: bool = False,
+    hold: str | float | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    day_of_week: str | int | None = None,
+    when: str | None = None,
+    when_not: str | None = None,
+) -> Callable[[F], F]:
+    """Call the function when a state expression becomes true.
+
+    Args:
+        expr: The state expression, such as ``"sensor.temperature > 30"``.
+        every_change: Call on every change while the expression is true, not
+            only when it becomes true.
+        hold: The expression must stay true this long first: seconds, or ``"HH:MM:SS"``.
+        start_time: Constraint: only from this time of day.
+        end_time: Constraint: only before this time of day.
+        start_date: Constraint: only from this date.
+        end_date: Constraint: only before this date.
+        day_of_week: Constraint: only on these days of the week.
+        when: Constraint: only while this state expression is true.
+        when_not: Constraint: only while this state expression is false.
+    """
+    _require_name("on_state", "the state expression", expr)
+    if not isinstance(every_change, bool):
+        raise TypeError(f"@on_state: every_change must be True or False, not {type(every_change).__name__}")
+    if hold is not None:
+        _require_duration("on_state", "hold", hold)
+    constraints: dict[str, Any] = {
+        "start_time": start_time,
+        "end_time": end_time,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    constraints.update(day_of_week=day_of_week, when=when, when_not=when_not)
+    options: dict[str, Any] = {"every_change": every_change or None, "hold": hold}
+    return _trigger("on_state", TRIGGER_STATE, expr, options, constraints)
+
+
 __all__ = [
-    # Action decorators
-    "action",
-    "startup",
-    "shutdown",
-    # Trigger decorators (re-exported from engine/triggers/)
-    "state_trigger",
-    "state",
-    "time_trigger",
-    "time",
-    "interval",
-    "cron",
-    "event_trigger",
-    "event",
-    # Constraint decorators (re-exported from engine/triggers/)
-    "state_active",
-    "time_active",
-    # Metadata utilities
-    "get_metadata",
-    "has_metadata",
-    "_get_or_create_metadata",
-    # Metadata classes
+    "CONSTRAINT_ARGUMENTS",
+    "METADATA_ATTRIBUTE",
+    "ActionInfo",
     "FunctionMetadata",
     "TriggerInfo",
-    "ActionInfo",
-    "METADATA_ATTRIBUTE",
+    "action",
+    "get_metadata",
+    "has_metadata",
+    "on_cron",
+    "on_event",
+    "on_interval",
+    "on_state",
+    "on_time",
+    "shutdown",
+    "startup",
 ]

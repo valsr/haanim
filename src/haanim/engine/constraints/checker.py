@@ -10,8 +10,8 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from haanim.const import (
-    DECORATOR_STATE_ACTIVE,
-    DECORATOR_TIME_ACTIVE,
+    CONSTRAINT_STATE,
+    CONSTRAINT_TIME,
 )
 
 if TYPE_CHECKING:
@@ -48,11 +48,11 @@ class ConstraintChecker:
         for constraint in constraints:
             constraint_type = constraint.get("type")
 
-            if constraint_type == DECORATOR_STATE_ACTIVE:
+            if constraint_type == CONSTRAINT_STATE:
                 if not self.check_state_constraint(constraint):
                     return False
 
-            elif constraint_type == DECORATOR_TIME_ACTIVE:
+            elif constraint_type == CONSTRAINT_TIME:
                 if not self.check_time_constraint(constraint):
                     return False
 

@@ -10,8 +10,8 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from haanim.const import DECORATOR_INTERVAL_TRIGGER
-from haanim.engine.triggers.base import BaseTrigger, TriggerInfo
+from haanim.const import TRIGGER_INTERVAL
+from haanim.engine.triggers.base import BaseTrigger
 from haanim.interfaces import Host
 
 if TYPE_CHECKING:
@@ -19,56 +19,6 @@ if TYPE_CHECKING:
     from haanim.engine.automation_context import TriggerDefinition
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _get_or_create_metadata(func: Callable[..., Any]) -> Any:
-    """Get or create function metadata.
-
-    Imported lazily to avoid a circular import with the decorators module.
-    """
-    # pylint: disable-next=import-outside-toplevel
-    from haanim.engine.decorators import _get_or_create_metadata as get_metadata
-
-    return get_metadata(func)
-
-
-def interval(
-    interval_spec: str,
-    *,
-    delay: str | None = None,
-    **kwargs: Any,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Decorator for interval-based triggers.
-
-    Args:
-        interval_spec: Interval specification (HH:MM:SS, MM:SS, or seconds).
-        delay: Optional initial delay before first execution.
-        **kwargs: Additional constraint parameters (when, when_not, etc.).
-
-    Returns:
-        Decorated function.
-
-    Example:
-        @interval("01:00:00")
-        def hourly_task():
-            pass
-
-        @interval("00:05:00", delay="00:01:00")
-        def delayed_task():
-            pass
-    """
-
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        metadata = _get_or_create_metadata(func)
-        trigger_info = TriggerInfo(
-            trigger_type=DECORATOR_INTERVAL_TRIGGER,
-            trigger_expr=interval_spec,
-            kwargs={"delay": delay, **kwargs},
-        )
-        metadata.triggers.append(trigger_info)
-        return func
-
-    return decorator
 
 
 class IntervalTrigger(BaseTrigger):
@@ -93,11 +43,13 @@ class IntervalTrigger(BaseTrigger):
             if isinstance(trigger_def.trigger_expr, str)
             else trigger_def.trigger_expr[0]
         )
-        self._interval_seconds = self._parse_interval(interval_str)
+        self._interval_seconds = self._parse_interval(str(interval_str))
 
         # Parse delay
         delay_str = trigger_def.kwargs.get("delay")
-        self._delay_seconds = self._parse_interval(delay_str) if delay_str else self._interval_seconds
+        self._delay_seconds = (
+            self._parse_interval(str(delay_str)) if delay_str is not None else self._interval_seconds
+        )
 
         self._task: asyncio.Task[Any] | None = None
         self._execution_count = 0

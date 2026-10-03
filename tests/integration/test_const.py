@@ -11,15 +11,11 @@ from custom_components.haanim.const import (
     CONFIG_IMPORT_ALLOWLIST,
     CONFIG_AUTOMATION_PATH,
     CONFIG_AUTOMATION_REFRESH_INTERVAL,
-    DECORATOR_ACTION,
-    DECORATOR_EVENT_TRIGGER,
-    DECORATOR_SERVICE,
-    DECORATOR_SHUTDOWN,
-    DECORATOR_STARTUP,
-    DECORATOR_STATE_ACTIVE,
-    DECORATOR_STATE_TRIGGER,
-    DECORATOR_TIME_ACTIVE,
-    DECORATOR_TIME_TRIGGER,
+    TRIGGER_EVENT,
+    CONSTRAINT_STATE,
+    TRIGGER_STATE,
+    CONSTRAINT_TIME,
+    TRIGGER_TIME,
     DEFAULT_ALLOW_ALL_IMPORTS,
     DEFAULT_IMPORT_ALLOWLIST,
     DEFAULT_MAX_CONCURRENT_ACTIONS,
@@ -61,20 +57,16 @@ class TestCoreConstants:
         assert VERSION == "0.1.0"
 
 
-class TestDecoratorConstants:
-    """Tests for decorator name constants."""
+class TestKindConstants:
+    """Tests for the trigger and constraint kind constants."""
 
-    def test_decorator_names(self) -> None:
-        """Test all decorator name constants."""
-        assert DECORATOR_ACTION == "action"
-        assert DECORATOR_STATE_TRIGGER == "state_trigger"
-        assert DECORATOR_TIME_TRIGGER == "time_trigger"
-        assert DECORATOR_EVENT_TRIGGER == "event_trigger"
-        assert DECORATOR_TIME_ACTIVE == "time_active"
-        assert DECORATOR_STATE_ACTIVE == "state_active"
-        assert DECORATOR_SERVICE == "service"
-        assert DECORATOR_STARTUP == "startup"
-        assert DECORATOR_SHUTDOWN == "shutdown"
+    def test_kinds(self) -> None:
+        """Test the kinds are named after what the decorators are called, without the on_ prefix."""
+        assert TRIGGER_STATE == "state"
+        assert TRIGGER_TIME == "time"
+        assert TRIGGER_EVENT == "event"
+        assert CONSTRAINT_TIME == "time"
+        assert CONSTRAINT_STATE == "state"
 
 
 class TestExecutionModes:

@@ -22,8 +22,8 @@ from collections.abc import Callable
 
 from typing import TYPE_CHECKING
 
-from haanim.const import DECORATOR_STATE_TRIGGER
-from haanim.engine.triggers.base import BaseTrigger, TriggerInfo
+from haanim.const import TRIGGER_STATE
+from haanim.engine.triggers.base import BaseTrigger
 from haanim.interfaces import Host
 from haanim.types import StateChangedEvent
 
@@ -33,90 +33,6 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
-
-
-def _get_or_create_metadata(func: Callable[..., Any]) -> Any:
-    """Get or create FunctionMetadata for a function.
-
-    This imports from decorators to avoid circular imports.
-
-    Args:
-        func: The function to get/create metadata for.
-
-    Returns:
-        The FunctionMetadata instance attached to the function.
-    """
-    # Import here to avoid circular dependency
-    from haanim.engine.decorators import _get_or_create_metadata as get_metadata
-
-    return get_metadata(func)
-
-
-def state_trigger(
-    *trigger_exprs: str,
-    state_hold: float | None = None,
-    state_check_now: bool = False,
-    watch: list[str] | None = None,
-    **kwargs: Any,
-) -> Callable[[F], F]:
-    """Decorator to trigger a function when state conditions are met.
-
-    When an entity's state changes and the trigger expression evaluates to true,
-    the decorated function is called. Multiple expressions can be provided - if
-    any expression matches, the function triggers.
-
-    Args:
-        trigger_exprs: One or more state expressions that trigger the function.
-            Expressions support comparison operators: ==, !=, >, >=, <, <=
-            Examples: "sensor.temperature > 25", "binary_sensor.motion == 'on'"
-        state_hold: Optional seconds the condition must remain true before triggering.
-            Useful for debouncing rapid state changes. If the condition becomes false
-            before the hold period expires, the trigger is cancelled.
-        state_check_now: If True, check the condition immediately on automation load
-            and trigger if it's already satisfied. Default is False.
-        watch: Optional list of entity IDs to watch for changes. If not provided,
-            entities are automatically extracted from the trigger expressions.
-        **kwargs: Additional trigger configuration.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @state_trigger("sensor.temperature > 25", state_hold=60)
-        def handle_high_temp():
-            '''Triggers when temp > 25 for 60 seconds.'''
-            pass
-
-        @state_trigger(
-            "binary_sensor.motion == 'on'",
-            "binary_sensor.door == 'open'",
-        )
-        def handle_activity():
-            '''Triggers when either motion OR door opens.'''
-            pass
-
-        @state_trigger("sensor.power > 1000", state_check_now=True)
-        def high_power_usage():
-            '''Also checks at automation load time.'''
-            pass
-    """
-
-    def decorator(func: F) -> F:
-        metadata = _get_or_create_metadata(func)
-        trigger_info = TriggerInfo(
-            trigger_type=DECORATOR_STATE_TRIGGER,
-            trigger_expr=list(trigger_exprs) if len(trigger_exprs) != 1 else trigger_exprs[0],
-            kwargs={
-                "state_hold": state_hold,
-                "state_check_now": state_check_now,
-                "watch": watch,
-                **kwargs,
-            },
-        )
-        metadata.triggers.append(trigger_info)
-        return func
-
-    return decorator
 
 
 class StateTrigger(BaseTrigger):
@@ -155,7 +71,7 @@ class StateTrigger(BaseTrigger):
         Returns:
             Validated state_hold value or None.
         """
-        state_hold = trigger.kwargs.get("state_hold")
+        state_hold = trigger.kwargs.get("hold")
         if state_hold is None:
             return state_hold
 

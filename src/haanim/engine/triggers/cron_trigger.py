@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, Any
 
 from croniter import croniter
 
-from haanim.const import DECORATOR_CRON_TRIGGER
-from haanim.engine.triggers.base import BaseTrigger, TriggerInfo
+from haanim.const import TRIGGER_CRON
+from haanim.engine.triggers.base import BaseTrigger
 from haanim.interfaces import Host
 
 if TYPE_CHECKING:
@@ -22,49 +22,6 @@ if TYPE_CHECKING:
     from haanim.engine.automation_context import TriggerDefinition
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _get_or_create_metadata(func: Callable[..., Any]) -> Any:
-    """Get or create function metadata.
-
-    Imported lazily to avoid a circular import with the decorators module.
-    """
-    # pylint: disable-next=import-outside-toplevel
-    from haanim.engine.decorators import _get_or_create_metadata as get_metadata
-
-    return get_metadata(func)
-
-
-def cron(
-    cron_expr: str,
-    **kwargs: Any,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Decorator for cron-based triggers.
-
-    Args:
-        cron_expr: Cron expression (e.g., "0 9 * * 1-5" for 9 AM on weekdays).
-        **kwargs: Additional constraint parameters.
-
-    Returns:
-        Decorated function.
-
-    Example:
-        @cron("0 9 * * 1-5")
-        def weekday_morning_task():
-            pass
-    """
-
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        metadata = _get_or_create_metadata(func)
-        trigger_info = TriggerInfo(
-            trigger_type=DECORATOR_CRON_TRIGGER,
-            trigger_expr=cron_expr,
-            kwargs=kwargs,
-        )
-        metadata.triggers.append(trigger_info)
-        return func
-
-    return decorator
 
 
 class CronTrigger(BaseTrigger):
