@@ -32,7 +32,8 @@ from haanim.engine.automation_context import (
     AutomationContext,
     AutomationMetadata,
 )
-from haanim.engine.automation_status import AutomationStatus, get_status_manager
+from haanim.engine.automation_status import AutomationStatus, AutomationStatusManager
+from haanim.interfaces import Host
 from haanim.engine.errors import (
     ActionCancelledError,
     PoolExhaustedError,
@@ -57,15 +58,20 @@ class AutomationManager:
         self,
         hass: HomeAssistant,
         entry: ConfigEntry,
+        host: Host,
     ) -> None:
         """Initialize the automation manager.
 
         Args:
             hass: Home Assistant instance.
             entry: The config entry for this integration.
+            host: The host interfaces the engine uses to reach Home Assistant.
         """
         self.hass = hass
         self.entry = entry
+        self.host = host
+        self._status_manager = AutomationStatusManager()
+        self._storage_path = hass.config.path(".storage", "haanim", "automations")
 
         # Get configuration
         self._config: ConfigManager = get_config_manager()
@@ -83,6 +89,7 @@ class AutomationManager:
 
         # Action worker pool for concurrent execution
         self._action_pool = ActionWorkerPool(
+            status_manager=self._status_manager,
             max_workers=DEFAULT_MAX_CONCURRENT_ACTIONS,
             shutdown_timeout=DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
         )
@@ -217,8 +224,11 @@ class AutomationManager:
 
         # Create context
         context = AutomationContext(
-            hass=self.hass,
+            host=self.host,
             automation_path=automation_path,
+            status_manager=self._status_manager,
+            storage_path=self._storage_path,
+            registry=self,
             import_allowlist=self._import_allowlist,
             allow_all_imports=self._allow_all_imports,
         )
@@ -720,7 +730,7 @@ class AutomationManager:
                 break
 
         if context is None:
-            raise NonExistingAutomationError(f"Automation '{automation_id}' not found")
+            raise NonExistingAutomationError(automation_id)
 
         # Find action
         action_def = context.get_action(action_name)
@@ -729,9 +739,9 @@ class AutomationManager:
 
         # Execute action through the action pool
         return await self._action_pool.submit_action(
-            automation_id=automation_id,
-            action_name=action_name,
-            action_func=action_def.func,
+            automation_id,
+            action_name,
+            action_def.func,
             *args,
             **kwargs,
         )
@@ -757,7 +767,7 @@ class AutomationManager:
                 break
 
         if context is None:
-            raise NonExistingAutomationError(f"Automation '{automation_id}' not found")
+            raise NonExistingAutomationError(automation_id)
 
         context.metadata.enabled = True
         _LOGGER.info("Enabled automation: %s", automation_id)
@@ -783,7 +793,7 @@ class AutomationManager:
                 break
 
         if context is None:
-            raise NonExistingAutomationError(f"Automation '{automation_id}' not found")
+            raise NonExistingAutomationError(automation_id)
 
         context.metadata.enabled = False
         _LOGGER.info("Disabled automation: %s", automation_id)
@@ -809,7 +819,7 @@ class AutomationManager:
                 break
 
         if context is None:
-            raise NonExistingAutomationError(f"Automation '{automation_id}' not found")
+            raise NonExistingAutomationError(automation_id)
 
         context.metadata.state = "running"
         context.metadata.run_time = datetime.now()
@@ -837,7 +847,7 @@ class AutomationManager:
                 break
 
         if context is None:
-            raise NonExistingAutomationError(f"Automation '{automation_id}' not found")
+            raise NonExistingAutomationError(automation_id)
 
         context.metadata.state = "stopped"
         await self._run_automation_shutdown_action(context)
@@ -874,7 +884,7 @@ class AutomationManager:
         Returns:
             The AutomationStatus for the automation.
         """
-        return get_status_manager().get_status(automation_id)
+        return self._status_manager.get_status(automation_id)
 
     def get_all_automation_statuses(self) -> dict[str, AutomationStatus]:
         """Get the current status of all automations.
@@ -882,7 +892,7 @@ class AutomationManager:
         Returns:
             Dictionary mapping automation names to their statuses.
         """
-        return get_status_manager().get_all_statuses()
+        return self._status_manager.get_all_statuses()
 
 
 async def async_get_manager(hass: HomeAssistant) -> AutomationManager | None:

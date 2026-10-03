@@ -12,13 +12,11 @@ from typing import TYPE_CHECKING, Any
 
 from haanim.const import DECORATOR_INTERVAL_TRIGGER
 from haanim.engine.triggers.base import BaseTrigger, TriggerInfo
+from haanim.interfaces import Host
 
 if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
 
     from haanim.engine.automation_context import TriggerDefinition
-    from custom_components.haanim.ha.events import EventManager
-    from custom_components.haanim.ha.state import StateManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,20 +76,16 @@ class IntervalTrigger(BaseTrigger):
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        host: Host,
         trigger_def: TriggerDefinition,
-        state_manager: StateManager,
-        event_manager: EventManager,
     ) -> None:
         """Initialize interval trigger.
 
         Args:
-            hass: Home Assistant instance.
+            host: The host the engine runs in.
             trigger_def: Trigger definition.
-            state_manager: State manager.
-            event_manager: Event manager.
         """
-        super().__init__(hass, trigger_def, state_manager, event_manager)
+        super().__init__(host, trigger_def)
 
         # Parse interval
         interval_str = (

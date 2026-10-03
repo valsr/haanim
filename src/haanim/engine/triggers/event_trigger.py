@@ -18,12 +18,11 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from homeassistant.core import HomeAssistant
 
 from haanim import const
 from haanim.engine.triggers.base import BaseTrigger, TriggerInfo
-from custom_components.haanim.ha.events import EventData, EventManager
-from custom_components.haanim.ha.state import StateManager
+from haanim.interfaces import Host
+from haanim.types import EventData
 
 if TYPE_CHECKING:
     from haanim.engine.automation_context import TriggerDefinition
@@ -116,20 +115,16 @@ class EventTrigger(BaseTrigger):
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        host: Host,
         trigger_def: TriggerDefinition,
-        state_manager: StateManager,
-        event_manager: EventManager,
     ) -> None:
         """Initialize the event trigger.
 
         Args:
-            hass: Home Assistant instance.
+            host: The host the engine runs in.
             trigger_def: The trigger definition from the automation.
-            state_manager: State manager instance.
-            event_manager: Event manager instance.
         """
-        super().__init__(hass, trigger_def, state_manager, event_manager)
+        super().__init__(host, trigger_def)
 
         self._event_type = trigger_def.trigger_expr
         self._event_filter = trigger_def.kwargs.get("event_data")
@@ -142,7 +137,7 @@ class EventTrigger(BaseTrigger):
             self._event_filter,
         )
 
-        self._task = self.hass.async_create_task(
+        self._task = asyncio.create_task(
             self._event_loop(),
             name=f"haanim_event_trigger_{self.trigger_def.automation_id}_{self.trigger_def.func_name}",
         )

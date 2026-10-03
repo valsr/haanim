@@ -13,6 +13,7 @@ from haanim.engine.action_pool import (
     ActionState,
     ActionWorkerPool,
 )
+from haanim.engine.automation_status import AutomationStatusManager
 from haanim.engine.errors import (
     ActionCancelledError,
     PoolExhaustedError,
@@ -64,7 +65,7 @@ class TestActionWorkerPool:
 
     def test_init_defaults(self) -> None:
         """Test default initialization."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         assert pool.max_workers == 20
         assert pool.active_count == 0
         assert pool.available_workers == 20
@@ -72,31 +73,30 @@ class TestActionWorkerPool:
 
     def test_init_custom_workers(self) -> None:
         """Test initialization with custom worker count."""
-        pool = ActionWorkerPool(max_workers=5)
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager(), max_workers=5)
         assert pool.max_workers == 5
         assert pool.available_workers == 5
 
     def test_is_automation_busy_not_busy(self) -> None:
         """Test is_automation_busy when automation is not busy."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         assert pool.is_automation_shutting_down("some_automation") is False
 
     def test_get_active_action_none(self) -> None:
         """Test get_active_action when no action is active."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         assert pool.get_all_active_actions() == []
 
     @pytest.mark.asyncio
     async def test_submit_action_simple(self) -> None:
         """Test submitting a simple action."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         result_value = "test_result"
 
         async def test_action() -> str:
             return result_value
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            result = await pool.submit_action("automation", "action", test_action)
+        result = await pool.submit_action("automation", "action", test_action)
 
         assert result == result_value
         assert pool.active_count == 0
@@ -104,20 +104,19 @@ class TestActionWorkerPool:
     @pytest.mark.asyncio
     async def test_submit_action_sync_function(self) -> None:
         """Test submitting a sync function (gets wrapped as async)."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
 
         def sync_action() -> str:
             return "sync_result"
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            result = await pool.submit_action("automation", "action", sync_action)
+        result = await pool.submit_action("automation", "action", sync_action)
 
         assert result == "sync_result"
 
     @pytest.mark.asyncio
     async def test_submit_action_different_automations(self) -> None:
         """Test that different automations can run concurrently."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         automation1_started = asyncio.Event()
         finish = asyncio.Event()
 
@@ -129,24 +128,23 @@ class TestActionWorkerPool:
         async def action2() -> str:
             return "automation2"
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            # Start automation1's action
-            task1 = asyncio.create_task(pool.submit_action("automation1", "action", action1))
-            await automation1_started.wait()
+        # Start automation1's action
+        task1 = asyncio.create_task(pool.submit_action("automation1", "action", action1))
+        await automation1_started.wait()
 
-            # Automation2 should be able to run
-            result2 = await pool.submit_action("automation2", "action", action2)
-            assert result2 == "automation2"
+        # Automation2 should be able to run
+        result2 = await pool.submit_action("automation2", "action", action2)
+        assert result2 == "automation2"
 
-            # Cleanup
-            finish.set()
-            result1 = await task1
-            assert result1 == "automation1"
+        # Cleanup
+        finish.set()
+        result1 = await task1
+        assert result1 == "automation1"
 
     @pytest.mark.asyncio
     async def test_submit_action_cancelled_pool_shutting_down(self) -> None:
         """Test that actions are cancelled when pool is shutting down."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         pool._shutting_down = True
 
         async def test_action() -> None:
@@ -160,7 +158,7 @@ class TestActionWorkerPool:
     @pytest.mark.asyncio
     async def test_submit_action_cancelled_automation_shutting_down(self) -> None:
         """Test that actions are cancelled when automation is shutting down."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         pool._automations_shutting_down.add("automation")
 
         async def test_action() -> None:
@@ -174,7 +172,7 @@ class TestActionWorkerPool:
     @pytest.mark.asyncio
     async def test_pool_exhausted_error(self) -> None:
         """Test PoolExhaustedError when all workers are busy."""
-        pool = ActionWorkerPool(max_workers=1)
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager(), max_workers=1)
         started = asyncio.Event()
         finish = asyncio.Event()
 
@@ -185,61 +183,58 @@ class TestActionWorkerPool:
         async def another_action() -> None:
             pass
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            # Start first action (uses the only worker)
-            task = asyncio.create_task(pool.submit_action("automation1", "blocking", blocking_action))
-            await started.wait()
+        # Start first action (uses the only worker)
+        task = asyncio.create_task(pool.submit_action("automation1", "blocking", blocking_action))
+        await started.wait()
 
-            # Wait a bit for the semaphore to be acquired
-            await asyncio.sleep(0.01)
+        # Wait a bit for the semaphore to be acquired
+        await asyncio.sleep(0.01)
 
-            # Try to submit another action from different automation - should fail
-            with pytest.raises(PoolExhaustedError) as exc_info:
-                await pool.submit_action("automation2", "another", another_action)
+        # Try to submit another action from different automation - should fail
+        with pytest.raises(PoolExhaustedError) as exc_info:
+            await pool.submit_action("automation2", "another", another_action)
 
-            assert exc_info.value.max_workers == 1
+        assert exc_info.value.max_workers == 1
 
-            # Cleanup
-            finish.set()
-            await task
+        # Cleanup
+        finish.set()
+        await task
 
     @pytest.mark.asyncio
     async def test_submit_action_with_args_kwargs(self) -> None:
         """Test submitting action with arguments."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
 
         async def action_with_args(x: int, y: int, multiplier: int = 1) -> int:
             return (x + y) * multiplier
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            result = await pool.submit_action(
-                "automation",
-                "action",
-                action_with_args,
-                5,
-                3,
-                multiplier=2,
-            )
+        result = await pool.submit_action(
+            "automation",
+            "action",
+            action_with_args,
+            5,
+            3,
+            multiplier=2,
+        )
 
         assert result == 16
 
     @pytest.mark.asyncio
     async def test_submit_lifecycle_action_during_shutdown(self) -> None:
         """Test that lifecycle actions can run during shutdown."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         pool._shutting_down = True
 
         async def shutdown_handler() -> str:
             return "shutdown_complete"
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            # Lifecycle actions should still be allowed
-            result = await pool.submit_action(
-                "automation",
-                "__shutdown__",
-                shutdown_handler,
-                is_lifecycle=True,
-            )
+        # Lifecycle actions should still be allowed
+        result = await pool.submit_action(
+            "automation",
+            "__shutdown__",
+            shutdown_handler,
+            is_lifecycle=True,
+        )
 
         assert result == "shutdown_complete"
 
@@ -250,26 +245,24 @@ class TestActionWorkerPoolAdvanced:
     @pytest.mark.asyncio
     async def test_run_startup_action(self) -> None:
         """Test run_startup_action executes startup handler."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
 
         async def startup_handler() -> str:
             return "started"
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            result = await pool.run_startup_action("automation", startup_handler)
+        result = await pool.run_startup_action("automation", startup_handler)
 
         assert result == "started"
 
     @pytest.mark.asyncio
     async def test_run_shutdown_action_success(self) -> None:
         """Test run_shutdown_action executes successfully."""
-        pool = ActionWorkerPool(shutdown_timeout=5.0)
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager(), shutdown_timeout=5.0)
 
         async def shutdown_handler() -> str:
             return "shutdown_complete"
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            result = await pool.run_shutdown_action("automation", shutdown_handler)
+        result = await pool.run_shutdown_action("automation", shutdown_handler)
 
         assert result == "shutdown_complete"
         assert "automation" not in pool._automations_shutting_down
@@ -277,7 +270,7 @@ class TestActionWorkerPoolAdvanced:
     @pytest.mark.asyncio
     async def test_run_shutdown_action_cancels_running(self) -> None:
         """Test run_shutdown_action cancels any running action first."""
-        pool = ActionWorkerPool(shutdown_timeout=5.0)
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager(), shutdown_timeout=5.0)
         running_started = asyncio.Event()
         running_finish = asyncio.Event()
 
@@ -288,23 +281,22 @@ class TestActionWorkerPoolAdvanced:
         async def shutdown_handler() -> str:
             return "shutdown_done"
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            # Start a running action
-            running_task = asyncio.create_task(pool.submit_action("automation", "running", running_action))
-            await running_started.wait()
+        # Start a running action
+        running_task = asyncio.create_task(pool.submit_action("automation", "running", running_action))
+        await running_started.wait()
 
-            # Run shutdown - should cancel the running action
-            result = await pool.run_shutdown_action("automation", shutdown_handler)
-            assert result == "shutdown_done"
+        # Run shutdown - should cancel the running action
+        result = await pool.run_shutdown_action("automation", shutdown_handler)
+        assert result == "shutdown_done"
 
-            # The running task should have been cancelled
-            with pytest.raises(ActionCancelledError):
-                await running_task
+        # The running task should have been cancelled
+        with pytest.raises(ActionCancelledError):
+            await running_task
 
     @pytest.mark.asyncio
     async def test_shutdown_pool(self) -> None:
         """Test pool shutdown cancels all actions."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         started = asyncio.Event()
         finish = asyncio.Event()
 
@@ -312,25 +304,24 @@ class TestActionWorkerPoolAdvanced:
             started.set()
             await finish.wait()
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            task = asyncio.create_task(pool.submit_action("automation", "slow", slow_action))
-            await started.wait()
+        task = asyncio.create_task(pool.submit_action("automation", "slow", slow_action))
+        await started.wait()
 
-            # Shutdown the pool
-            await pool.shutdown()
+        # Shutdown the pool
+        await pool.shutdown()
 
-            assert pool.is_shutting_down is True
+        assert pool.is_shutting_down is True
 
-            # Allow task to finish
-            finish.set()
-            try:
-                await task
-            except ActionCancelledError:
-                pass
+        # Allow task to finish
+        finish.set()
+        try:
+            await task
+        except ActionCancelledError:
+            pass
 
     def test_reset_pool(self) -> None:
         """Test pool reset clears state."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         pool._shutting_down = True
         pool._automations_shutting_down.add("automation1")
 
@@ -342,21 +333,20 @@ class TestActionWorkerPoolAdvanced:
     @pytest.mark.asyncio
     async def test_action_with_exception(self) -> None:
         """Test action that raises an exception."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
 
         async def failing_action() -> None:
             raise ValueError("test error")
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            with pytest.raises(ValueError, match="test error"):
-                await pool.submit_action("automation", "failing", failing_action)
+        with pytest.raises(ValueError, match="test error"):
+            await pool.submit_action("automation", "failing", failing_action)
 
         assert pool.active_count == 0
 
     @pytest.mark.asyncio
     async def test_get_all_active_actions_returns_list(self) -> None:
         """Test get_all_active_actions returns all running executions."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         started1 = asyncio.Event()
         started2 = asyncio.Event()
         finish = asyncio.Event()
@@ -369,20 +359,19 @@ class TestActionWorkerPoolAdvanced:
             started2.set()
             await finish.wait()
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            task1 = asyncio.create_task(pool.submit_action("automation1", "action1", action1))
-            task2 = asyncio.create_task(pool.submit_action("automation2", "action2", action2))
-            await started1.wait()
-            await started2.wait()
+        task1 = asyncio.create_task(pool.submit_action("automation1", "action1", action1))
+        task2 = asyncio.create_task(pool.submit_action("automation2", "action2", action2))
+        await started1.wait()
+        await started2.wait()
 
-            actions = pool.get_all_active_actions()
-            assert len(actions) == 2
-            action_names = {a.action_name for a in actions}
-            assert action_names == {"action1", "action2"}
+        actions = pool.get_all_active_actions()
+        assert len(actions) == 2
+        action_names = {a.action_name for a in actions}
+        assert action_names == {"action1", "action2"}
 
-            finish.set()
-            await task1
-            await task2
+        finish.set()
+        await task1
+        await task2
 
 
 # class TestActionWorkerPoolQueue - REMOVED (queue functionality removed)
@@ -394,62 +383,59 @@ class TestActionWorkerPoolLifecycle:
     @pytest.mark.asyncio
     async def test_run_startup_action(self) -> None:
         """Test run_startup_action executes startup function."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         executed = False
 
         async def startup_func() -> None:
             nonlocal executed
             executed = True
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            await pool.run_startup_action("test_automation", startup_func)
+        await pool.run_startup_action("test_automation", startup_func)
 
         assert executed is True
 
     @pytest.mark.asyncio
     async def test_run_shutdown_action(self) -> None:
         """Test run_shutdown_action executes shutdown function."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         executed = False
 
         async def shutdown_func() -> None:
             nonlocal executed
             executed = True
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            await pool.run_shutdown_action("test_automation", shutdown_func)
+        await pool.run_shutdown_action("test_automation", shutdown_func)
 
         assert executed is True
 
     @pytest.mark.asyncio
     async def test_shutdown_pool(self) -> None:
         """Test shutdown method cancels running actions."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         started = asyncio.Event()
 
         async def long_action() -> None:
             started.set()
             await asyncio.sleep(100)
 
-        with patch("haanim.engine.action_pool.get_status_manager"):
-            task = asyncio.create_task(pool.submit_action("automation", "action", long_action))
-            await started.wait()
+        task = asyncio.create_task(pool.submit_action("automation", "action", long_action))
+        await started.wait()
 
-            # Shutdown should cancel running actions
-            await pool.shutdown()
+        # Shutdown should cancel running actions
+        await pool.shutdown()
 
-            # Task should be cancelled
-            with pytest.raises((asyncio.CancelledError, ActionCancelledError)):
-                await task
+        # Task should be cancelled
+        with pytest.raises((asyncio.CancelledError, ActionCancelledError)):
+            await task
 
     @pytest.mark.asyncio
     async def test_available_workers(self) -> None:
         """Test available_workers property."""
-        pool = ActionWorkerPool(max_workers=3)
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager(), max_workers=3)
         assert pool.available_workers == 3
 
     @pytest.mark.asyncio
     async def test_is_automation_shutting_down(self) -> None:
         """Test is_automation_shutting_down returns False when not shutting down."""
-        pool = ActionWorkerPool()
+        pool = ActionWorkerPool(status_manager=AutomationStatusManager())
         assert pool.is_automation_shutting_down("test_automation") is False

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from homeassistant.core import State
+from haanim.types import StateVal
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -83,10 +83,10 @@ class StateEvent(ActionEvent):
     entity_id: str
     """The entity ID that triggered the state change."""
 
-    old_state: State | None
+    old_state: StateVal | None
     """The previous state of the entity."""
 
-    new_state: State | None
+    new_state: StateVal | None
     """The new state of the entity."""
 
 

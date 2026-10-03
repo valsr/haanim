@@ -15,6 +15,7 @@ from homeassistant.components.http import StaticPathConfig
 from custom_components.haanim.api import async_register_api
 from custom_components.haanim.const import DOMAIN, NAME, VERSION
 from custom_components.haanim.ha.events import EventManager
+from custom_components.haanim.ha.host import HAServiceCaller, build_host
 from custom_components.haanim.ha.services import ServiceManager
 from custom_components.haanim.ha.state import StateManager
 from custom_components.haanim.automation_manager import AutomationManager
@@ -61,13 +62,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     state_manager = StateManager(hass)
     event_manager = EventManager(hass)
     service_manager = ServiceManager(hass)
-    automation_manager = AutomationManager(hass, entry)
-    trigger_manager = TriggerManager(hass, state_manager, event_manager, automation_manager.action_pool)
+    host = build_host(hass, state_manager, event_manager)
+    automation_manager = AutomationManager(hass, entry, host)
+    trigger_manager = TriggerManager(host, automation_manager.action_pool)
 
     # Set up managers
     await state_manager.async_setup()
     await event_manager.async_setup()
     await service_manager.async_setup()
+    if isinstance(host.services, HAServiceCaller):
+        await host.services.async_refresh_descriptions()
     await trigger_manager.async_setup()
     await automation_manager.async_setup()
 
@@ -80,9 +84,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "service_manager": service_manager,
         "trigger_manager": trigger_manager,
     }
-
-    # Store automation manager for global access (used by HAAnim API)
-    hass.data["haanim_manager"] = automation_manager
 
     # Register API views for the frontend
     async_register_api(hass)

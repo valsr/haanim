@@ -5,11 +5,20 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pathlib import Path
+
 import pytest
+
+from haanim.testing import LocalFileSystem, make_host
 
 from custom_components.haanim.const import DOMAIN
 from haanim.engine import HAAnimError
-from haanim.engine.errors import ActionCancelledError, ShutdownTimeoutError
+from haanim.engine.errors import (
+    ActionCancelledError,
+    ActionNotFoundError,
+    NonExistingAutomationError,
+    ShutdownTimeoutError,
+)
 from custom_components.haanim.automation_manager import AutomationManager, async_get_manager
 
 
@@ -17,9 +26,10 @@ class TestAutomationManager:
     """Tests for AutomationManager class."""
 
     @pytest.fixture
-    def mock_hass(self) -> MagicMock:
+    def mock_hass(self, tmp_path: Path) -> MagicMock:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
+        hass.config.path = MagicMock(side_effect=lambda *parts: str(tmp_path.joinpath(*parts)))
         hass.bus.async_listen_once = MagicMock()
         hass.bus.async_fire = MagicMock()
         hass.async_create_task = MagicMock(return_value=MagicMock())
@@ -55,7 +65,7 @@ class TestAutomationManager:
         """Test AutomationManager initialization."""
         mock_get_config.return_value = mock_config_manager
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
 
         assert manager.hass is mock_hass
         assert manager.entry is mock_entry
@@ -76,7 +86,7 @@ class TestAutomationManager:
         mock_config_manager.get_automation_path.return_value = str(automation_path)
         mock_get_config.return_value = mock_config_manager
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         await manager.async_setup()
 
         assert automation_path.exists()
@@ -94,7 +104,7 @@ class TestAutomationManager:
         mock_config_manager.get_automation_path.return_value = str(tmp_path)
         mock_get_config.return_value = mock_config_manager
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         await manager.async_setup()
 
         # Should register for started and stop events
@@ -112,7 +122,7 @@ class TestAutomationManager:
         mock_config_manager.get_automation_path.return_value = "/nonexistent"
         mock_get_config.return_value = mock_config_manager
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = manager.get_all_metadata()
 
         assert result == []
@@ -129,7 +139,7 @@ class TestAutomationManager:
         mock_config_manager.get_automation_path.return_value = "/nonexistent"
         mock_get_config.return_value = mock_config_manager
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = manager.get_all_actions()
 
         assert not result
@@ -146,7 +156,7 @@ class TestAutomationManager:
         mock_config_manager.get_automation_path.return_value = "/nonexistent"
         mock_get_config.return_value = mock_config_manager
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = manager.get_automation_status("test_automation")
 
         # Should return an AutomationStatus object
@@ -157,9 +167,10 @@ class TestAutomationManagerLoading:
     """Tests for automation loading functionality."""
 
     @pytest.fixture
-    def mock_hass(self) -> MagicMock:
+    def mock_hass(self, tmp_path: Path) -> MagicMock:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
+        hass.config.path = MagicMock(side_effect=lambda *parts: str(tmp_path.joinpath(*parts)))
         hass.bus.async_listen_once = MagicMock()
         hass.bus.async_fire = MagicMock()
         hass.async_create_task = MagicMock(return_value=MagicMock())
@@ -190,7 +201,7 @@ class TestAutomationManagerLoading:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = await manager.async_load_all_automations()
 
         assert result == {}
@@ -214,7 +225,7 @@ class TestAutomationManagerLoading:
         underscored = tmp_path / "_private.py"
         underscored.write_text("x = 1")
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = await manager.async_load_all_automations()
 
         assert str(underscored) not in result
@@ -244,7 +255,7 @@ def my_action():
 """
         )
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = await manager.async_load_all_automations()
 
         assert len(result) == 1
@@ -264,7 +275,7 @@ def my_action():
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = await manager.async_load_all_automations()
 
         assert result == {}
@@ -310,7 +321,7 @@ class TestAsyncGetManager:
         entry.data = {}
         entry.options = {}
 
-        manager = AutomationManager(hass=hass, entry=entry)
+        manager = AutomationManager(hass=hass, entry=entry, host=make_host(files=LocalFileSystem()))
         hass.data = {"haanim": {"entry_id": {"manager": manager}}}
 
         result = await async_get_manager(hass)
@@ -322,9 +333,10 @@ class TestAutomationManagerActions:
     """Tests for action execution functionality."""
 
     @pytest.fixture
-    def mock_hass(self) -> MagicMock:
+    def mock_hass(self, tmp_path: Path) -> MagicMock:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
+        hass.config.path = MagicMock(side_effect=lambda *parts: str(tmp_path.joinpath(*parts)))
         hass.bus.async_listen_once = MagicMock()
         hass.bus.async_fire = MagicMock()
         hass.async_create_task = MagicMock(return_value=MagicMock())
@@ -354,7 +366,7 @@ class TestAutomationManagerActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = manager.get_context("nonexistent")
 
         assert result is None
@@ -373,7 +385,7 @@ class TestAutomationManagerActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = manager.get_context_by_name("nonexistent")
 
         assert result is None
@@ -392,7 +404,7 @@ class TestAutomationManagerActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = manager.get_all_contexts()
 
         assert result == []
@@ -411,7 +423,7 @@ class TestAutomationManagerActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = await manager.async_unload_automation("nonexistent")
         # Returns False when automation not loaded
         assert result is False
@@ -430,7 +442,7 @@ class TestAutomationManagerActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         # Should not raise an error
         await manager.async_unload_all_automations()
 
@@ -448,7 +460,7 @@ class TestAutomationManagerActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._failed_automations["/tmp/bad.py"] = "Syntax error"
 
         result = manager.get_failed_automations()
@@ -460,9 +472,10 @@ class TestAutomationManagerLifecycle:
     """Tests for automation manager lifecycle handlers."""
 
     @pytest.fixture
-    def mock_hass(self) -> MagicMock:
+    def mock_hass(self, tmp_path: Path) -> MagicMock:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
+        hass.config.path = MagicMock(side_effect=lambda *parts: str(tmp_path.joinpath(*parts)))
         hass.bus.async_listen_once = MagicMock()
         hass.bus.async_fire = MagicMock()
         hass.async_create_task = MagicMock(return_value=MagicMock())
@@ -493,7 +506,7 @@ class TestAutomationManagerLifecycle:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         assert manager._started is False
 
         # Call _on_ha_started
@@ -517,7 +530,7 @@ class TestAutomationManagerLifecycle:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         assert not manager._stop_event.is_set()
 
         # Call _on_ha_stop
@@ -539,7 +552,7 @@ class TestAutomationManagerLifecycle:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         pool = manager.action_pool
 
         assert pool is manager._action_pool
@@ -558,7 +571,7 @@ class TestAutomationManagerLifecycle:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = manager.get_all_automation_statuses()
 
         assert isinstance(result, dict)
@@ -568,9 +581,10 @@ class TestAutomationManagerRunAction:
     """Tests for async_run_action method."""
 
     @pytest.fixture
-    def mock_hass(self) -> MagicMock:
+    def mock_hass(self, tmp_path: Path) -> MagicMock:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
+        hass.config.path = MagicMock(side_effect=lambda *parts: str(tmp_path.joinpath(*parts)))
         hass.bus.async_listen_once = MagicMock()
         hass.bus.async_fire = MagicMock()
         hass.async_create_task = MagicMock(return_value=MagicMock())
@@ -600,7 +614,7 @@ class TestAutomationManagerRunAction:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
 
         with pytest.raises(HAAnimError, match="not found"):
             await manager.async_run_action("nonexistent", "some_action")
@@ -624,7 +638,7 @@ class TestAutomationManagerRunAction:
         mock_context.automation_id = "test_automation"
         mock_context.get_actions.return_value = []
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._contexts["/tmp/test.py"] = mock_context
 
         with pytest.raises(HAAnimError, match="not found"):
@@ -635,9 +649,10 @@ class TestAutomationManagerReload:
     """Tests for automation reload functionality."""
 
     @pytest.fixture
-    def mock_hass(self) -> MagicMock:
+    def mock_hass(self, tmp_path: Path) -> MagicMock:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
+        hass.config.path = MagicMock(side_effect=lambda *parts: str(tmp_path.joinpath(*parts)))
         hass.bus.async_listen_once = MagicMock()
         hass.bus.async_fire = MagicMock()
         hass.async_create_task = MagicMock(return_value=MagicMock())
@@ -668,7 +683,7 @@ class TestAutomationManagerReload:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = await manager.async_reload_all_automations()
 
         assert isinstance(result, dict)
@@ -698,10 +713,69 @@ def test_action():
 """
         )
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = await manager.async_reload_automation(str(automation))
 
         assert result is not None
+
+    @patch("custom_components.haanim.automation_manager.get_config_manager")
+    async def test_async_call_action(
+        self,
+        mock_get_config: MagicMock,
+        mock_hass: MagicMock,
+        mock_entry: MagicMock,
+        tmp_path: Any,
+    ) -> None:
+        """Test async_call_action runs an action of a loaded automation and returns its result."""
+        mock_config = MagicMock()
+        mock_config.get_automation_path.return_value = str(tmp_path)
+        mock_config.get_import_allowlist.return_value = []
+        mock_config.get_allow_all_imports.return_value = False
+        mock_get_config.return_value = mock_config
+
+        automation = tmp_path / "maths.py"
+        automation.write_text(
+            """
+@action("Add numbers")
+async def add(a, b):
+    return a + b
+"""
+        )
+
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
+        await manager.async_load_automation(str(automation))
+
+        assert await manager.async_call_action("maths", "add", 2, 3) == 5
+        assert await manager.async_call_action("maths", "Add numbers", a=4, b=5) == 9
+
+    @patch("custom_components.haanim.automation_manager.get_config_manager")
+    async def test_async_call_action_errors(
+        self,
+        mock_get_config: MagicMock,
+        mock_hass: MagicMock,
+        mock_entry: MagicMock,
+        tmp_path: Any,
+    ) -> None:
+        """Test async_call_action raises for an unknown automation and for an unknown action."""
+        mock_config = MagicMock()
+        mock_config.get_automation_path.return_value = str(tmp_path)
+        mock_config.get_import_allowlist.return_value = []
+        mock_config.get_allow_all_imports.return_value = False
+        mock_get_config.return_value = mock_config
+
+        automation = tmp_path / "maths.py"
+        automation.write_text("@action\ndef add(a, b):\n    return a + b\n")
+
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
+        await manager.async_load_automation(str(automation))
+
+        with pytest.raises(NonExistingAutomationError) as automation_error:
+            await manager.async_call_action("nope", "add")
+        assert automation_error.value.automation_id == "nope"
+
+        with pytest.raises(ActionNotFoundError) as action_error:
+            await manager.async_call_action("maths", "missing")
+        assert (action_error.value.automation_id, action_error.value.action_name) == ("maths", "missing")
 
     @patch("custom_components.haanim.automation_manager.get_config_manager")
     async def test_get_context_by_name_found(
@@ -721,7 +795,7 @@ def test_action():
         mock_context = MagicMock()
         mock_context.automation_id = "my_automation"
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._contexts["/tmp/my_automation.py"] = mock_context
 
         # Should find by automation ID
@@ -736,9 +810,10 @@ class TestAutomationManagerStartupShutdown:
     """Tests for startup and shutdown action handling."""
 
     @pytest.fixture
-    def mock_hass(self) -> MagicMock:
+    def mock_hass(self, tmp_path: Path) -> MagicMock:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
+        hass.config.path = MagicMock(side_effect=lambda *parts: str(tmp_path.joinpath(*parts)))
         hass.bus.async_listen_once = MagicMock()
         hass.bus.async_fire = MagicMock()
         hass.async_create_task = MagicMock(return_value=MagicMock())
@@ -768,7 +843,7 @@ class TestAutomationManagerStartupShutdown:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         # Should not raise
         await manager._run_all_startup_actions()
 
@@ -786,7 +861,7 @@ class TestAutomationManagerStartupShutdown:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         # Should not raise
         await manager._run_all_shutdown_actions()
 
@@ -807,7 +882,7 @@ class TestAutomationManagerStartupShutdown:
         mock_context = MagicMock()
         mock_context.get_startup_func.return_value = None
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         # Should not raise when no startup func
         await manager._run_automation_startup_action(mock_context)
 
@@ -828,7 +903,7 @@ class TestAutomationManagerStartupShutdown:
         mock_context = MagicMock()
         mock_context.get_shutdown_func.return_value = None
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         # Should not raise when no shutdown func
         await manager._run_automation_shutdown_action(mock_context)
 
@@ -851,7 +926,7 @@ class TestAutomationManagerStartupShutdown:
         automation = tmp_path / "bad_automation.py"
         automation.write_text("def broken(")
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
 
         with pytest.raises(HAAnimError):
             await manager.async_load_automation(str(automation))
@@ -878,7 +953,7 @@ class TestAutomationManagerStartupShutdown:
         mock_context.name = "test_automation"
         mock_context.get_shutdown_func.return_value = None
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._contexts["/tmp/test.py"] = mock_context
 
         result = await manager.async_unload_automation("/tmp/test.py")
@@ -900,7 +975,7 @@ class TestAutomationManagerStartupShutdown:
         mock_get_config.return_value = mock_config
 
         mock_context = MagicMock()
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._contexts["/tmp/test.py"] = mock_context
 
         result = manager.get_context("/tmp/test.py")
@@ -922,7 +997,7 @@ class TestAutomationManagerStartupShutdown:
 
         mock_context1 = MagicMock()
         mock_context2 = MagicMock()
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._contexts["/tmp/test1.py"] = mock_context1
         manager._contexts["/tmp/test2.py"] = mock_context2
 
@@ -947,7 +1022,7 @@ class TestAutomationManagerStartupShutdown:
         mock_context = MagicMock()
         mock_context.get_actions.return_value = [mock_action]
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._contexts["/tmp/test.py"] = mock_context
 
         result = manager.get_all_actions()
@@ -972,7 +1047,7 @@ class TestAutomationManagerStartupShutdown:
         mock_context = MagicMock()
         mock_context.get_metadata.return_value = mock_metadata
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._contexts["/tmp/test.py"] = mock_context
 
         result = manager.get_all_metadata()
@@ -984,9 +1059,10 @@ class TestAutomationManagerActionsAdvanced:
     """Tests for action-related functionality (advanced)."""
 
     @pytest.fixture
-    def mock_hass(self) -> MagicMock:
+    def mock_hass(self, tmp_path: Path) -> MagicMock:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
+        hass.config.path = MagicMock(side_effect=lambda *parts: str(tmp_path.joinpath(*parts)))
         hass.bus.async_listen_once = MagicMock()
         hass.bus.async_fire = MagicMock()
         hass.async_create_task = MagicMock(return_value=MagicMock())
@@ -1021,7 +1097,7 @@ class TestAutomationManagerActionsAdvanced:
         mock_context.automation_id = "test_automation"
         mock_context.get_startup_func.return_value = startup_func
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._contexts["/tmp/test.py"] = mock_context
         manager._action_pool.run_startup_action = AsyncMock()
 
@@ -1047,7 +1123,7 @@ class TestAutomationManagerActionsAdvanced:
         mock_context.automation_id = "test_automation"
         mock_context.get_startup_func.return_value = None
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._contexts["/tmp/test.py"] = mock_context
         manager._action_pool.run_startup_action = AsyncMock()
 
@@ -1074,7 +1150,7 @@ class TestAutomationManagerActionsAdvanced:
         mock_context.automation_id = "test_automation"
         mock_context.get_shutdown_func.return_value = shutdown_func
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._contexts["/tmp/test.py"] = mock_context
         manager._action_pool.run_shutdown_action = AsyncMock()
 
@@ -1100,7 +1176,7 @@ class TestAutomationManagerActionsAdvanced:
         mock_context.automation_id = "test_automation"
         mock_context.get_shutdown_func.return_value = None
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._contexts["/tmp/test.py"] = mock_context
         manager._action_pool.run_shutdown_action = AsyncMock()
 
@@ -1127,7 +1203,7 @@ class TestAutomationManagerActionsAdvanced:
         mock_context.automation_id = "test_automation"
         mock_context.get_startup_func.return_value = startup_func
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._action_pool.run_startup_action = AsyncMock()
 
         await manager._run_automation_startup_action(mock_context)
@@ -1153,7 +1229,7 @@ class TestAutomationManagerActionsAdvanced:
         mock_context.automation_id = "test_automation"
         mock_context.get_shutdown_func.return_value = shutdown_func
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._action_pool.run_shutdown_action = AsyncMock()
 
         await manager._run_automation_shutdown_action(mock_context)
@@ -1174,7 +1250,7 @@ class TestAutomationManagerActionsAdvanced:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = manager.get_all_automation_statuses()
 
         assert isinstance(result, dict)
@@ -1193,7 +1269,7 @@ class TestAutomationManagerActionsAdvanced:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._failed_automations = {"/tmp/bad.py": "Syntax error"}
 
         result = manager.get_failed_automations()
@@ -1246,9 +1322,10 @@ class TestAutomationManagerStartupShutdownActions:
     """Tests for startup and shutdown action methods."""
 
     @pytest.fixture
-    def mock_hass(self) -> MagicMock:
+    def mock_hass(self, tmp_path: Path) -> MagicMock:
         """Create a mock Home Assistant instance."""
         hass = MagicMock()
+        hass.config.path = MagicMock(side_effect=lambda *parts: str(tmp_path.joinpath(*parts)))
         hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
         return hass
 
@@ -1274,7 +1351,7 @@ class TestAutomationManagerStartupShutdownActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         mock_action_pool = MagicMock()
         mock_action_pool.run_startup_action = AsyncMock()
         manager._action_pool = mock_action_pool
@@ -1301,7 +1378,7 @@ class TestAutomationManagerStartupShutdownActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         mock_action_pool = MagicMock()
         mock_action_pool.run_shutdown_action = AsyncMock()
         manager._action_pool = mock_action_pool
@@ -1328,7 +1405,7 @@ class TestAutomationManagerStartupShutdownActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._action_pool.run_startup_action = AsyncMock()
 
         # Create a context with startup func
@@ -1354,7 +1431,7 @@ class TestAutomationManagerStartupShutdownActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         manager._action_pool.run_shutdown_action = AsyncMock()
 
         # Create a context with shutdown func
@@ -1380,16 +1457,13 @@ class TestAutomationManagerStartupShutdownActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
 
-        with patch("custom_components.haanim.automation_manager.get_status_manager") as mock_status_manager:
-            mock_status = MagicMock()
-            mock_status.get_all_statuses.return_value = {"automation1": MagicMock()}
-            mock_status_manager.return_value = mock_status
+        manager._status_manager.add_running_action("automation1", "action", "id1")
 
-            result = manager.get_all_automation_statuses()
-            mock_status.get_all_statuses.assert_called_once()
-            assert "automation1" in result
+        result = manager.get_all_automation_statuses()
+        assert set(result) == {"automation1"}
+        assert manager.get_automation_status("automation1") is result["automation1"]
 
     @patch("custom_components.haanim.automation_manager.get_config_manager")
     async def test_run_automation_shutdown_action_timeout_error(
@@ -1405,7 +1479,7 @@ class TestAutomationManagerStartupShutdownActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         mock_action_pool = MagicMock()
         mock_action_pool.run_shutdown_action = AsyncMock(
             side_effect=ShutdownTimeoutError("test_automation", 10)
@@ -1434,7 +1508,7 @@ class TestAutomationManagerStartupShutdownActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         mock_action_pool = MagicMock()
         mock_action_pool.run_shutdown_action = AsyncMock(side_effect=ActionCancelledError("cancelled"))
         manager._action_pool = mock_action_pool
@@ -1460,7 +1534,7 @@ class TestAutomationManagerStartupShutdownActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         mock_action_pool = MagicMock()
         mock_action_pool.run_shutdown_action = AsyncMock(side_effect=RuntimeError("generic error"))
         manager._action_pool = mock_action_pool
@@ -1486,7 +1560,7 @@ class TestAutomationManagerStartupShutdownActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         mock_action_pool = MagicMock()
         mock_action_pool.run_startup_action = AsyncMock(side_effect=ActionCancelledError("cancelled"))
         manager._action_pool = mock_action_pool
@@ -1512,7 +1586,7 @@ class TestAutomationManagerStartupShutdownActions:
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        manager = AutomationManager(hass=mock_hass, entry=mock_entry)
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         mock_action_pool = MagicMock()
         mock_action_pool.run_startup_action = AsyncMock(side_effect=RuntimeError("generic error"))
         manager._action_pool = mock_action_pool

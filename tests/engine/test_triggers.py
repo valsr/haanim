@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.engine.helpers import mock_host
 from haanim.engine.triggers import (
     BaseTrigger,
     StateTrigger,
@@ -17,12 +18,13 @@ from haanim.engine.triggers import (
     TriggerManager,
 )
 from haanim.engine.automation_context import TriggerDefinition
-from custom_components.haanim.const import (
+from haanim.const import (
     DECORATOR_STATE_ACTIVE,
     DECORATOR_STATE_TRIGGER,
     DECORATOR_TIME_ACTIVE,
     DECORATOR_TIME_TRIGGER,
     DECORATOR_EVENT_TRIGGER,
+    EVENT_HOST_STARTED,
 )
 
 
@@ -82,10 +84,8 @@ class TestBaseTrigger:
     ) -> ConcreteTrigger:
         """Create a concrete trigger instance."""
         return ConcreteTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
 
     def test_init(self, trigger: ConcreteTrigger) -> None:
@@ -275,20 +275,20 @@ class TestTriggerManager:
     ) -> TriggerManager:
         """Create a TriggerManager instance."""
         return TriggerManager(
-            hass=mock_hass,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             action_pool=MagicMock(),
         )
 
     async def test_async_setup(
         self,
         trigger_manager: TriggerManager,
-        mock_hass: MagicMock,
+        mock_event_manager: MagicMock,
     ) -> None:
         """Test async_setup registers startup listener."""
         await trigger_manager.async_setup()
-        mock_hass.bus.async_listen_once.assert_called_once()
+        mock_event_manager.listen_once.assert_called_once_with(
+            EVENT_HOST_STARTED, trigger_manager._on_ha_started
+        )
 
     async def test_async_teardown(self, trigger_manager: TriggerManager) -> None:
         """Test async_teardown stops triggers."""
@@ -360,10 +360,8 @@ class TestTimeRangeEvaluation:
             automation_id="test",
         )
         return ConcreteTrigger(
-            hass=mock_hass,
+            host=mock_host(),
             trigger_def=trigger_def,
-            state_manager=MagicMock(),
-            event_manager=MagicMock(),
         )
 
     @pytest.mark.parametrize(
@@ -438,10 +436,8 @@ class TestStateTrigger:
     ) -> StateTrigger:
         """Create a StateTrigger instance."""
         return StateTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=MagicMock(),
         )
 
     def test_init_defaults(self, state_trigger: StateTrigger) -> None:
@@ -461,10 +457,8 @@ class TestStateTrigger:
             automation_id="test_automation",
         )
         trigger = StateTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=MagicMock(),
         )
         assert trigger._state_hold == 5.0
         assert trigger._state_check_now is True
@@ -492,10 +486,8 @@ class TestStateTrigger:
             automation_id="test_automation",
         )
         trigger = StateTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=MagicMock(),
         )
         assert trigger._state_hold == expected
 
@@ -520,7 +512,8 @@ class TestStateTrigger:
         await state_trigger.async_start()
 
         assert state_trigger._watch_entities == ["sensor.test"]
-        mock_hass.async_create_task.assert_called_once()
+        assert state_trigger._task is not None
+        await state_trigger.async_stop()
 
 
 class TestTimeTrigger:
@@ -549,10 +542,8 @@ class TestTimeTrigger:
     def time_trigger(self, mock_hass: MagicMock, trigger_def: TriggerDefinition) -> TimeTrigger:
         """Create a TimeTrigger instance."""
         return TimeTrigger(
-            hass=mock_hass,
+            host=mock_host(),
             trigger_def=trigger_def,
-            state_manager=MagicMock(),
-            event_manager=MagicMock(),
         )
 
     def test_init(self, time_trigger: TimeTrigger) -> None:
@@ -562,7 +553,8 @@ class TestTimeTrigger:
     async def test_async_start(self, time_trigger: TimeTrigger, mock_hass: MagicMock) -> None:
         """Test async_start creates task."""
         await time_trigger.async_start()
-        mock_hass.async_create_task.assert_called_once()
+        assert time_trigger._task is not None
+        await time_trigger.async_stop()
 
     async def test_async_stop(self, time_trigger: TimeTrigger) -> None:
         """Test async_stop cancels task."""
@@ -629,10 +621,8 @@ class TestEventTrigger:
     ) -> EventTrigger:
         """Create an EventTrigger instance."""
         return EventTrigger(
-            hass=mock_hass,
+            host=mock_host(events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=MagicMock(),
-            event_manager=mock_event_manager,
         )
 
     def test_init(self, event_trigger: EventTrigger) -> None:
@@ -646,7 +636,8 @@ class TestEventTrigger:
         await event_trigger.async_start()
         # Subscribe is called with event_type and optional filter (None)
         mock_event_manager.subscribe.assert_called_once_with("custom_event", None)
-        mock_hass.async_create_task.assert_called_once()
+        assert event_trigger._task is not None
+        await event_trigger.async_stop()
 
     async def test_async_stop(self, event_trigger: EventTrigger) -> None:
         """Test async_stop cancels task."""
@@ -685,10 +676,8 @@ class TestTimeTriggerParsing:
             automation_id="test_automation",
         )
         return TimeTrigger(
-            hass=mock_hass,
+            host=mock_host(),
             trigger_def=trigger_def,
-            state_manager=MagicMock(),
-            event_manager=MagicMock(),
         )
 
     @pytest.mark.parametrize(
@@ -769,8 +758,8 @@ class TestTimeTriggerParsing:
         """Test calculating next trigger time."""
         specs = ["time(10:00)", "time(15:00)"]
         # At 8:00, next should be 10:00
-        with patch("haanim.engine.triggers.time_trigger.dt_util") as mock_dt:
-            mock_dt.now.return_value = datetime(2024, 6, 15, 8, 0, 0)
+        with patch.object(time_trigger.host.clock, "now") as mock_now:
+            mock_now.return_value = datetime(2024, 6, 15, 8, 0, 0)
             result = time_trigger._calculate_next_trigger(specs)
             assert result is not None
             assert result.hour == 10
@@ -812,10 +801,8 @@ class TestStateTriggerAdvanced:
             automation_id="test_automation",
         )
         return StateTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=MagicMock(),
         )
 
     def test_evaluate_trigger_single_expr(
@@ -841,10 +828,8 @@ class TestStateTriggerAdvanced:
             automation_id="test_automation",
         )
         trigger = StateTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=MagicMock(),
         )
 
         # First expr matches
@@ -886,10 +871,8 @@ class TestStateTriggerAdvanced:
             automation_id="test_automation",
         )
         trigger = StateTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=MagicMock(),
         )
         assert trigger._watch_entities == ["sensor.a", "sensor.b"]
 
@@ -911,9 +894,7 @@ class TestTriggerManagerAdvanced:
     def trigger_manager(self, mock_hass: MagicMock) -> TriggerManager:
         """Create a TriggerManager instance."""
         return TriggerManager(
-            hass=mock_hass,
-            state_manager=MagicMock(),
-            event_manager=MagicMock(),
+            host=mock_host(),
             action_pool=MagicMock(),
         )
 
@@ -1035,10 +1016,8 @@ class TestBaseTriggerConstraints:
     ) -> None:
         """Test _check_constraints with time_active constraint."""
         trigger = ConcreteTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
         trigger.set_constraints([{"type": DECORATOR_TIME_ACTIVE, "specs": []}])
         result = await trigger._check_constraints()
@@ -1058,10 +1037,8 @@ class TestBaseTriggerConstraints:
         mock_state_manager.get.return_value = mock_state
 
         trigger = ConcreteTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
         trigger.set_constraints([{"type": DECORATOR_STATE_ACTIVE, "exprs": ["light.test == 'on'"]}])
         result = await trigger._check_constraints()
@@ -1081,10 +1058,8 @@ class TestBaseTriggerConstraints:
         mock_state_manager.get.return_value = mock_state
 
         trigger = ConcreteTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
         result = await trigger._check_state_constraint({"exprs": ["light.test == 'on'"]})
         assert result is True
@@ -1103,10 +1078,8 @@ class TestBaseTriggerConstraints:
         mock_state_manager.get.return_value = mock_state
 
         trigger = ConcreteTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
         result = await trigger._check_state_constraint({"exprs": ["light.test == 'on'"]})
         assert result is False
@@ -1129,10 +1102,8 @@ class TestBaseTriggerConstraints:
         )
 
         trigger = ConcreteTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
         result = await trigger._execute_function()
         assert result == "result"
@@ -1156,10 +1127,8 @@ class TestBaseTriggerConstraints:
         )
 
         trigger = ConcreteTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
         result = await trigger._execute_function()
         assert result == "sync_result"
@@ -1188,10 +1157,8 @@ class TestBaseTriggerConstraints:
         mock_state_manager.get.return_value = mock_state
 
         trigger = ConcreteTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
         result = trigger._evaluate_state_expr("sensor.temp > 25")
         assert result is expected
@@ -1253,10 +1220,8 @@ class TestTimeTriggerTimeLoop:
             automation_id="test_automation",
         )
         trigger = TimeTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
         result = trigger._parse_interval(interval_str)
         assert result is not None
@@ -1278,10 +1243,8 @@ class TestTimeTriggerTimeLoop:
             automation_id="test_automation",
         )
         trigger = TimeTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
         result = trigger._parse_interval("invalid")
         assert result is None
@@ -1326,14 +1289,13 @@ class TestEventTriggerAdvanced:
             automation_id="test_automation",
         )
         trigger = EventTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
         await trigger.async_start()
         mock_event_manager.subscribe.assert_called_once()
-        mock_hass.async_create_task.assert_called_once()
+        assert trigger._task is not None
+        await trigger.async_stop()
 
     async def test_async_stop(
         self,
@@ -1351,10 +1313,8 @@ class TestEventTriggerAdvanced:
             automation_id="test_automation",
         )
         trigger = EventTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
 
         # Create a real task that we can cancel
@@ -1412,10 +1372,8 @@ class TestTimeConstraintEvaluation:
     ) -> StateTrigger:
         """Create a StateTrigger instance for testing."""
         return StateTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
 
     async def test_check_time_constraint_no_specs(self, trigger: StateTrigger) -> None:
@@ -1445,7 +1403,7 @@ class TestTimeConstraintEvaluation:
     def test_parse_time_value_sunrise(self, trigger: StateTrigger) -> None:
         """Test parsing sunrise returns time."""
         now = datetime.now()
-        with patch("haanim.engine.triggers.base.get_astral_event_next") as mock_sun:
+        with patch.object(trigger.host.sun, "next_event") as mock_sun:
             mock_sun.return_value = datetime(2024, 1, 15, 7, 30, 0)
             result = trigger._parse_time_value("sunrise", now)
             assert result == time(7, 30, 0)
@@ -1454,7 +1412,7 @@ class TestTimeConstraintEvaluation:
     def test_parse_time_value_sunset(self, trigger: StateTrigger) -> None:
         """Test parsing sunset returns time."""
         now = datetime.now()
-        with patch("haanim.engine.triggers.base.get_astral_event_next") as mock_sun:
+        with patch.object(trigger.host.sun, "next_event") as mock_sun:
             mock_sun.return_value = datetime(2024, 1, 15, 18, 45, 0)
             result = trigger._parse_time_value("sunset", now)
             assert result == time(18, 45, 0)
@@ -1463,7 +1421,7 @@ class TestTimeConstraintEvaluation:
     def test_parse_time_value_sunrise_none(self, trigger: StateTrigger) -> None:
         """Test parsing sunrise returns None when sun data unavailable."""
         now = datetime.now()
-        with patch("haanim.engine.triggers.base.get_astral_event_next") as mock_sun:
+        with patch.object(trigger.host.sun, "next_event") as mock_sun:
             mock_sun.return_value = None
             result = trigger._parse_time_value("sunrise", now)
             assert result is None
@@ -1471,7 +1429,7 @@ class TestTimeConstraintEvaluation:
     def test_parse_time_value_sunset_none(self, trigger: StateTrigger) -> None:
         """Test parsing sunset returns None when sun data unavailable."""
         now = datetime.now()
-        with patch("haanim.engine.triggers.base.get_astral_event_next") as mock_sun:
+        with patch.object(trigger.host.sun, "next_event") as mock_sun:
             mock_sun.return_value = None
             result = trigger._parse_time_value("sunset", now)
             assert result is None
@@ -1479,9 +1437,9 @@ class TestTimeConstraintEvaluation:
     async def test_check_time_constraint_range_normal(self, trigger: StateTrigger) -> None:
         """Test evaluating time spec for normal range."""
         # Mock a specific current time
-        with patch("haanim.engine.triggers.base.dt_util") as mock_dt:
+        with patch.object(trigger.host.clock, "now") as mock_now:
             current = datetime(2024, 1, 15, 14, 30, 0)
-            mock_dt.now.return_value = current
+            mock_now.return_value = current
             # Create constraint that includes 14:30
             constraint = {"type": DECORATOR_TIME_ACTIVE, "specs": ["range(12:00, 18:00)"]}
             result = await trigger._check_time_constraint(constraint)
@@ -1489,9 +1447,9 @@ class TestTimeConstraintEvaluation:
 
     async def test_check_time_constraint_range_outside(self, trigger: StateTrigger) -> None:
         """Test evaluating time spec when outside range."""
-        with patch("haanim.engine.triggers.base.dt_util") as mock_dt:
+        with patch.object(trigger.host.clock, "now") as mock_now:
             current = datetime(2024, 1, 15, 20, 30, 0)
-            mock_dt.now.return_value = current
+            mock_now.return_value = current
             # Create constraint that does not include 20:30
             constraint = {"type": DECORATOR_TIME_ACTIVE, "specs": ["range(08:00, 18:00)"]}
             result = await trigger._check_time_constraint(constraint)
@@ -1499,9 +1457,9 @@ class TestTimeConstraintEvaluation:
 
     async def test_check_time_constraint_overnight_range(self, trigger: StateTrigger) -> None:
         """Test evaluating overnight time range."""
-        with patch("haanim.engine.triggers.base.dt_util") as mock_dt:
+        with patch.object(trigger.host.clock, "now") as mock_now:
             current = datetime(2024, 1, 15, 23, 30, 0)
-            mock_dt.now.return_value = current
+            mock_now.return_value = current
             # Overnight range from 22:00 to 06:00
             constraint = {"type": DECORATOR_TIME_ACTIVE, "specs": ["range(22:00, 06:00)"]}
             result = await trigger._check_time_constraint(constraint)
@@ -1509,9 +1467,9 @@ class TestTimeConstraintEvaluation:
 
     async def test_check_time_constraint_overnight_morning(self, trigger: StateTrigger) -> None:
         """Test evaluating overnight time range in morning."""
-        with patch("haanim.engine.triggers.base.dt_util") as mock_dt:
+        with patch.object(trigger.host.clock, "now") as mock_now:
             current = datetime(2024, 1, 15, 4, 30, 0)
-            mock_dt.now.return_value = current
+            mock_now.return_value = current
             # Overnight range from 22:00 to 06:00
             constraint = {"type": DECORATOR_TIME_ACTIVE, "specs": ["range(22:00, 06:00)"]}
             result = await trigger._check_time_constraint(constraint)
@@ -1570,10 +1528,8 @@ class TestStateConstraintEvaluation:
     ) -> StateTrigger:
         """Create a StateTrigger instance for testing."""
         return StateTrigger(
-            hass=mock_hass,
+            host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
-            state_manager=mock_state_manager,
-            event_manager=mock_event_manager,
         )
 
     async def test_check_state_constraint_string_equal_true(

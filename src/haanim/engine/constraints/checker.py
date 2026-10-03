@@ -15,7 +15,7 @@ from haanim.const import (
 )
 
 if TYPE_CHECKING:
-    from custom_components.haanim.ha.state import StateManager
+    from haanim.interfaces import StateProvider
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class ConstraintChecker:
     are satisfied before execution.
     """
 
-    def __init__(self, state_manager: StateManager) -> None:
+    def __init__(self, state_manager: StateProvider) -> None:
         """Initialize the constraint checker.
 
         Args:

@@ -1,14 +1,15 @@
 """Tests for the boundary between the ``haanim`` engine package and Home Assistant.
 
 The engine package (``src/haanim``) must not depend on Home Assistant or on the
-integration glue (``custom_components.haanim``). The imports that still cross that
-boundary are listed in ``SEAMS``; phase 3 of the implementation plan removes them,
-and this list must then be empty.
+integration glue (``custom_components.haanim``). These tests fail if any engine
+module imports either, anywhere, including inside functions and
+``if TYPE_CHECKING:`` blocks.
 """
 
 from __future__ import annotations
 
 import ast
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -19,60 +20,10 @@ PACKAGE_ROOT = Path(__file__).parents[2] / "src" / "haanim"
 
 FORBIDDEN_TOP_LEVEL = ("homeassistant", "custom_components")
 
-# Engine module (relative to src/haanim) -> forbidden modules it still imports.
-# Do not add to this list. Remove entries as the imports are replaced by interfaces.
-SEAMS: dict[str, set[str]] = {
-    "engine/action_pool.py": {"custom_components.haanim.config"},
-    "engine/automation_context.py": {"homeassistant.core"},
-    "engine/constraints/checker.py": {"custom_components.haanim.ha.state"},
-    "engine/expression_eval.py": {"homeassistant.core"},
-    "engine/haanim_api.py": {
-        "custom_components.haanim.automation_manager",
-        "homeassistant.core",
-        "homeassistant.exceptions",
-    },
-    "engine/triggers/base.py": {
-        "custom_components.haanim.ha.events",
-        "custom_components.haanim.ha.state",
-        "homeassistant.core",
-        "homeassistant.helpers.sun",
-        "homeassistant.util",
-    },
-    "engine/triggers/cron_trigger.py": {
-        "custom_components.haanim.ha.events",
-        "custom_components.haanim.ha.state",
-        "homeassistant.core",
-    },
-    "engine/triggers/event_trigger.py": {
-        "custom_components.haanim.ha.events",
-        "custom_components.haanim.ha.state",
-        "homeassistant.core",
-    },
-    "engine/triggers/interval_trigger.py": {
-        "custom_components.haanim.ha.events",
-        "custom_components.haanim.ha.state",
-        "homeassistant.core",
-    },
-    "engine/triggers/manager.py": {
-        "custom_components.haanim.ha.events",
-        "custom_components.haanim.ha.state",
-        "homeassistant.const",
-        "homeassistant.core",
-    },
-    "engine/triggers/state_trigger.py": {
-        "custom_components.haanim.ha.events",
-        "custom_components.haanim.ha.state",
-        "homeassistant.core",
-    },
-    "engine/triggers/time_trigger.py": {
-        "custom_components.haanim.ha.events",
-        "custom_components.haanim.ha.state",
-        "homeassistant.core",
-        "homeassistant.helpers.sun",
-        "homeassistant.util",
-    },
-    "events.py": {"homeassistant.core"},
-}
+# Engine module (relative to src/haanim) -> forbidden modules it imports.
+# Empty since phase 3. It must stay empty: the engine reaches its host only through
+# the protocols in haanim.interfaces.
+SEAMS: dict[str, set[str]] = {}
 
 
 def forbidden_imports(source: str) -> set[str]:
@@ -156,27 +107,9 @@ class TestPackageBoundary:
         assert all(SEAMS.values())
 
 
-# Modules that cannot yet be imported on their own. Each either loads Home Assistant
-# through a seam, or fails with a circular import because a seam leads back into the
-# integration, which imports the engine again. They import correctly only after
-# ``custom_components.haanim`` has been imported first, which is what Home Assistant
-# and this test suite do. Do not add to this list; phase 3 empties it.
-NOT_STANDALONE: set[str] = {
-    "haanim.engine.action_pool",
-    "haanim.engine.automation_context",
-    "haanim.engine.decorators",
-    "haanim.engine.expression_eval",
-    "haanim.engine.haanim_api",
-    "haanim.engine.triggers",
-    "haanim.engine.triggers.base",
-    "haanim.engine.triggers.cron_trigger",
-    "haanim.engine.triggers.event_trigger",
-    "haanim.engine.triggers.interval_trigger",
-    "haanim.engine.triggers.manager",
-    "haanim.engine.triggers.state_trigger",
-    "haanim.engine.triggers.time_trigger",
-    "haanim.events",
-}
+# Modules that cannot be imported on their own, first, in a fresh interpreter.
+# Empty since phase 3, and it must stay empty.
+NOT_STANDALONE: set[str] = set()
 
 
 def dotted_name(module: str) -> str:
@@ -236,3 +169,33 @@ class TestImportWithoutHomeAssistant:
         assert haanim.HAAnimError is HAAnimError
         assert haanim.PUBLIC_ERRORS is PUBLIC_ERRORS
         assert set(haanim.__all__) == {"ActionMode", "HAAnimError", "PUBLIC_ERRORS", "__version__"}
+
+
+class TestEngineTestsWithoutHomeAssistant:
+    """The engine test suite itself does not need Home Assistant."""
+
+    def test_engine_tests_pass_with_home_assistant_blocked(self) -> None:
+        """Test ``tests/engine`` passes in an interpreter where Home Assistant cannot be imported.
+
+        Home Assistant, its pytest plugin and the integration are made unimportable
+        before pytest starts, so any engine test that still depended on them would
+        fail to collect or run.
+        """
+        repo_root = Path(__file__).parents[2]
+        code = (
+            "import sys\n"
+            "for name in ('homeassistant', 'pytest_homeassistant_custom_component', 'custom_components'):\n"
+            "    sys.modules[name] = None\n"
+            "import pytest\n"
+            "sys.exit(pytest.main([\n"
+            "    'tests/engine', '-q', '-p', 'no:cacheprovider', '-o', 'addopts=', '-p', 'asyncio',\n"
+            "    '--deselect', 'tests/engine/test_package_boundary.py::TestEngineTestsWithoutHomeAssistant',\n"
+            "]))\n"
+        )
+        env = {**os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
+        result = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True, check=False, cwd=repo_root, env=env
+        )
+        assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-3000:]
+        assert " passed" in result.stdout
+        assert "skipped" not in result.stdout.splitlines()[-1]

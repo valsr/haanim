@@ -8,29 +8,15 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 from homeassistant.core import Event, HomeAssistant, callback
 
+from haanim.types import EventData
+
 _LOGGER = logging.getLogger(__name__)
 
-
-@dataclass
-class EventData:
-    """Data class representing an event notification.
-
-    Used for strongly typed event notifications in queues.
-    """
-
-    event_type: str
-    data: dict[str, Any]
-    origin: str | None
-    time_fired: datetime
-    context_id: str
-    context_parent_id: str | None
-    context_user_id: str | None
+__all__ = ["EventData", "EventManager"]
 
 
 class EventManager:

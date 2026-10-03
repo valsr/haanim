@@ -11,12 +11,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, time
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.sun import get_astral_event_next
-from homeassistant.util import dt as dt_util
 from haanim import const
-from custom_components.haanim.ha.events import EventManager
-from custom_components.haanim.ha.state import StateManager
+from haanim.engine.callables import is_coroutine_callable
+from haanim.interfaces import EventBus, Host, StateProvider
 
 if TYPE_CHECKING:
     from haanim.engine.automation_context import TriggerDefinition
@@ -53,23 +50,19 @@ class BaseTrigger(ABC):
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        host: Host,
         trigger_def: TriggerDefinition,
-        state_manager: StateManager,
-        event_manager: EventManager,
     ) -> None:
         """Initialize the trigger.
 
         Args:
-            hass: Home Assistant instance.
+            host: The host the engine runs in.
             trigger_def: The trigger definition from the automation.
-            state_manager: State manager instance.
-            event_manager: Event manager instance.
         """
-        self.hass = hass
+        self.host = host
         self.trigger_def = trigger_def
-        self.state_manager = state_manager
-        self.event_manager = event_manager
+        self.state_manager: StateProvider = host.states
+        self.event_manager: EventBus = host.events
 
         self._task: asyncio.Task[None] | None = None
         self._enabled = True
@@ -121,7 +114,7 @@ class BaseTrigger(ABC):
             True if constraint is satisfied.
         """
         specs = constraint.get("specs", [])
-        now = dt_util.now()
+        now = self.host.clock.now()
 
         for spec in specs:
             if self._evaluate_time_spec(spec, now):
@@ -168,13 +161,13 @@ class BaseTrigger(ABC):
         """
         # Handle sunrise/sunset
         if "sunrise" in value.lower():
-            sun_time = get_astral_event_next(self.hass, "sunrise", now)
+            sun_time = self.host.sun.next_event("sunrise", now)
             if sun_time:
                 return sun_time.time()
             return None
 
         if "sunset" in value.lower():
-            sun_time = get_astral_event_next(self.hass, "sunset", now)
+            sun_time = self.host.sun.next_event("sunset", now)
             if sun_time:
                 return sun_time.time()
             return None
@@ -280,10 +273,10 @@ class BaseTrigger(ABC):
         kwargs["manual"] = False
 
         try:
-            if asyncio.iscoroutinefunction(func):
+            if is_coroutine_callable(func):
                 return await func(**kwargs)
             else:
-                return await self.hass.async_add_executor_job(lambda: func(**kwargs))
+                return await asyncio.get_running_loop().run_in_executor(None, lambda: func(**kwargs))
         except Exception as err:
             self._logger.error(
                 "Trigger function %s.%s failed: %s",

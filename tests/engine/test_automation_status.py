@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
-
 import pytest
 
 from haanim.engine.automation_status import (
     AutomationRunState,
     AutomationStatus,
     AutomationStatusManager,
-    get_status_manager,
-    reset_status_manager,
 )
 
 
@@ -19,14 +15,6 @@ from haanim.engine.automation_status import (
 def manager() -> AutomationStatusManager:
     """Create a fresh status manager."""
     return AutomationStatusManager()
-
-
-@pytest.fixture
-def clean_global_manager() -> Generator[None]:
-    """Reset the global status manager around a test."""
-    reset_status_manager()
-    yield
-    reset_status_manager()
 
 
 class TestAutomationRunState:
@@ -172,17 +160,3 @@ class TestAutomationStatusManager:
         assert set(statuses) == {"a", "b"}
         statuses.clear()
         assert set(manager.get_all_statuses()) == {"a", "b"}
-
-
-class TestGlobalStatusManager:
-    """Tests for the module-level status manager accessors."""
-
-    def test_get_status_manager_is_singleton(self, clean_global_manager: None) -> None:
-        """Test get_status_manager returns the same instance each time."""
-        assert get_status_manager() is get_status_manager()
-
-    def test_reset_status_manager(self, clean_global_manager: None) -> None:
-        """Test reset_status_manager discards the current instance."""
-        first = get_status_manager()
-        reset_status_manager()
-        assert get_status_manager() is not first

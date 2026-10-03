@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from haanim.testing import make_host
+from tests.engine.helpers import make_context
 from haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
 from haanim.engine.automation_context import (
     ActionDefinition,
@@ -160,11 +162,9 @@ class TestAutomationContext:
 
     def test_init(self, mock_hass: MagicMock) -> None:
         """Test AutomationContext initialization."""
-        context = AutomationContext(
-            hass=mock_hass,
-            automation_path="/automations/test.py",
-        )
-        assert context.hass is mock_hass
+        host = make_host()
+        context = make_context("/automations/test.py", host=host)
+        assert context.host is host
         assert context.automation_path == "/automations/test.py"
         assert context.automation_id == "test"
         assert context.filename == "test.py"
@@ -185,8 +185,7 @@ class TestAutomationContext:
         expected_filename: str,
     ) -> None:
         """Test automation name is derived from path."""
-        context = AutomationContext(
-            hass=mock_hass,
+        context = make_context(
             automation_path=path,
         )
         assert context.automation_id == expected_name
@@ -194,48 +193,42 @@ class TestAutomationContext:
 
     def test_is_loaded_initially_false(self, mock_hass: MagicMock) -> None:
         """Test is_loaded is False before loading."""
-        context = AutomationContext(
-            hass=mock_hass,
+        context = make_context(
             automation_path="/automations/test.py",
         )
         assert context.is_loaded is False
 
     def test_get_metadata_before_load(self, mock_hass: MagicMock) -> None:
         """Test get_metadata returns None before loading."""
-        context = AutomationContext(
-            hass=mock_hass,
+        context = make_context(
             automation_path="/automations/test.py",
         )
         assert context.get_metadata() is None
 
     def test_get_actions_before_load(self, mock_hass: MagicMock) -> None:
         """Test get_actions returns empty list before loading."""
-        context = AutomationContext(
-            hass=mock_hass,
+        context = make_context(
             automation_path="/automations/test.py",
         )
         assert context.get_actions() == []
 
     def test_get_triggers_before_load(self, mock_hass: MagicMock) -> None:
         """Test get_triggers returns empty list before loading."""
-        context = AutomationContext(
-            hass=mock_hass,
+        context = make_context(
             automation_path="/automations/test.py",
         )
         assert context.get_triggers() == []
 
     def test_get_startup_func_before_load(self, mock_hass: MagicMock) -> None:
         """Test get_startup_func returns None before loading."""
-        context = AutomationContext(
-            hass=mock_hass,
+        context = make_context(
             automation_path="/automations/test.py",
         )
         assert context.get_startup_func() is None
 
     def test_get_shutdown_func_before_load(self, mock_hass: MagicMock) -> None:
         """Test get_shutdown_func returns None before loading."""
-        context = AutomationContext(
-            hass=mock_hass,
+        context = make_context(
             automation_path="/automations/test.py",
         )
         assert context.get_shutdown_func() is None
@@ -255,8 +248,7 @@ class TestAutomationContextLoad:
         """Test loading non-existent file raises error."""
         from haanim.engine.errors import HAAnimError
 
-        context = AutomationContext(
-            hass=mock_hass,
+        context = make_context(
             automation_path="/nonexistent/path/automation.py",
         )
 
@@ -274,8 +266,7 @@ def my_action():
 """
         )
 
-        context = AutomationContext(
-            hass=mock_hass,
+        context = make_context(
             automation_path=str(automation_path),
         )
 
@@ -295,7 +286,7 @@ def my_action():
         automation_path = tmp_path / "imports_error.py"
         automation_path.write_text(f"from haanim import {name}\nimported = {name}\n")
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         await context.load()
 
         assert context.get_symbol("imported") is error_class
@@ -307,7 +298,7 @@ def my_action():
         automation_path = tmp_path / "imports_internal.py"
         automation_path.write_text("from haanim import ShutdownTimeoutError\n")
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         with pytest.raises(HAAnimError):
             await context.load()
 
@@ -326,8 +317,7 @@ def on_hour():
 """
         )
 
-        context = AutomationContext(
-            hass=mock_hass,
+        context = make_context(
             automation_path=str(automation_path),
         )
 
@@ -353,8 +343,7 @@ def on_shutdown():
 """
         )
 
-        context = AutomationContext(
-            hass=mock_hass,
+        context = make_context(
             automation_path=str(automation_path),
         )
 
@@ -377,8 +366,7 @@ def broken(:
 """
         )
 
-        context = AutomationContext(
-            hass=mock_hass,
+        context = make_context(
             automation_path=str(automation_path),
         )
 
@@ -413,7 +401,7 @@ def second():
 """
         )
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         await context.load()
 
         actions = context.get_actions()
@@ -430,7 +418,7 @@ def on_high():
 """
         )
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         await context.load()
 
         triggers = context.get_triggers()
@@ -447,7 +435,7 @@ def test():
 """
         )
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         await context.load()
 
         metadata = context.get_metadata()
@@ -456,7 +444,7 @@ def test():
 
     def test_get_metadata_not_loaded(self, mock_hass: MagicMock) -> None:
         """Test get_metadata returns None when not loaded."""
-        context = AutomationContext(hass=mock_hass, automation_path="/fake/path.py")
+        context = make_context("/fake/path.py")
         assert context.get_metadata() is None
 
     async def test_automation_id_property(self, mock_hass: MagicMock, tmp_path: Any) -> None:
@@ -464,7 +452,7 @@ def test():
         automation_path = tmp_path / "my_cool_automation.py"
         automation_path.write_text("x = 1")
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         assert context.automation_id == "my_cool_automation"
 
     async def test_filename_property(self, mock_hass: MagicMock, tmp_path: Any) -> None:
@@ -472,7 +460,7 @@ def test():
         automation_path = tmp_path / "my_automation.py"
         automation_path.write_text("x = 1")
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         assert context.filename == "my_automation.py"
 
 
@@ -493,7 +481,7 @@ class TestAutomationContextEdgeCases:
         automation_path = tmp_path / "minimal.py"
         automation_path.write_text("x = 1")
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         metadata = await context.load()
 
         assert metadata.id == "minimal"
@@ -511,7 +499,7 @@ def do_something():
 """
         )
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         metadata = await context.load()
 
         # Should have an action with custom name
@@ -522,7 +510,7 @@ def do_something():
         """Test loading a non-existent automation raises HAAnimError."""
         from haanim.engine.errors import HAAnimError
 
-        context = AutomationContext(hass=mock_hass, automation_path="/nonexistent/path.py")
+        context = make_context("/nonexistent/path.py")
 
         with pytest.raises(HAAnimError, match="not found"):
             await context.load()
@@ -532,7 +520,7 @@ def do_something():
         automation_path = tmp_path / "no_startup.py"
         automation_path.write_text("x = 1")
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         await context.load()
 
         assert context.get_startup_func() is None
@@ -542,7 +530,7 @@ def do_something():
         automation_path = tmp_path / "no_shutdown.py"
         automation_path.write_text("x = 1")
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         await context.load()
 
         assert context.get_shutdown_func() is None
@@ -571,7 +559,7 @@ def on_high():
 """
         )
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         metadata = await context.load()
 
         # Should have both a trigger and an action
@@ -592,7 +580,7 @@ def multi_trigger():
 """
         )
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         metadata = await context.load()
 
         # Should have 3 triggers but only 1 action
@@ -612,7 +600,7 @@ def custom_action():
 """
         )
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         metadata = await context.load()
 
         # Should have trigger and action with custom metadata
@@ -633,7 +621,7 @@ def evening_lights():
 """
         )
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         metadata = await context.load()
 
         # Should have action with default settings
@@ -653,7 +641,7 @@ def manual_only():
 """
         )
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         metadata = await context.load()
 
         # Should have action but no triggers
@@ -681,7 +669,7 @@ def both():
 """
         )
 
-        context = AutomationContext(hass=mock_hass, automation_path=str(automation_path))
+        context = make_context(str(automation_path))
         metadata = await context.load()
 
         # Should have 3 actions (all callable) and 2 triggers

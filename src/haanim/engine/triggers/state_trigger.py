@@ -19,14 +19,13 @@ import re
 from typing import Any, TypeVar
 from collections.abc import Callable
 
-from homeassistant.core import HomeAssistant
 
 from typing import TYPE_CHECKING
 
-from custom_components.haanim.ha.state import StateManager, StateChangedEvent
-from custom_components.haanim.ha.events import EventManager
 from haanim.const import DECORATOR_STATE_TRIGGER
 from haanim.engine.triggers.base import BaseTrigger, TriggerInfo
+from haanim.interfaces import Host
+from haanim.types import StateChangedEvent
 
 if TYPE_CHECKING:
     from haanim.engine.automation_context import TriggerDefinition
@@ -130,20 +129,16 @@ class StateTrigger(BaseTrigger):
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        host: Host,
         trigger_def: TriggerDefinition,
-        state_manager: StateManager,
-        event_manager: EventManager,
     ) -> None:
         """Initialize the state trigger.
 
         Args:
-            hass: Home Assistant instance.
+            host: The host the engine runs in.
             trigger_def: The trigger definition from the automation.
-            state_manager: State manager instance.
-            event_manager: Event manager instance.
         """
-        super().__init__(hass, trigger_def, state_manager, event_manager)
+        super().__init__(host, trigger_def)
 
         self._state_hold = self._get_state_hold_from_trigger(trigger_def)
         self._state_check_now = trigger_def.kwargs.get("state_check_now", False)
@@ -192,7 +187,7 @@ class StateTrigger(BaseTrigger):
             self._queue = self.state_manager.subscribe(entity_id)
 
         # Start watch task
-        self._task = self.hass.async_create_task(
+        self._task = asyncio.create_task(
             self._watch_loop(),
             name=f"haanim_state_trigger_{self.trigger_def.automation_id}_{self.trigger_def.func_name}",
         )
@@ -288,7 +283,7 @@ class StateTrigger(BaseTrigger):
                 self._hold_task.cancel()
 
             # Start new hold task
-            self._hold_task = self.hass.async_create_task(
+            self._hold_task = asyncio.create_task(
                 self._hold_and_execute(notification),
             )
         else:

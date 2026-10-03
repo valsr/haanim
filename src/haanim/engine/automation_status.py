@@ -151,28 +151,3 @@ class AutomationStatusManager:
             Dictionary of automation statuses by automation name.
         """
         return self._statuses.copy()
-
-
-# Global status manager instance
-_status_manager: AutomationStatusManager | None = None
-
-
-def get_status_manager() -> AutomationStatusManager:
-    """Get the global automation status manager.
-
-    Returns:
-        The global AutomationStatusManager instance.
-    """
-    global _status_manager  # pylint: disable=global-statement
-    if _status_manager is None:
-        _status_manager = AutomationStatusManager()
-    return _status_manager
-
-
-def reset_status_manager() -> None:
-    """Reset the global status manager.
-
-    This is primarily for testing purposes.
-    """
-    global _status_manager  # pylint: disable=global-statement
-    _status_manager = None

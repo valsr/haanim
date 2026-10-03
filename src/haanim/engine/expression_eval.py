@@ -11,7 +11,7 @@ import logging
 import operator
 from typing import Any
 
-from homeassistant.core import HomeAssistant
+from haanim.interfaces import StateProvider
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,13 +71,13 @@ class ExpressionEvaluator:
     - Auto type conversion for comparisons
     """
 
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(self, states: StateProvider) -> None:
         """Initialize the expression evaluator.
 
         Args:
-            hass: Home Assistant instance for entity access.
+            states: Entity state access.
         """
-        self._hass = hass
+        self._states = states
 
     def evaluate(self, expression: str) -> bool:
         """Evaluate an expression and return the boolean result.
@@ -220,8 +220,8 @@ class ExpressionEvaluator:
             entity_id = f"{domain}.{entity_name}"
 
             # Get entity state
-            state_obj = self._hass.states.get(entity_id)
-            if state_obj is None:
+            state_obj = self._states.get(entity_id)
+            if not self._states.exists(entity_id):
                 _LOGGER.debug("Entity %s not found, treating as None", entity_id)
                 return None
 

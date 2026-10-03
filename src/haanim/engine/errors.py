@@ -261,6 +261,27 @@ class ShutdownTimeoutError(HAAnimError):
         self.timeout = timeout
 
 
+class ServiceCallError(HAAnimError):
+    """Exception raised by a host when a service call fails.
+
+    This is internal: the ``haa`` API reports it to automations through the
+    result object of the call, it is not raised to them.
+    """
+
+    def __init__(self, domain: str, service: str, reason: str) -> None:
+        """Initialize the service call error.
+
+        Args:
+            domain: The service domain.
+            service: The service name.
+            reason: Why the call failed.
+        """
+        super().__init__(f"Service '{domain}.{service}' failed: {reason}")
+        self.domain = domain
+        self.service = service
+        self.reason = reason
+
+
 PUBLIC_ERRORS: tuple[type[HAAnimError], ...] = (
     HAAnimError,
     AutomationSyntaxError,

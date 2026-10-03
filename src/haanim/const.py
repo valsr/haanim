@@ -18,6 +18,8 @@ __all__ = [
     "DECORATOR_SERVICE",
     "DECORATOR_STARTUP",
     "DECORATOR_SHUTDOWN",
+    # Host events
+    "EVENT_HOST_STARTED",
     # Execution sources
     "EXEC_MODE_MANUAL",
     "EXEC_MODE_TRIGGER",
@@ -25,6 +27,8 @@ __all__ = [
     # Defaults
     "DEFAULT_ACTION_QUEUE_SIZE",
     "DEFAULT_ACTION_TIMEOUT",
+    "DEFAULT_MAX_CONCURRENT_ACTIONS",
+    "DEFAULT_WORKER_SHUTDOWN_TIMEOUT",
     "DEFAULT_IMPORT_ALLOWLIST",
     # Security
     "RESTRICTED_BUILTINS",
@@ -57,6 +61,9 @@ DECORATOR_SERVICE: Final = "service"
 DECORATOR_STARTUP: Final = "startup"
 DECORATOR_SHUTDOWN: Final = "shutdown"
 
+# Event the host fires once it has finished starting
+EVENT_HOST_STARTED: Final = "homeassistant_started"
+
 # How an action was invoked
 EXEC_MODE_MANUAL: Final = "manual"
 EXEC_MODE_TRIGGER: Final = "trigger"
@@ -65,6 +72,8 @@ EXEC_MODE_AUTOMATION: Final = "automation"
 # Default action settings
 DEFAULT_ACTION_QUEUE_SIZE: Final = 100
 DEFAULT_ACTION_TIMEOUT: Final = 0  # 0 = no timeout
+DEFAULT_MAX_CONCURRENT_ACTIONS: Final = 20
+DEFAULT_WORKER_SHUTDOWN_TIMEOUT: Final = 0.2  # 200ms
 
 # Default import allowlist - safe modules for automations
 DEFAULT_IMPORT_ALLOWLIST: Final[list[str]] = [

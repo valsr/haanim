@@ -13,14 +13,12 @@ import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
-from homeassistant.core import Event, HomeAssistant
 
-from custom_components.haanim.ha.events import EventManager
-from custom_components.haanim.ha.state import StateManager, StateChangedEvent
 from haanim import const
 from haanim.engine.action_pool import ActionWorkerPool
 from haanim.engine.constraints import ConstraintChecker
+from haanim.interfaces import EventBus, Host, StateProvider
+from haanim.types import StateChangedEvent
 
 if TYPE_CHECKING:
     from haanim.engine.automation_context import TriggerDefinition
@@ -40,24 +38,20 @@ class TriggerManager:
 
     def __init__(
         self,
-        hass: HomeAssistant,
-        state_manager: StateManager,
-        event_manager: EventManager,
+        host: Host,
         action_pool: ActionWorkerPool,
     ) -> None:
         """Initialize the trigger manager.
 
         Args:
-            hass: Home Assistant instance.
-            state_manager: State manager instance.
-            event_manager: Event manager instance.
+            host: The host the engine runs in.
             action_pool: Action worker pool for executing triggered functions.
         """
-        self.hass = hass
-        self.state_manager = state_manager
-        self.event_manager = event_manager
+        self.host = host
+        self.state_manager: StateProvider = host.states
+        self.event_manager: EventBus = host.events
         self.action_pool = action_pool
-        self.constraint_checker = ConstraintChecker(state_manager)
+        self.constraint_checker = ConstraintChecker(host.states)
 
         # Store triggers by ID
         self._triggers: dict[str, TriggerDefinition] = {}
@@ -88,12 +82,9 @@ class TriggerManager:
 
     async def async_setup(self) -> None:
         """Set up the trigger manager."""
-        self.hass.bus.async_listen_once(
-            EVENT_HOMEASSISTANT_STARTED,
-            self._on_ha_started,
-        )
+        self.event_manager.listen_once(const.EVENT_HOST_STARTED, self._on_ha_started)
 
-    async def _on_ha_started(self, _: Event) -> None:
+    async def _on_ha_started(self, _: Any) -> None:
         """Handle Home Assistant started event."""
         self._started = True
 
@@ -370,11 +361,11 @@ class TriggerManager:
                 self._state_queue = self.state_manager.subscribe(entity_id)
             else:
                 # For additional entities, we need to subscribe them to our existing queue
-                # This may require adjusting the StateManager API
+                # This may require adjusting the StateProvider API
                 pass
 
         # Start watch task
-        self._state_watch_task = self.hass.async_create_task(
+        self._state_watch_task = asyncio.create_task(
             self._state_watch_loop(),
             name="haanim_trigger_manager_state_watch",
         )
@@ -395,7 +386,7 @@ class TriggerManager:
 
                 for trigger_id in trigger_ids:
                     # Process each trigger asynchronously
-                    self.hass.async_create_task(
+                    asyncio.create_task(
                         self._handle_state_trigger(trigger_id, notification),
                         name=f"haanim_state_trigger_{trigger_id}",
                     )
@@ -438,7 +429,7 @@ class TriggerManager:
                 self._hold_tasks[trigger_id].cancel()
 
             # Start new hold task
-            self._hold_tasks[trigger_id] = self.hass.async_create_task(
+            self._hold_tasks[trigger_id] = asyncio.create_task(
                 self._hold_and_execute(trigger_id, notification, state_hold),
                 name=f"haanim_hold_{trigger_id}",
             )
@@ -513,7 +504,7 @@ class TriggerManager:
         if self._time_watch_task:
             return  # Already watching
 
-        self._time_watch_task = self.hass.async_create_task(
+        self._time_watch_task = asyncio.create_task(
             self._time_watch_loop(),
             name="haanim_trigger_manager_time_watch",
         )
@@ -529,7 +520,7 @@ class TriggerManager:
 
                 for trigger_id in self._time_triggers:
                     if await self._should_fire_time_trigger(trigger_id, current_time):
-                        self.hass.async_create_task(
+                        asyncio.create_task(
                             self._handle_time_trigger(trigger_id),
                             name=f"haanim_time_trigger_{trigger_id}",
                         )

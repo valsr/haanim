@@ -15,13 +15,14 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from custom_components.haanim.config import get_config_manager
+from haanim.const import DEFAULT_MAX_CONCURRENT_ACTIONS, DEFAULT_WORKER_SHUTDOWN_TIMEOUT
+from haanim.engine.callables import is_coroutine_callable
 from haanim.engine.errors import (
     ActionCancelledError,
     PoolExhaustedError,
     ShutdownTimeoutError,
 )
-from haanim.engine.automation_status import get_status_manager
+from haanim.engine.automation_status import AutomationStatusManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -80,17 +81,20 @@ class ActionWorkerPool:
 
     def __init__(
         self,
-        max_workers: int | None = None,
-        shutdown_timeout: float | None = None,
+        status_manager: AutomationStatusManager,
+        max_workers: int = DEFAULT_MAX_CONCURRENT_ACTIONS,
+        shutdown_timeout: float = DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
     ) -> None:
         """Initialize the action worker pool.
 
         Args:
+            status_manager: Where the running actions of each automation are recorded.
             max_workers: Maximum number of concurrent actions allowed.
             shutdown_timeout: Timeout for shutdown actions in seconds.
         """
-        self._max_workers = max_workers or get_config_manager().get_max_concurrent_actions()
-        self._shutdown_timeout = shutdown_timeout or get_config_manager().get_worker_shutdown_timeout()
+        self._status_manager = status_manager
+        self._max_workers = max_workers
+        self._shutdown_timeout = shutdown_timeout
 
         # Track active executions by execution_id
         self._active_executions: dict[str, ActionExecution] = {}
@@ -246,7 +250,7 @@ class ActionWorkerPool:
         Returns:
             An async wrapper function.
         """
-        if asyncio.iscoroutinefunction(func):
+        if is_coroutine_callable(func):
             return func
 
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -268,7 +272,7 @@ class ActionWorkerPool:
             ActionCancelledError: If the action was cancelled.
             Exception: Any exception from the action itself.
         """
-        status_manager = get_status_manager()
+        status_manager = self._status_manager
 
         async with self._semaphore:
             execution.state = ActionState.RUNNING

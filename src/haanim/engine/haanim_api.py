@@ -13,17 +13,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
-
 from haanim.engine.errors import (
-    NonExistingEntityError,
     NonExistingAutomationError,
+    NonExistingEntityError,
     NonExistingServiceError,
+    ServiceCallError,
 )
 
 if TYPE_CHECKING:
-    from custom_components.haanim.automation_manager import AutomationManager
+    from haanim.interfaces import AutomationRegistry, Host
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -82,32 +80,29 @@ class HAAnimServiceProxy:
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        host: Host,
         domain: str,
         service: str,
     ) -> None:
         """Initialize service proxy.
 
         Args:
-            hass: Home Assistant instance.
+            host: The host the engine runs in.
             domain: Service domain.
             service: Service name.
         """
-        self._hass = hass
+        self._host = host
         self.domain = domain
         self.name = service
         self._service_key = f"{domain}.{service}"
 
-        # Get service metadata - service_data is a Service object, not a dict
-        services_dict = hass.services.async_services().get(domain, {})
-        service_data = services_dict.get(service)
-        if service_data:
-            # Access Service object attributes, not dict keys
-            self.description = service_data.description or ""  # type: ignore[union-attr]
-            self.param_info = service_data.fields or {}  # type: ignore[union-attr]
-        else:
-            self.description = ""
-            self.param_info = {}
+        self.description = ""
+        self.param_info: dict[str, Any] = {}
+        for info in host.services.services():
+            if info.domain == domain and info.name == service:
+                self.description = info.description
+                self.param_info = dict(info.fields)
+                break
 
     async def call(self, **params: Any) -> HAAnimServiceCall:
         """Call the service with the given parameters.
@@ -125,28 +120,27 @@ class HAAnimServiceProxy:
 
         try:
             # Check if service exists
-            if not self._hass.services.has_service(self.domain, self.name):
+            if not self._host.services.has_service(self.domain, self.name):
                 raise NonExistingServiceError(self.domain, self.name)
 
             # Call the service
-            response = await self._hass.services.async_call(
+            response = await self._host.services.async_call(
                 self.domain,
                 self.name,
                 params,
-                blocking=True,
                 return_response=True,
             )
 
             # Mark success - response is either None or a dict
-            if response is not None and isinstance(response, dict):
+            if response is not None:
                 result.mark_success(response)
             else:
                 result.mark_success()
 
         except NonExistingServiceError:
             raise
-        except HomeAssistantError as err:
-            result.mark_failure(str(err), "home_assistant_error")
+        except ServiceCallError as err:
+            result.mark_failure(err.reason, "home_assistant_error")
         except Exception as err:  # pylint: disable=broad-exception-caught
             result.mark_failure(str(err), "unknown_error")
             _LOGGER.exception("Unexpected error calling service %s", self._service_key)
@@ -171,7 +165,7 @@ class HAAnimAutomationProxy:
     def __init__(
         self,
         automation_id: str,
-        automation_manager: AutomationManager,
+        automation_manager: AutomationRegistry,
     ) -> None:
         """Initialize automation proxy.
 
@@ -185,7 +179,7 @@ class HAAnimAutomationProxy:
     @property
     def state(self) -> str:
         """Get the current state of the automation."""
-        context = self._manager._contexts.get(self.id)
+        context = self._manager.get_context_by_name(self.id)
         if not context:
             return "unavailable"
         return context._metadata.state or "off" if context._metadata else "off"
@@ -193,7 +187,7 @@ class HAAnimAutomationProxy:
     @property
     def message(self) -> str:
         """Get the automation's status message."""
-        context = self._manager._contexts.get(self.id)
+        context = self._manager.get_context_by_name(self.id)
         if not context:
             return ""
         return context._metadata.message or "" if context._metadata else ""
@@ -201,7 +195,7 @@ class HAAnimAutomationProxy:
     @property
     def file_path(self) -> str:
         """Get the automation's file path."""
-        context = self._manager._contexts.get(self.id)
+        context = self._manager.get_context_by_name(self.id)
         if not context:
             return ""
         return context.automation_path
@@ -209,7 +203,7 @@ class HAAnimAutomationProxy:
     @property
     def load_time(self) -> datetime | None:
         """Get when the automation was loaded."""
-        context = self._manager._contexts.get(self.id)
+        context = self._manager.get_context_by_name(self.id)
         if not context or not context._metadata:
             return None
         return context._metadata.loaded_at
@@ -217,7 +211,7 @@ class HAAnimAutomationProxy:
     @property
     def run_time(self) -> datetime | None:
         """Get when the automation was last started."""
-        context = self._manager._contexts.get(self.id)
+        context = self._manager.get_context_by_name(self.id)
         if not context or not context._metadata:
             return None
         return context._metadata.run_time if hasattr(context._metadata, "run_time") else None
@@ -225,7 +219,7 @@ class HAAnimAutomationProxy:
     @property
     def actions(self) -> list[str]:
         """Get list of action names."""
-        context = self._manager._contexts.get(self.id)
+        context = self._manager.get_context_by_name(self.id)
         if not context or not context._metadata:
             return []
         return [action.name for action in context._metadata.actions]
@@ -233,7 +227,7 @@ class HAAnimAutomationProxy:
     @property
     def last_action_time(self) -> datetime | None:
         """Get timestamp of last action execution."""
-        context = self._manager._contexts.get(self.id)
+        context = self._manager.get_context_by_name(self.id)
         if not context or not context._metadata:
             return None
         return context._metadata.last_action_time if hasattr(context._metadata, "last_action_time") else None
@@ -241,7 +235,7 @@ class HAAnimAutomationProxy:
     @property
     def error_message(self) -> str | None:
         """Get error message if automation is in error state."""
-        context = self._manager._contexts.get(self.id)
+        context = self._manager.get_context_by_name(self.id)
         if not context or not context._metadata:
             return None
         return context._metadata.error
@@ -252,7 +246,7 @@ class HAAnimAutomationProxy:
 
     def is_enabled(self) -> bool:
         """Check if the automation is enabled."""
-        context = self._manager._contexts.get(self.id)
+        context = self._manager.get_context_by_name(self.id)
         if not context or not context._metadata:
             return False
         return context._metadata.enabled
@@ -298,14 +292,14 @@ class HAAnimAutomationProxy:
 class EntityProxy:
     """Proxy for accessing entity states and attributes."""
 
-    def __init__(self, hass: HomeAssistant, domain: str) -> None:
+    def __init__(self, host: Host, domain: str) -> None:
         """Initialize entity proxy for a domain.
 
         Args:
-            hass: Home Assistant instance.
+            host: The host the engine runs in.
             domain: Entity domain (e.g., 'sensor', 'light').
         """
-        self._hass = hass
+        self._host = host
         self._domain = domain
 
     def __getattr__(self, entity_name: str) -> str | None:
@@ -318,8 +312,7 @@ class EntityProxy:
             The entity state as a string, or None if not found.
         """
         entity_id = f"{self._domain}.{entity_name}"
-        state = self._hass.states.get(entity_id)
-        return state.state if state else None
+        return self._host.states.get(entity_id).state
 
     def __getitem__(self, entity_name: str) -> dict[str, Any]:
         """Get entity with full state and attributes.
@@ -334,23 +327,23 @@ class EntityProxy:
             NonExistingEntityError: If entity doesn't exist.
         """
         entity_id = f"{self._domain}.{entity_name}"
-        state = self._hass.states.get(entity_id)
-        if not state:
+        if not self._host.states.exists(entity_id):
             raise NonExistingEntityError(entity_id)
+        state = self._host.states.get(entity_id)
         return {"state": state.state, **state.attributes}
 
 
 class ServiceDomainProxy:
     """Proxy for accessing services in a domain."""
 
-    def __init__(self, hass: HomeAssistant, domain: str) -> None:
+    def __init__(self, host: Host, domain: str) -> None:
         """Initialize service domain proxy.
 
         Args:
-            hass: Home Assistant instance.
+            host: The host the engine runs in.
             domain: Service domain.
         """
-        self._hass = hass
+        self._host = host
         self._domain = domain
 
     def __getattr__(self, service_name: str) -> HAAnimServiceProxy:
@@ -362,7 +355,7 @@ class ServiceDomainProxy:
         Returns:
             HAAnimServiceProxy for the service.
         """
-        return HAAnimServiceProxy(self._hass, self._domain, service_name)
+        return HAAnimServiceProxy(self._host, self._domain, service_name)
 
 
 class HAAnim:
@@ -379,20 +372,20 @@ class HAAnim:
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        host: Host,
         automation_id: str,
-        automation_manager: AutomationManager,
+        automation_manager: AutomationRegistry,
         storage_path: str,
     ) -> None:
         """Initialize HAAnim API.
 
         Args:
-            hass: Home Assistant instance.
+            host: The host the engine runs in.
             automation_id: The current automation's ID.
             automation_manager: The automation manager instance.
             storage_path: Path to storage directory.
         """
-        self._hass = hass
+        self._host = host
         self._automation_id = automation_id
         self._manager = automation_manager
         self._storage_path = Path(storage_path)
@@ -422,19 +415,19 @@ class HAAnim:
         """
         # Check if it's a service access
         if domain == "service":
-            return self._ServiceAccessor(self._hass)  # type: ignore[return-value]
-        return EntityProxy(self._hass, domain)
+            return self._ServiceAccessor(self._host)  # type: ignore[return-value]
+        return EntityProxy(self._host, domain)
 
     class _ServiceAccessor:
         """Internal accessor for services."""
 
-        def __init__(self, hass: HomeAssistant) -> None:
+        def __init__(self, host: Host) -> None:
             """Initialize service accessor.
 
             Args:
-                hass: Home Assistant instance.
+                host: The host the engine runs in.
             """
-            self._hass = hass
+            self._host = host
 
         def __getattr__(self, domain: str) -> ServiceDomainProxy:
             """Get service domain proxy.
@@ -445,12 +438,12 @@ class HAAnim:
             Returns:
                 ServiceDomainProxy for the domain.
             """
-            return ServiceDomainProxy(self._hass, domain)
+            return ServiceDomainProxy(self._host, domain)
 
     @property
     def service(self) -> _ServiceAccessor:
         """Get service accessor."""
-        return self._ServiceAccessor(self._hass)
+        return self._ServiceAccessor(self._host)
 
     def services(self) -> list[HAAnimServiceProxy]:
         """Get list of all available service proxies.
@@ -459,9 +452,8 @@ class HAAnim:
             List of HAAnimServiceProxy objects.
         """
         result = []
-        for domain, services in self._hass.services.async_services().items():
-            for service_name in services:
-                result.append(HAAnimServiceProxy(self._hass, domain, service_name))
+        for info in self._host.services.services():
+            result.append(HAAnimServiceProxy(self._host, info.domain, info.name))
         return result
 
     def automation(self, automation_id: str) -> HAAnimAutomationProxy:
@@ -476,7 +468,7 @@ class HAAnim:
         Raises:
             NonExistingAutomationError: If automation doesn't exist.
         """
-        if automation_id not in self._manager._contexts:
+        if self._manager.get_context_by_name(automation_id) is None:
             raise NonExistingAutomationError(automation_id)
         return HAAnimAutomationProxy(automation_id, self._manager)
 
@@ -487,7 +479,8 @@ class HAAnim:
             List of HAAnimAutomationProxy objects for all loaded automations.
         """
         return [
-            HAAnimAutomationProxy(automation_id, self._manager) for automation_id in self._manager._contexts
+            HAAnimAutomationProxy(context.automation_id, self._manager)
+            for context in self._manager.get_all_contexts()
         ]
 
     async def call(self, action_name: str, **kwargs: Any) -> Any:
@@ -524,7 +517,7 @@ class HAAnim:
         Args:
             message: The status message to set.
         """
-        context = self._manager._contexts.get(self._automation_id)
+        context = self._manager.get_context_by_name(self._automation_id)
         if context and context._metadata:
             context._metadata.message = message
 

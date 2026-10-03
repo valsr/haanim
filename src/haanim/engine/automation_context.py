@@ -7,6 +7,7 @@ symbol tables, metadata, and lifecycle management.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import os
 from collections.abc import Callable
@@ -16,8 +17,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from homeassistant.core import HomeAssistant
-
 from haanim import const
 from haanim.engine import (
     ImportController,
@@ -26,9 +25,11 @@ from haanim.engine import (
     decorators,
 )
 from haanim.engine.ast_evaluator import AstEvaluator
+from haanim.engine.callables import is_coroutine_callable
 from haanim.engine.decorators import FunctionMetadata, get_metadata, has_metadata
 from haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
-from haanim.engine.automation_status import get_status_manager
+from haanim.engine.automation_status import AutomationStatusManager
+from haanim.interfaces import AutomationRegistry, Host
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -120,20 +121,30 @@ class AutomationContext:
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        host: Host,
         automation_path: str,
+        *,
+        status_manager: AutomationStatusManager,
+        storage_path: str,
+        registry: AutomationRegistry,
         import_allowlist: list[str] | None = None,
         allow_all_imports: bool = False,
     ) -> None:
         """Initialize an automation context.
 
         Args:
-            hass: Home Assistant instance.
+            host: The host the engine runs in.
             automation_path: Path to the automation file.
+            status_manager: Where this automation's status is recorded.
+            storage_path: Directory holding the persistent storage files of automations.
+            registry: The loaded automations, used by ``haa`` to reach other automations.
             import_allowlist: List of allowed import modules.
             allow_all_imports: If True, allow all imports.
         """
-        self.hass = hass
+        self.host = host
+        self._status_manager = status_manager
+        self._storage_path = storage_path
+        self._registry = registry
         self.automation_path = automation_path
         self.filename = os.path.basename(automation_path)
         self.automation_id = os.path.splitext(self.filename)[0].replace(" ", "_")
@@ -175,8 +186,7 @@ class AutomationContext:
         )  # pylint: disable=import-outside-toplevel
 
         # Create the HAAnim API instance for this automation
-        storage_path = self.hass.config.path(".storage", "haanim", "automations")
-        haa = HAAnim(self.hass, self.automation_id, self.hass.data.get("haanim_manager"), storage_path)
+        haa = HAAnim(self.host, self.automation_id, self._registry, self._storage_path)
 
         # Create the set_status function bound to this automation
         def set_status(message: str | None) -> None:
@@ -188,8 +198,7 @@ class AutomationContext:
             Args:
                 message: The status message to display, or None to clear.
             """
-            status_manager = get_status_manager()
-            status_manager.set_status_message(self.automation_id, message)
+            self._status_manager.set_status_message(self.automation_id, message)
 
         # Create a virtual 'haanim' module that automations can import from
         haanim_module = SimpleNamespace(
@@ -284,14 +293,6 @@ class AutomationContext:
         self._global_symbols.set("log", self._logger)
         self._global_symbols.set("sleep", asyncio.sleep)
 
-    def read_file(self, path: Path) -> str:
-        """Read the content of a file asynchronously.
-
-        Args:
-            path: The path to the file to read.
-        """
-        return path.read_text(encoding="utf-8")
-
     async def load(self) -> AutomationMetadata:
         """Load and parse the automation file.
 
@@ -303,12 +304,12 @@ class AutomationContext:
         """
         path = Path(self.automation_path)
 
-        if not path.exists():
+        if not self.host.files.exists(path):
             raise HAAnimError(f"Automation file not found: {self.automation_path}")
 
         # Read the source
         try:
-            self._source = await self.hass.async_add_executor_job(self.read_file, path)
+            self._source = await self.host.files.read_text(path)
         except OSError as err:
             raise HAAnimError(f"Failed to read automation file: {err}") from err
 
@@ -316,8 +317,7 @@ class AutomationContext:
             raise HAAnimError(f"Failed to read automation file: {self.automation_path}")
 
         # Get file modification time
-        stat = path.stat()
-        modified_at = datetime.fromtimestamp(stat.st_mtime)
+        modified_at = self.host.files.modified_time(path)
 
         # Set up built-in functions
         self._setup_builtin_functions()
@@ -492,11 +492,12 @@ class AutomationContext:
         )
 
         try:
-            if asyncio.iscoroutinefunction(action.func):
+            if is_coroutine_callable(action.func):
                 return await action.func(*args, **kwargs)
             else:
                 # Wrap sync function in async
-                return await self.hass.async_add_executor_job(action.func, *args, **kwargs)
+                loop = asyncio.get_running_loop()
+                return await loop.run_in_executor(None, functools.partial(action.func, *args, **kwargs))
         except Exception as err:
             self._logger.error("Action '%s' failed: %s", action_name, err)
             raise HAAnimError(f"Action '{action_name}' failed: {err}") from err
@@ -523,13 +524,31 @@ class AutomationContext:
         func = self._functions[func_name]
 
         try:
-            if asyncio.iscoroutinefunction(func):
+            if is_coroutine_callable(func):
                 return await func(*args, **kwargs)
 
-            return await self.hass.async_add_executor_job(func, *args, **kwargs)
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
         except Exception as err:
             self._logger.error("Function '%s' failed: %s", func_name, err)
             raise HAAnimError(f"Function '{func_name}' failed: {err}") from err
+
+    def get_action(self, name: str) -> ActionDefinition | None:
+        """Get one action by name.
+
+        Args:
+            name: The action's name.
+
+        Returns:
+            The action definition, or None if the automation has no such action.
+            The name may be the function name or the action's display name.
+        """
+        if name in self._actions:
+            return self._actions[name]
+        for action in self._actions.values():
+            if action.name == name:
+                return action
+        return None
 
     def get_actions(self) -> list[ActionDefinition]:
         """Get all actions defined in this automation.

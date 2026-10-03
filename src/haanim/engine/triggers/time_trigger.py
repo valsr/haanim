@@ -20,16 +20,12 @@ from datetime import datetime, timedelta
 from typing import Any, TypeVar
 from collections.abc import Callable
 
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.sun import get_astral_event_next
-from homeassistant.util import dt as dt_util
 
 from typing import TYPE_CHECKING
 
-from custom_components.haanim.ha.state import StateManager
-from custom_components.haanim.ha.events import EventManager
 from haanim.const import DECORATOR_TIME_TRIGGER
 from haanim.engine.triggers.base import BaseTrigger, TriggerInfo
+from haanim.interfaces import Host
 
 if TYPE_CHECKING:
     from haanim.engine.automation_context import TriggerDefinition
@@ -123,26 +119,22 @@ class TimeTrigger(BaseTrigger):
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        host: Host,
         trigger_def: TriggerDefinition,
-        state_manager: StateManager,
-        event_manager: EventManager,
     ) -> None:
         """Initialize the time trigger.
 
         Args:
-            hass: Home Assistant instance.
+            host: The host the engine runs in.
             trigger_def: The trigger definition from the automation.
-            state_manager: State manager instance.
-            event_manager: Event manager instance.
         """
-        super().__init__(hass, trigger_def, state_manager, event_manager)
+        super().__init__(host, trigger_def)
 
         self._startup_triggered = False
 
     async def async_start(self) -> None:
         """Start the time trigger."""
-        self._task = self.hass.async_create_task(
+        self._task = asyncio.create_task(
             self._time_loop(),
             name=f"haanim_time_trigger_{self.trigger_def.automation_id}_{self.trigger_def.func_name}",
         )
@@ -178,7 +170,7 @@ class TimeTrigger(BaseTrigger):
                     continue
 
                 # Wait until trigger time
-                now = dt_util.now()
+                now = self.host.clock.now()
                 wait_seconds = (next_time - now).total_seconds()
 
                 if wait_seconds > 0:
@@ -206,7 +198,7 @@ class TimeTrigger(BaseTrigger):
         Returns:
             Next trigger datetime, or None if no valid time found.
         """
-        now = dt_util.now()
+        now = self.host.clock.now()
         next_times: list[datetime] = []
 
         for spec in specs:
@@ -256,7 +248,7 @@ class TimeTrigger(BaseTrigger):
             offset_val = sun_match.group(2)
             offset_unit = sun_match.group(3)
 
-            sun_time = get_astral_event_next(self.hass, event, now)
+            sun_time = self.host.sun.next_event(event, now)
             if sun_time:
                 if offset_val:
                     offset_num = int(offset_val.replace(" ", ""))
