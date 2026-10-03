@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import logging
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
@@ -422,17 +422,22 @@ async def load_all(automations: Iterable[Automation]) -> None:
             await automation.load()
 
 
-async def start_all(automations: Iterable[Automation]) -> None:
-    """Start every automation that loaded without error, one at a time in ascending order of ID.
+async def start_all(
+    automations: Iterable[Automation], is_enabled: Callable[[str], bool] | None = None
+) -> None:
+    """Start every enabled automation that loaded without error, one at a time in ascending order of ID.
 
     A ``@startup`` can therefore rely on automations with a smaller ID being
     ``on``.
 
     Args:
         automations: The automations to start. Only those in ``off`` are started.
+        is_enabled: Tells whether the automation with an ID is enabled. All are if omitted.
     """
     for automation in _by_id(automations):
-        if automation.state is AutomationState.OFF:
+        if automation.state is not AutomationState.OFF:
+            continue
+        if is_enabled is None or is_enabled(automation.automation_id):
             await automation.start()
 
 

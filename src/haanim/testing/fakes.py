@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -16,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from haanim.engine.errors import ActionNotFoundError, NonExistingAutomationError, ServiceCallError
-from haanim.interfaces import FileSystem, Host, IssueReporter
+from haanim.interfaces import FileSystem, Host, IssueReporter, StorageBackend
 from haanim.types import EventData, ServiceInfo, StateChangedEvent, StateVal
 
 if TYPE_CHECKING:
@@ -30,6 +31,7 @@ __all__ = [
     "FakeIssueReporter",
     "FakeServiceCaller",
     "FakeStateProvider",
+    "FakeStorage",
     "FakeSunProvider",
     "LocalFileSystem",
     "ServiceCallRecord",
@@ -686,12 +688,47 @@ class FakeIssueReporter:
         self.history.append(("clear", issue_id))
 
 
+class FakeStorage:
+    """Documents held in memory."""
+
+    def __init__(self) -> None:
+        """Initialize with nothing stored."""
+        self._documents: dict[str, str] = {}
+        self.saves: list[str] = []
+        """The key of every save, oldest first."""
+
+    async def load(self, key: str) -> Any:
+        """Return a copy of the document saved under a key, or None."""
+        text = self._documents.get(key)
+        return None if text is None else json.loads(text)
+
+    async def save(self, key: str, data: Any) -> None:
+        """Save a copy of a document.
+
+        Raises:
+            TypeError: If the data is not a JSON value.
+        """
+        self._documents[key] = json.dumps(data)
+        self.saves.append(key)
+
+    def peek(self, key: str) -> Any:
+        """Return what is stored under a key without going through the event loop."""
+        text = self._documents.get(key)
+        return None if text is None else json.loads(text)
+
+
 class FakeAutomationRegistry:
     """A set of automations held in memory, recording control calls."""
 
     def __init__(self) -> None:
         """Initialize an empty registry."""
         self._contexts: dict[str, AutomationContext] = {}
+        self.states: dict[str, str] = {}
+        """State to report for an automation, by ID."""
+        self.messages: dict[str, str] = {}
+        """Error message to report for an automation, by ID."""
+        self.disabled: set[str] = set()
+        """IDs of the automations to report as disabled."""
         self.control_calls: list[tuple[str, str]] = []
         """``(operation, automation_id)`` for every enable/disable/start/stop/restart, oldest first."""
 
@@ -743,6 +780,19 @@ class FakeAutomationRegistry:
         """Record a restart request."""
         self._record("restart", automation_id)
 
+    def automation_state(self, automation_id: str) -> str:
+        """Return the state set for an automation; ``on`` for a registered one, else ``unavailable``."""
+        default = "on" if automation_id in self._contexts else "unavailable"
+        return self.states.get(automation_id, default)
+
+    def automation_message(self, automation_id: str) -> str | None:
+        """Return the message set for an automation."""
+        return self.messages.get(automation_id)
+
+    def is_automation_enabled(self, automation_id: str) -> bool:
+        """Return whether an automation is enabled; True unless it was disabled."""
+        return automation_id not in self.disabled
+
     def _record(self, operation: str, automation_id: str) -> None:
         if automation_id not in self._contexts:
             raise NonExistingAutomationError(automation_id)
@@ -764,6 +814,7 @@ def make_host(
     sun: FakeSunProvider | None = None,
     files: FileSystem | None = None,
     issues: IssueReporter | None = None,
+    storage: StorageBackend | None = None,
     hass: Any = None,
 ) -> Host:
     """Build a Host from fakes.
@@ -784,5 +835,6 @@ def make_host(
         sun=sun or FakeSunProvider(),
         files=files or FakeFileSystem(clock),
         issues=issues or FakeIssueReporter(),
+        storage=storage or FakeStorage(),
         hass=hass,
     )

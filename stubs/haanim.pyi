@@ -296,10 +296,6 @@ class HAAnim:
         """Call an action in this automation."""
         ...
 
-    async def enable(self) -> None:
-        """Enable this automation."""
-        ...
-
     async def disable(self) -> None:
         """Disable this automation."""
         ...

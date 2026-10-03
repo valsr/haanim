@@ -19,6 +19,7 @@ from haanim.testing import (
     FakeIssueReporter,
     FakeServiceCaller,
     FakeStateProvider,
+    FakeStorage,
     FakeSunProvider,
     LocalFileSystem,
     ServiceCallRecord,
@@ -1009,3 +1010,51 @@ class TestFakeIssueReporter:
 
         assert isinstance(make_host().issues, FakeIssueReporter)
         assert make_host(issues=given).issues is given
+
+
+class TestFakeStorage:
+    """Documents are held in memory as JSON."""
+
+    async def test_save_load_and_peek(self) -> None:
+        """A saved document can be loaded, and inspected without awaiting."""
+        storage = FakeStorage()
+
+        assert await storage.load("key") is None
+        assert storage.peek("key") is None
+        await storage.save("key", {"a": [1]})
+
+        assert await storage.load("key") == {"a": [1]}
+        assert storage.peek("key") == {"a": [1]}
+        assert storage.saves == ["key"]
+
+    async def test_rejects_what_is_not_json(self) -> None:
+        """A value JSON cannot hold is refused, as a real store would."""
+        with pytest.raises(TypeError):
+            await FakeStorage().save("key", {"value": object()})
+
+    def test_make_host_creates_storage(self) -> None:
+        """A host built from fakes has storage, or the one given."""
+        given = FakeStorage()
+
+        assert isinstance(make_host().storage, FakeStorage)
+        assert make_host(storage=given).storage is given
+
+
+class TestFakeAutomationRegistryQueries:
+    """The fake registry reports what a test sets."""
+
+    def test_state_message_and_flag(self) -> None:
+        """Defaults suit a running automation; each value can be set."""
+        registry = FakeAutomationRegistry()
+
+        assert registry.automation_state("lights") == "unavailable"
+        assert registry.automation_message("lights") is None
+        assert registry.is_automation_enabled("lights") is True
+
+        registry.states["lights"] = "error"
+        registry.messages["lights"] = "broken"
+        registry.disabled.add("lights")
+
+        assert registry.automation_state("lights") == "error"
+        assert registry.automation_message("lights") == "broken"
+        assert registry.is_automation_enabled("lights") is False

@@ -18,6 +18,7 @@ from haanim.engine import HAAnimError
 from haanim.engine.errors import (
     ActionNotFoundError,
     AutomationAlreadyRunningError,
+    AutomationDisabledError,
     AutomationNotRunningError,
     NonExistingAutomationError,
 )
@@ -1405,3 +1406,73 @@ class TestAutomationManagerLifecycle:
         await manager.async_start_automation("lights")
 
         assert await manager.async_run_action("lights", "ping") == "pong"
+
+    async def test_enable_and_disable_through_the_manager(
+        self, manager: AutomationManager, tmp_path: Path, log: list[str]
+    ) -> None:
+        """Disabling stops the automation and refuses to start it; enabling starts it."""
+        self.write(tmp_path, "lights")
+        await manager._on_ha_started(MagicMock())
+        log.clear()
+
+        await manager.async_disable_automation("lights")
+        assert manager.get_automation_state("lights") is AutomationState.OFF
+        assert manager.is_automation_enabled("lights") is False
+        with pytest.raises(AutomationDisabledError):
+            await manager.async_start_automation("lights")
+        await manager.async_disable_automation("lights")
+
+        await manager.async_enable_automation("lights")
+        assert manager.get_automation_state("lights") is AutomationState.ON
+        assert manager.is_automation_enabled("lights") is True
+        assert manager.automation_state("lights") == "on"
+        assert log == ["stop lights", "start lights"]
+
+    async def test_disabled_automation_is_loaded_but_not_started_after_a_restart(
+        self, manager: AutomationManager, mock_hass: MagicMock, tmp_path: Path, log: list[str]
+    ) -> None:
+        """A disabled automation stays disabled across a restart and across a hot reload."""
+        folder = self.write(tmp_path, "lights")
+        self.write(tmp_path, "heating")
+        await manager._on_ha_started(MagicMock())
+        await manager.async_disable_automation("lights")
+        await manager._on_ha_stop(MagicMock())
+        log.clear()
+
+        mock_config = MagicMock()
+        mock_config.get_automation_path.return_value = str(tmp_path / "automations")
+        mock_config.get_import_allowlist.return_value = []
+        mock_config.get_allow_all_imports.return_value = False
+        host = make_host(files=LocalFileSystem(), storage=manager.host.storage)
+        with patch(
+            "custom_components.haanim.automation_manager.get_config_manager", return_value=mock_config
+        ):
+            restarted = AutomationManager(hass=mock_hass, entry=MagicMock(), host=host)
+        await restarted._on_ha_started(MagicMock())
+
+        assert restarted.get_automation_state("lights") is AutomationState.OFF
+        assert restarted.get_automation_state("heating") is AutomationState.ON
+        assert restarted.is_automation_enabled("lights") is False
+        assert log == ["start heating"]
+
+        # A hot reload of the disabled automation loads it and still does not start it.
+        await restarted.async_reload_automation(str(folder))
+        assert restarted.get_automation_state("lights") is AutomationState.OFF
+        assert log == ["start heating"]
+
+    async def test_error_message_of_an_automation(self, manager: AutomationManager, tmp_path: Path) -> None:
+        """The reason for the error state is available by automation ID, also when loading failed."""
+        self.write(tmp_path, "broken", "import os\n")
+        self.write(
+            tmp_path,
+            "failing",
+            "from haanim import startup\n\n@startup\ndef on_start():\n    raise KeyError('x')\n",
+        )
+        self.write(tmp_path, "fine")
+
+        await manager._on_ha_started(MagicMock())
+
+        assert manager.automation_message("broken") == "main.py:1: import of module 'os' is not allowed"
+        assert manager.automation_message("failing") == "@startup failed: KeyError: 'x'"
+        assert manager.automation_message("fine") is None
+        assert manager.automation_message("unknown") is None

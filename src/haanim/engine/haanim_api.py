@@ -181,11 +181,8 @@ class HAAnimAutomationProxy:
 
     @property
     def state(self) -> str:
-        """Get the current state of the automation."""
-        context = self._manager.get_context_by_name(self.id)
-        if not context:
-            return "unavailable"
-        return context._metadata.state or "off" if context._metadata else "off"
+        """Get the current state of the automation: ``unavailable``, ``off``, ``on`` or ``error``."""
+        return self._manager.automation_state(self.id)
 
     @property
     def message(self) -> str:
@@ -237,11 +234,8 @@ class HAAnimAutomationProxy:
 
     @property
     def error_message(self) -> str | None:
-        """Get error message if automation is in error state."""
-        context = self._manager.get_context_by_name(self.id)
-        if not context or not context._metadata:
-            return None
-        return context._metadata.error
+        """Get why the automation is in the ``error`` state, or None if it is not."""
+        return self._manager.automation_message(self.id)
 
     def is_running(self) -> bool:
         """Check if the automation is running."""
@@ -249,10 +243,7 @@ class HAAnimAutomationProxy:
 
     def is_enabled(self) -> bool:
         """Check if the automation is enabled."""
-        context = self._manager.get_context_by_name(self.id)
-        if not context or not context._metadata:
-            return False
-        return context._metadata.enabled
+        return self._manager.is_automation_enabled(self.id)
 
     async def call(self, action_name: str, **kwargs: Any) -> Any:
         """Call an action in this automation.
@@ -508,20 +499,16 @@ class HAAnim:
         """
         return await self._manager.async_call_action(self._automation_id, action_name, **kwargs)
 
-    async def enable(self) -> None:
-        """Enable the current automation."""
-        await self._manager.async_enable_automation(self._automation_id)
-
     async def disable(self) -> None:
-        """Disable the current automation."""
+        """Disable the current automation, which stops it. The calling action ends at this call."""
         await self._manager.async_disable_automation(self._automation_id)
 
     async def stop(self) -> None:
-        """Stop the current automation."""
+        """Stop the current automation. The calling action ends at this call."""
         await self._manager.async_stop_automation(self._automation_id)
 
     async def restart(self) -> None:
-        """Restart the current automation."""
+        """Restart the current automation. The calling action ends at this call."""
         await self._manager.async_restart_automation(self._automation_id)
 
     def set_message(self, message: str) -> None:

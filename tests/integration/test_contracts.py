@@ -27,6 +27,7 @@ from custom_components.haanim.ha.host import (
     HAFileSystem,
     HAIssueReporter,
     HAServiceCaller,
+    HAStorage,
     HASunProvider,
 )
 from custom_components.haanim.ha.state import StateManager
@@ -38,6 +39,7 @@ from haanim.interfaces import (
     IssueReporter,
     ServiceCaller,
     StateProvider,
+    StorageBackend,
     SunProvider,
 )
 from haanim.testing import (
@@ -45,6 +47,7 @@ from haanim.testing import (
     FakeEventBus,
     FakeFileSystem,
     FakeIssueReporter,
+    FakeStorage,
     FakeServiceCaller,
     FakeStateProvider,
     FakeSunProvider,
@@ -792,3 +795,81 @@ class TestAutomationIdContract:
 
         assert automation_id(name) == ""
         assert slugify(name) in ("unknown", "")
+
+
+# --- StorageBackend ---------------------------------------------------------------
+
+
+@pytest.fixture(params=IMPLEMENTATIONS)
+def storage(request: pytest.FixtureRequest, hass: HomeAssistant) -> StorageBackend:
+    """A storage backend in each implementation."""
+    if request.param == "fake":
+        return FakeStorage()
+    return HAStorage(hass)
+
+
+class TestStorageBackendContract:
+    """Behaviour every StorageBackend must have."""
+
+    async def test_nothing_stored(self, storage: StorageBackend) -> None:
+        """Test a key nothing was saved under gives None."""
+        assert await storage.load("enabled") is None
+
+    @pytest.mark.parametrize(
+        "document",
+        [
+            {"disabled": ["lights", "heating"]},
+            {},
+            [],
+            [1, 2.5, "x", None, True],
+            "text",
+            5,
+            {"a": {"b": [{"c": None}]}},
+        ],
+    )
+    async def test_round_trip(self, storage: StorageBackend, document: Any) -> None:
+        """Test what is saved is what is loaded, for every kind of JSON value."""
+        await storage.save("enabled", document)
+
+        assert await storage.load("enabled") == document
+
+    async def test_save_replaces(self, storage: StorageBackend) -> None:
+        """Test a second save under a key replaces the first."""
+        await storage.save("enabled", {"disabled": ["a"]})
+        await storage.save("enabled", {"disabled": []})
+
+        assert await storage.load("enabled") == {"disabled": []}
+
+    async def test_keys_are_independent(self, storage: StorageBackend) -> None:
+        """Test documents under different keys do not affect each other."""
+        await storage.save("one", {"value": 1})
+        await storage.save("two", {"value": 2})
+
+        assert await storage.load("one") == {"value": 1}
+        assert await storage.load("two") == {"value": 2}
+        assert await storage.load("three") is None
+
+    async def test_copies_in_and_out(self, storage: StorageBackend) -> None:
+        """Test changing what was saved or what was loaded does not change what is stored."""
+        document = {"disabled": ["lights"]}
+        await storage.save("enabled", document)
+        document["disabled"].append("changed after save")
+
+        loaded = await storage.load("enabled")
+        loaded["disabled"].append("changed after load")
+
+        assert await storage.load("enabled") == {"disabled": ["lights"]}
+
+    async def test_enabled_flags_through_each_backend(self, storage: StorageBackend) -> None:
+        """Test the enabled flags survive a restart on each implementation."""
+        from haanim.engine.control import EnabledFlags  # pylint: disable=import-outside-toplevel
+
+        before = EnabledFlags(storage)
+        await before.load()
+        await before.set_enabled("lights", False)
+
+        after = EnabledFlags(storage)
+        await after.load()
+
+        assert not after.is_enabled("lights")
+        assert after.is_enabled("heating")

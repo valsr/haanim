@@ -13,6 +13,7 @@ from haanim.testing import (
     FakeAutomationRegistry,
     FakeClock,
     FakeIssueReporter,
+    FakeStorage,
     FakeSunProvider,
     LocalFileSystem,
     make_host,
@@ -38,6 +39,7 @@ def mock_host(states: Any = None, events: Any = None) -> Host:
         sun=FakeSunProvider(),
         files=LocalFileSystem(),
         issues=FakeIssueReporter(),
+        storage=FakeStorage(),
     )
 
 

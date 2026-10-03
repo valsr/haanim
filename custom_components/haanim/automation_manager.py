@@ -36,6 +36,7 @@ from haanim.engine.automation_status import AutomationStatus, AutomationStatusMa
 from haanim.engine.discovery import DiscoveredAutomation, FolderIssues, discover, last_modified
 from haanim.interfaces import Host
 from haanim.engine.callables import accepted_kwargs
+from haanim.engine.control import AutomationControl, EnabledFlags
 from haanim.engine.errors import (
     AutomationNotRunningError,
     HAAnimError,
@@ -92,6 +93,10 @@ class AutomationManager:
         self._contexts: dict[str, AutomationContext] = {}
         self._automations: dict[str, Automation] = {}
         self._triggers: TriggerRegistrar = NoTriggers()
+
+        # The persistent enabled flags and the control operations
+        self._flags = EnabledFlags(host.storage)
+        self._flags_loaded = False
         self._failed_automations: dict[str, str] = {}  # path -> error message
 
         # File watcher
@@ -109,6 +114,8 @@ class AutomationManager:
             max_workers=DEFAULT_MAX_CONCURRENT_ACTIONS,
             shutdown_timeout=DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
         )
+
+        self._control = AutomationControl(self._flags, self._action_pool)
 
         # State
         self._started = False
@@ -143,7 +150,7 @@ class AutomationManager:
         """
         # Load all automations, then start them one at a time in ascending ID order
         await self.async_load_all_automations()
-        await start_all(self._automations.values())
+        await start_all(self._automations.values(), self._control.is_enabled)
         self._started = True
 
         # Start file watcher
@@ -212,6 +219,7 @@ class AutomationManager:
             Dictionary mapping automation folder paths to their metadata or error message.
         """
         results: dict[str, AutomationMetadata | str] = {}
+        await self._load_flags()
 
         for found in await self._discover():
             automation_path = str(found.folder)
@@ -295,8 +303,9 @@ class AutomationManager:
         metadata = context.get_metadata()
         assert metadata is not None
 
-        # Start it right away if Home Assistant has already started (hot reload)
-        if self._started:
+        # Start it right away if Home Assistant has already started (hot reload), unless it is disabled
+        await self._load_flags()
+        if self._started and self._control.is_enabled(automation.automation_id):
             await automation.start()
 
         self.hass.bus.async_fire(
@@ -305,6 +314,7 @@ class AutomationManager:
                 "automation_path": automation_path,
                 "automation_id": metadata.id,
                 "state": automation.state.value,
+                "enabled": self._control.is_enabled(automation.automation_id),
                 "actions": [a.name for a in metadata.actions],
                 "triggers": len(metadata.triggers),
                 "has_startup": metadata.has_startup,
@@ -597,7 +607,7 @@ class AutomationManager:
         return await self._automation(automation_id).call_action(action_name, *args, **kwargs)
 
     async def async_enable_automation(self, automation_id: str) -> None:
-        """Enable an automation.
+        """Mark an automation enabled and start it. Does nothing if it is enabled.
 
         Args:
             automation_id: Automation identifier.
@@ -605,21 +615,12 @@ class AutomationManager:
         Raises:
             NonExistingAutomationError: If automation not found.
         """
-        # Find automation context
-        context = None
-        for ctx in self._contexts.values():
-            if ctx.automation_id == automation_id:
-                context = ctx
-                break
-
-        if context is None:
-            raise NonExistingAutomationError(automation_id)
-
-        context.metadata.enabled = True
+        await self._load_flags()
+        await self._control.enable(self._automation(automation_id))
         _LOGGER.info("Enabled automation: %s", automation_id)
 
     async def async_disable_automation(self, automation_id: str) -> None:
-        """Disable an automation.
+        """Stop an automation and mark it disabled. Does nothing if it is disabled.
 
         Args:
             automation_id: Automation identifier.
@@ -627,57 +628,82 @@ class AutomationManager:
         Raises:
             NonExistingAutomationError: If automation not found.
         """
-        # Find automation context
-        context = None
-        for ctx in self._contexts.values():
-            if ctx.automation_id == automation_id:
-                context = ctx
-                break
-
-        if context is None:
-            raise NonExistingAutomationError(automation_id)
-
-        context.metadata.enabled = False
+        await self._load_flags()
+        await self._control.disable(self._automation(automation_id))
         _LOGGER.info("Disabled automation: %s", automation_id)
 
     async def async_start_automation(self, automation_id: str) -> None:
-        """Start an automation.
+        """Start an automation. Does not change the enabled flag.
 
         Args:
             automation_id: Automation identifier.
 
         Raises:
             NonExistingAutomationError: If automation not found.
+            AutomationDisabledError: If the automation is disabled.
             AutomationAlreadyRunningError: If the automation is running.
         """
-        await self._automation(automation_id).start()
+        await self._load_flags()
+        await self._control.start(self._automation(automation_id))
         _LOGGER.info("Started automation: %s", automation_id)
 
     async def async_stop_automation(self, automation_id: str) -> None:
-        """Stop an automation.
+        """Stop an automation. Does not change the enabled flag.
 
         Args:
             automation_id: Automation identifier.
 
         Raises:
             NonExistingAutomationError: If automation not found.
+            AutomationDisabledError: If the automation is disabled.
             AutomationNotRunningError: If the automation is not running.
         """
-        await self._automation(automation_id).stop()
+        await self._load_flags()
+        await self._control.stop(self._automation(automation_id))
         _LOGGER.info("Stopped automation: %s", automation_id)
 
     async def async_restart_automation(self, automation_id: str) -> None:
-        """Restart an automation.
+        """Stop an automation and start it again.
 
         Args:
             automation_id: Automation identifier.
 
         Raises:
             NonExistingAutomationError: If automation not found.
+            AutomationDisabledError: If the automation is disabled.
+            AutomationNotRunningError: If the automation is not running.
         """
-        await self.async_stop_automation(automation_id)
-        await self.async_start_automation(automation_id)
+        await self._load_flags()
+        await self._control.restart(self._automation(automation_id))
         _LOGGER.info("Restarted automation: %s", automation_id)
+
+    def automation_state(self, automation_id: str) -> str:
+        """Return the state of an automation: ``unavailable``, ``off``, ``on`` or ``error``."""
+        return self.get_automation_state(automation_id).value
+
+    def automation_message(self, automation_id: str) -> str | None:
+        """Return why an automation is in the ``error`` state, or None."""
+        try:
+            return self._automation(automation_id).message
+        except NonExistingAutomationError:
+            return self._failed_message(automation_id)
+
+    def _failed_message(self, automation_id: str) -> str | None:
+        """Return the load error of an automation that could not be loaded, by ID."""
+        for path, message in self._failed_automations.items():
+            if self._automation_ids.get(path) == automation_id:
+                return message
+        return None
+
+    def is_automation_enabled(self, automation_id: str) -> bool:
+        """Return whether an automation is enabled."""
+        return self._control.is_enabled(automation_id)
+
+    async def _load_flags(self) -> None:
+        """Read the enabled flags from storage, once."""
+        if not self._flags_loaded:
+            await self._flags.load()
+            self._flags_loaded = True
 
     @property
     def action_pool(self) -> ActionWorkerPool:

@@ -32,6 +32,7 @@ __all__ = [
     "IssueReporter",
     "ServiceCaller",
     "StateProvider",
+    "StorageBackend",
     "SunProvider",
     "TimerHandle",
 ]
@@ -211,6 +212,27 @@ class FileSystem(Protocol):
         """
 
 
+class StorageBackend(Protocol):
+    """Durable storage of JSON documents, one per key.
+
+    What is saved survives a restart of the host.
+    """
+
+    async def load(self, key: str) -> Any:
+        """Return the document saved under a key, or None if there is none.
+
+        The caller owns what is returned: changing it does not change what is stored.
+        """
+
+    async def save(self, key: str, data: Any) -> None:
+        """Save a document under a key, replacing what was there.
+
+        Args:
+            key: Identifies the document.
+            data: Any JSON value. Later changes to it by the caller are not stored.
+        """
+
+
 class IssueReporter(Protocol):
     """Problems the owner has to fix, shown to them until they are fixed.
 
@@ -260,6 +282,15 @@ class AutomationRegistry(Protocol):
     async def async_restart_automation(self, automation_id: str) -> None:
         """Restart an automation."""
 
+    def automation_state(self, automation_id: str) -> str:
+        """Return the state of an automation: ``unavailable``, ``off``, ``on`` or ``error``."""
+
+    def automation_message(self, automation_id: str) -> str | None:
+        """Return why an automation is in the ``error`` state, or None."""
+
+    def is_automation_enabled(self, automation_id: str) -> bool:
+        """Return whether an automation is enabled."""
+
 
 @dataclass(frozen=True)
 class Host:
@@ -273,6 +304,7 @@ class Host:
         sun: Sunrise and sunset times.
         files: File access.
         issues: Where problems the owner has to fix are reported.
+        storage: Durable storage for what HAAnim has to remember across restarts.
         hass: What an automation gets from ``import hass``: the running Home
             Assistant instance. The engine never uses it itself. None if the
             host has none to offer.
@@ -285,4 +317,5 @@ class Host:
     sun: SunProvider
     files: FileSystem
     issues: IssueReporter
+    storage: StorageBackend
     hass: Any = None

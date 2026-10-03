@@ -9,6 +9,7 @@ all into a ``Host``.
 from __future__ import annotations
 
 import asyncio
+import copy
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry
 from homeassistant.helpers.service import async_get_all_descriptions
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.sun import get_astral_event_next
 from homeassistant.util import dt as dt_util
 
@@ -29,6 +31,9 @@ from haanim.interfaces import Host
 from haanim.types import ServiceInfo
 
 T = TypeVar("T")
+
+# Version of the documents HAAnim keeps in Home Assistant's storage
+STORAGE_VERSION = 1
 
 __all__ = ["HAClock", "HAFileSystem", "HAServiceCaller", "HASunProvider", "build_host"]
 
@@ -218,6 +223,33 @@ class HAIssueReporter:
         issue_registry.async_delete_issue(self._hass, DOMAIN, issue_id)
 
 
+class HAStorage:
+    """Documents kept in Home Assistant's ``.storage`` directory, one file per key."""
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        """Initialize the storage.
+
+        Args:
+            hass: Home Assistant instance.
+        """
+        self._hass = hass
+        self._stores: dict[str, Store[Any]] = {}
+
+    def _store(self, key: str) -> Store[Any]:
+        """Return the store of a key, creating it on first use."""
+        if key not in self._stores:
+            self._stores[key] = Store(self._hass, STORAGE_VERSION, f"{DOMAIN}.{key}")
+        return self._stores[key]
+
+    async def load(self, key: str) -> Any:
+        """Return a copy of the document saved under a key, or None."""
+        return copy.deepcopy(await self._store(key).async_load())
+
+    async def save(self, key: str, data: Any) -> None:
+        """Save a copy of a document."""
+        await self._store(key).async_save(copy.deepcopy(data))
+
+
 def build_host(hass: HomeAssistant, state_manager: StateManager, event_manager: EventManager) -> Host:
     """Bundle the Home Assistant implementations into a Host.
 
@@ -237,5 +269,6 @@ def build_host(hass: HomeAssistant, state_manager: StateManager, event_manager: 
         sun=HASunProvider(hass),
         files=HAFileSystem(hass),
         issues=HAIssueReporter(hass),
+        storage=HAStorage(hass),
         hass=hass,
     )

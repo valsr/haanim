@@ -286,35 +286,42 @@ class TestOtherAutomations:
         assert proxy.file_path == other.automation_path
         assert proxy.load_time == metadata.loaded_at
         assert proxy.actions == ["Add numbers", "greet"]
-        assert proxy.state == "off"
+        assert proxy.state == "on"
         assert proxy.message == ""
         assert proxy.run_time is None
         assert proxy.last_action_time is None
         assert proxy.error_message is None
-        assert proxy.is_running() is False
+        assert proxy.is_running() is True
         assert proxy.is_enabled() is True
 
-    async def test_proxy_reflects_metadata_changes(self, haa: HAAnim, other: AutomationContext) -> None:
-        """Test a proxy reads the automation's metadata each time."""
+    async def test_proxy_reflects_changes(
+        self, haa: HAAnim, other: AutomationContext, registry: FakeAutomationRegistry
+    ) -> None:
+        """Test a proxy asks the registry and the automation's metadata each time."""
         proxy = haa.automation("other")
         metadata = other.get_metadata()
         assert metadata is not None
         started = datetime(2025, 1, 1, 9, 0)
 
-        metadata.state = "on"
+        registry.states["other"] = "error"
+        registry.messages["other"] = "bad thing"
+        registry.disabled.add("other")
         metadata.message = "working"
         metadata.run_time = started
         metadata.last_action_time = started
-        metadata.error = "bad thing"
-        metadata.enabled = False
 
-        assert proxy.state == "on"
-        assert proxy.is_running() is True
+        assert proxy.state == "error"
+        assert proxy.is_running() is False
         assert proxy.message == "working"
         assert proxy.run_time == started
         assert proxy.last_action_time == started
         assert proxy.error_message == "bad thing"
         assert proxy.is_enabled() is False
+
+        registry.states["other"] = "on"
+        registry.disabled.clear()
+        assert proxy.is_running() is True
+        assert proxy.is_enabled() is True
 
     async def test_automations_lists_all(self, haa: HAAnim, other: AutomationContext) -> None:
         """Test haa.automations() returns a proxy per loaded automation."""
@@ -332,7 +339,8 @@ class TestOtherAutomations:
         assert proxy.last_action_time is None
         assert proxy.error_message is None
         assert proxy.is_running() is False
-        assert proxy.is_enabled() is False
+        # An automation HAAnim has never seen is enabled: that is what a new folder gets.
+        assert proxy.is_enabled() is True
 
     async def test_proxy_for_automation_that_failed_to_load(
         self, registry: FakeAutomationRegistry, tmp_path: Path
@@ -340,12 +348,15 @@ class TestOtherAutomations:
         """Test a proxy for a context without metadata reports defaults."""
         context = make_context(str(automation_file(tmp_path, "broken")), registry=registry)
         registry.add(context)
+        registry.states["broken"] = "error"
+        registry.messages["broken"] = "main.py:1: invalid syntax"
         proxy = HAAnimAutomationProxy("broken", registry)
-        assert proxy.state == "off"
+        assert proxy.state == "error"
+        assert proxy.error_message == "main.py:1: invalid syntax"
         assert proxy.message == ""
         assert proxy.load_time is None
         assert proxy.actions == []
-        assert proxy.is_enabled() is False
+        assert proxy.is_running() is False
 
 
 class TestCallingActions:
@@ -385,7 +396,12 @@ class TestControl:
         await getattr(haa.automation("other"), operation)()
         assert registry.control_calls == [(operation, "other")]
 
-    @pytest.mark.parametrize("operation", ["enable", "disable", "stop", "restart"])
+    def test_no_self_enable(self, haa: HAAnim) -> None:
+        """Test haa has no enable(): a disabled automation is not running and cannot enable itself."""
+        assert not hasattr(HAAnim, "enable")
+        assert "enable" not in dir(haa)
+
+    @pytest.mark.parametrize("operation", ["disable", "stop", "restart"])
     async def test_self_control(
         self,
         host: Host,
