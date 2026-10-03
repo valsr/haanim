@@ -265,6 +265,7 @@ async def validate_files(
     *,
     imports: ImportController | None = None,
     restricted_builtins: Collection[str] = (),
+    relative_to: Path | None = None,
 ) -> dict[Path, ast.Module]:
     """Check every source file of an automation.
 
@@ -276,6 +277,8 @@ async def validate_files(
         paths: The source files to check.
         imports: The import rules. Imports are not checked if omitted.
         restricted_builtins: Names of the builtins that are disabled.
+        relative_to: The automation's folder. Problems are reported with the
+            file's path within it; with the bare file name if omitted.
 
     Returns:
         The parsed module of each file.
@@ -291,7 +294,8 @@ async def validate_files(
     problems: list[Problem] = []
 
     for path in paths:
-        tree, found = check_source(await files.read_text(path), path.name, imports, restricted_builtins)
+        name = path.name if relative_to is None else path.relative_to(relative_to).as_posix()
+        tree, found = check_source(await files.read_text(path), name, imports, restricted_builtins)
         problems.extend(found)
         if tree is not None:
             trees[path] = tree

@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 from haanim.engine.callables import as_coroutine_function
-from tests.engine.helpers import make_context
+from tests.engine.helpers import automation_file, make_context
 
 
 def sync_function() -> int:
@@ -93,7 +93,7 @@ class TestAsCoroutineFunction:
     @pytest.mark.parametrize("definition", ["def", "async def"])
     async def test_automation_functions_need_awaiting(self, tmp_path: Path, definition: str) -> None:
         """Test a function defined in an automation runs as a coroutine whether written def or async def."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text(
             "from haanim import action\n" f"@action\n{definition} compute():\n    return 7\n",
             encoding="utf-8",
@@ -135,7 +135,7 @@ class TestAutomationFunctionsActuallyRun:
     @pytest.fixture
     async def context(self, tmp_path: Path) -> Any:
         """A loaded automation with a def action, an async def action and a helper."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text(AUTOMATION, encoding="utf-8")
         context = make_context(str(path))
         await context.load()

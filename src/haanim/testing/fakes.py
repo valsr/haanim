@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from haanim.engine.errors import ActionNotFoundError, NonExistingAutomationError, ServiceCallError
-from haanim.interfaces import FileSystem, Host
+from haanim.interfaces import FileSystem, Host, IssueReporter
 from haanim.types import EventData, ServiceInfo, StateChangedEvent, StateVal
 
 if TYPE_CHECKING:
@@ -27,6 +27,7 @@ __all__ = [
     "FakeClock",
     "FakeEventBus",
     "FakeFileSystem",
+    "FakeIssueReporter",
     "FakeServiceCaller",
     "FakeStateProvider",
     "FakeSunProvider",
@@ -575,8 +576,8 @@ class FakeFileSystem:
     # --- FileSystem protocol ----------------------------------------------------
 
     def exists(self, path: Path) -> bool:
-        """Return whether the file exists."""
-        return Path(path) in self._files
+        """Return whether the file or directory exists."""
+        return Path(path) in self._files or self.is_dir(path)
 
     def modified_time(self, path: Path) -> datetime:
         """Return when the file was last written.
@@ -596,6 +597,22 @@ class FakeFileSystem:
         if Path(path) in self._unreadable:
             raise PermissionError(f"Permission denied: {path}")
         return self._entry(path)[0]
+
+    def is_dir(self, path: Path) -> bool:
+        """Return whether the path is a directory: something that has files below it."""
+        return any(Path(path) in file.parents for file in self._files)
+
+    async def list_dir(self, path: Path) -> list[Path]:
+        """Return the files and directories directly in a directory, sorted.
+
+        Raises:
+            FileNotFoundError: If the path is not a directory.
+        """
+        directory = Path(path)
+        if not self.is_dir(directory):
+            raise FileNotFoundError(f"No such directory: {path}")
+        depth = len(directory.parts)
+        return sorted({Path(*file.parts[: depth + 1]) for file in self._files if directory in file.parents})
 
     def _entry(self, path: Path) -> tuple[str, datetime]:
         try:
@@ -638,6 +655,35 @@ class LocalFileSystem:
     async def read_text(self, path: Path) -> str:
         """Return the file's contents decoded as UTF-8."""
         return Path(path).read_text(encoding="utf-8")
+
+    def is_dir(self, path: Path) -> bool:
+        """Return whether the path is an existing directory."""
+        return Path(path).is_dir()
+
+    async def list_dir(self, path: Path) -> list[Path]:
+        """Return the files and directories directly in a directory, sorted."""
+        return sorted(Path(path).iterdir())
+
+
+class FakeIssueReporter:
+    """Issues held in memory."""
+
+    def __init__(self) -> None:
+        """Initialize with no issues."""
+        self.issues: dict[str, tuple[str, dict[str, str]]] = {}
+        """The issues currently raised: ``(key, placeholders)`` by issue ID."""
+        self.history: list[tuple[str, str]] = []
+        """``("report" | "clear", issue_id)`` for every call, oldest first."""
+
+    def report(self, issue_id: str, key: str, placeholders: dict[str, str]) -> None:
+        """Raise or replace an issue."""
+        self.issues[issue_id] = (key, dict(placeholders))
+        self.history.append(("report", issue_id))
+
+    def clear(self, issue_id: str) -> None:
+        """Remove an issue. Does nothing if it is not raised."""
+        self.issues.pop(issue_id, None)
+        self.history.append(("clear", issue_id))
 
 
 class FakeAutomationRegistry:
@@ -717,6 +763,7 @@ def make_host(
     clock: FakeClock | None = None,
     sun: FakeSunProvider | None = None,
     files: FileSystem | None = None,
+    issues: IssueReporter | None = None,
     hass: Any = None,
 ) -> Host:
     """Build a Host from fakes.
@@ -736,5 +783,6 @@ def make_host(
         clock=clock,
         sun=sun or FakeSunProvider(),
         files=files or FakeFileSystem(clock),
+        issues=issues or FakeIssueReporter(),
         hass=hass,
     )

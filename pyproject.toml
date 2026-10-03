@@ -144,7 +144,7 @@ addopts = [
     "--cov-report=html:htmlcov",
     "--cov-report=xml:coverage.xml",
     # Ratchet: raised at the end of each phase in _implementation.md, never lowered. Target is 80.
-    "--cov-fail-under=81",
+    "--cov-fail-under=82",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
@@ -171,7 +171,7 @@ exclude_lines = [
     "@abstractmethod",
     "@abc.abstractmethod",
 ]
-fail_under = 81
+fail_under = 82
 show_missing = true
 skip_covered = false
 precision = 0

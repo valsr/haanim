@@ -20,7 +20,7 @@ from haanim.engine.errors import PUBLIC_ERRORS, AutomationRuntimeError
 from haanim.engine.haanim_api import HAAnim
 from haanim.engine.haanim_module import DECORATORS, EVENT_CLASSES, DecoratorRegistry, build_haanim_module
 from haanim.engine.logging_wrapper import LoggerWrapper
-from tests.engine.helpers import make_context
+from tests.engine.helpers import automation_file, make_context
 
 # Names the engine used to put into every automation's namespace without an import.
 FORMERLY_INJECTED = [
@@ -67,8 +67,8 @@ class TestPerAutomationInstance:
 
     async def test_two_automations_get_distinct_instances(self, tmp_path: Path) -> None:
         """Nothing imported from ``haanim`` is shared between two automations."""
-        lights = await loaded(tmp_path / "lights.py", self.SOURCE)
-        heating = await loaded(tmp_path / "heating.py", self.SOURCE)
+        lights = await loaded(automation_file(tmp_path, "lights"), self.SOURCE)
+        heating = await loaded(automation_file(tmp_path, "heating"), self.SOURCE)
 
         assert isinstance(lights.get_symbol("haa"), HAAnim)
         assert lights.get_symbol("haa") is not heating.get_symbol("haa")
@@ -78,8 +78,8 @@ class TestPerAutomationInstance:
 
     async def test_haa_id_is_the_importing_automation(self, tmp_path: Path) -> None:
         """``haa.id`` names the automation that imported it."""
-        lights = await loaded(tmp_path / "lights.py", self.SOURCE)
-        heating = await loaded(tmp_path / "heating.py", self.SOURCE)
+        lights = await loaded(automation_file(tmp_path, "lights"), self.SOURCE)
+        heating = await loaded(automation_file(tmp_path, "heating"), self.SOURCE)
 
         assert lights.get_symbol("haa").id == "lights"
         assert heating.get_symbol("haa").id == "heating"
@@ -89,7 +89,7 @@ class TestPerAutomationInstance:
     async def test_every_import_gives_the_same_objects(self, tmp_path: Path) -> None:
         """Within one automation, repeated imports give the one instance."""
         context = await loaded(
-            tmp_path / "auto.py",
+            automation_file(tmp_path, "auto"),
             "import haanim\nfrom haanim import haa\nfrom haanim import haa as again\n"
             "same = (haa is again, haanim.haa is haa)\n",
         )
@@ -98,7 +98,7 @@ class TestPerAutomationInstance:
 
     async def test_is_not_the_installed_package(self, tmp_path: Path) -> None:
         """The module an automation imports is built for it, not the ``haanim`` distribution."""
-        context = await loaded(tmp_path / "auto.py", "import haanim\n")
+        context = await loaded(automation_file(tmp_path, "auto"), "import haanim\n")
         module = context.get_symbol("haanim")
 
         assert isinstance(module, types.ModuleType)
@@ -110,8 +110,8 @@ class TestPerAutomationInstance:
         source = "from haanim import logging, log, log_info\nlogging.warning('one')\nlog.warning('two')\nlog_info('x')\n"
 
         with caplog.at_level("WARNING"):
-            lights = await loaded(tmp_path / "lights.py", source)
-            await loaded(tmp_path / "heating.py", source)
+            lights = await loaded(automation_file(tmp_path, "lights"), source)
+            await loaded(automation_file(tmp_path, "heating"), source)
 
         assert isinstance(lights.get_symbol("logging"), LoggerWrapper)
         names = [
@@ -128,7 +128,7 @@ class TestNothingIsInjected:
     @pytest.mark.parametrize("name", FORMERLY_INJECTED)
     async def test_name_is_not_defined_without_an_import(self, tmp_path: Path, name: str) -> None:
         """Using a HAAnim name without importing it is a NameError."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text(f"value = {name}\n", encoding="utf-8")
         context = make_context(str(path))
 
@@ -140,13 +140,13 @@ class TestNothingIsInjected:
     @pytest.mark.parametrize("name", FORMERLY_INJECTED)
     async def test_name_can_be_imported(self, tmp_path: Path, name: str) -> None:
         """Every such name is available from ``haanim``."""
-        context = await loaded(tmp_path / "auto.py", f"from haanim import {name}\n")
+        context = await loaded(automation_file(tmp_path, "auto"), f"from haanim import {name}\n")
 
         assert context.get_symbol(name) is not None
 
     async def test_decorator_without_import_fails_the_load(self, tmp_path: Path) -> None:
         """``@action`` without the import does not load."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text("@action\ndef go():\n    pass\n", encoding="utf-8")
 
         with pytest.raises(AutomationRuntimeError, match="name 'action' is not defined"):
@@ -154,7 +154,7 @@ class TestNothingIsInjected:
 
     async def test_namespace_starts_with_builtins_only(self, tmp_path: Path) -> None:
         """An empty automation defines nothing of HAAnim's."""
-        context = await loaded(tmp_path / "auto.py", "x = 1\n")
+        context = await loaded(automation_file(tmp_path, "auto"), "x = 1\n")
 
         for name in FORMERLY_INJECTED:
             assert context.get_symbol(name) is None
@@ -219,7 +219,7 @@ class TestModuleContents:
 
     async def test_unknown_name(self, tmp_path: Path) -> None:
         """Importing a name the module does not have fails as in Python."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text("from haanim import no_such_name\n", encoding="utf-8")
 
         with pytest.raises(AutomationRuntimeError, match="cannot import name 'no_such_name' from 'haanim'"):
@@ -349,8 +349,10 @@ class TestDecoratorRegistry:
     async def test_decorators_register_to_the_importing_automation_only(self, tmp_path: Path) -> None:
         """Two automations with the same code have separate actions."""
         source = "from haanim import action\n\n@action\ndef go():\n    return __name__\n"
-        lights = await loaded(tmp_path / "lights.py", source)
-        heating = await loaded(tmp_path / "heating.py", source + "\n@action\ndef extra():\n    pass\n")
+        lights = await loaded(automation_file(tmp_path, "lights"), source)
+        heating = await loaded(
+            automation_file(tmp_path, "heating"), source + "\n@action\ndef extra():\n    pass\n"
+        )
 
         assert [action.name for action in lights.get_actions()] == ["go"]
         assert sorted(action.name for action in heating.get_actions()) == ["extra", "go"]
@@ -363,7 +365,7 @@ class TestDecoratorRegistry:
     async def test_undecorated_functions_are_not_actions(self, tmp_path: Path) -> None:
         """Only decorated functions become actions; the rest can still be run by name."""
         context = await loaded(
-            tmp_path / "auto.py",
+            automation_file(tmp_path, "auto"),
             "from haanim import action\n\ndef helper():\n    return 1\n\n@action\ndef go():\n    return helper()\n",
         )
 
@@ -376,12 +378,12 @@ class TestSubModules:
 
     async def test_sub_module_shares_the_instance(self, tmp_path: Path) -> None:
         """``haa`` in an imported file is the automation's, not a second one."""
-        (tmp_path / "helper.py").write_text(
+        (automation_file(tmp_path, "lights").parent / "helper.py").write_text(
             "import haanim\nfrom haanim import haa\ndef automation_id():\n    return haa.id\n",
             encoding="utf-8",
         )
         context = await loaded(
-            tmp_path / "lights.py",
+            automation_file(tmp_path, "lights"),
             "import haanim\nfrom haanim import haa\nfrom . import helper\n"
             "same = (helper.haa is haa, helper.haanim is haanim)\nwho = helper.automation_id()\n",
         )
@@ -391,12 +393,12 @@ class TestSubModules:
 
     async def test_action_in_a_sub_module_is_registered(self, tmp_path: Path) -> None:
         """An action defined in an imported file belongs to the importing automation."""
-        (tmp_path / "scenes.py").write_text(
+        (automation_file(tmp_path, "lights").parent / "scenes.py").write_text(
             "from haanim import action, haa\n\n@action\ndef evening():\n    return 'evening of ' + haa.id\n",
             encoding="utf-8",
         )
         context = await loaded(
-            tmp_path / "lights.py",
+            automation_file(tmp_path, "lights"),
             "from haanim import action\nfrom . import scenes\n\n@action\ndef morning():\n    return 'morning'\n",
         )
 
@@ -404,12 +406,12 @@ class TestSubModules:
         assert await context.run_action("evening") == "evening of lights"
 
     async def test_sub_module_does_not_register_elsewhere(self, tmp_path: Path) -> None:
-        """Two automations importing the same file each get their own copy of its actions."""
-        (tmp_path / "shared.py").write_text(
-            "from haanim import action, haa\n\n@action\ndef who():\n    return haa.id\n", encoding="utf-8"
-        )
-        lights = await loaded(tmp_path / "lights.py", "from . import shared\n")
-        heating = await loaded(tmp_path / "heating.py", "from . import shared\n")
+        """Two automations with the same file each get their own copy of its actions."""
+        source = "from haanim import action, haa\n\n@action\ndef who():\n    return haa.id\n"
+        for name in ("lights", "heating"):
+            (automation_file(tmp_path, name).parent / "shared.py").write_text(source, encoding="utf-8")
+        lights = await loaded(automation_file(tmp_path, "lights"), "from . import shared\n")
+        heating = await loaded(automation_file(tmp_path, "heating"), "from . import shared\n")
 
         assert await lights.run_action("who") == "lights"
         assert await heating.run_action("who") == "heating"
@@ -426,7 +428,7 @@ class TestUnload:
 
     async def test_instance_is_discarded(self, tmp_path: Path) -> None:
         """After unload nothing in the engine refers to the automation's objects."""
-        context = await loaded(tmp_path / "auto.py", self.SOURCE)
+        context = await loaded(automation_file(tmp_path, "auto"), self.SOURCE)
         references = [
             weakref.ref(context.get_symbol("haa")),
             weakref.ref(context.get_symbol("haanim")),
@@ -442,7 +444,7 @@ class TestUnload:
 
     async def test_unloaded_context_is_empty(self, tmp_path: Path) -> None:
         """An unloaded automation has no actions, functions or metadata."""
-        context = await loaded(tmp_path / "auto.py", self.SOURCE)
+        context = await loaded(automation_file(tmp_path, "auto"), self.SOURCE)
 
         context.unload()
 
@@ -456,7 +458,7 @@ class TestUnload:
 
     async def test_reload_builds_a_new_instance(self, tmp_path: Path) -> None:
         """Loading again after unload gives a fresh instance and registers the actions once."""
-        context = await loaded(tmp_path / "auto.py", self.SOURCE)
+        context = await loaded(automation_file(tmp_path, "auto"), self.SOURCE)
         first = weakref.ref(context.get_symbol("haa"))
 
         context.unload()
@@ -470,7 +472,7 @@ class TestUnload:
 
     async def test_unload_before_load(self, tmp_path: Path) -> None:
         """Unloading an automation that was never loaded does nothing."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text("x = 1\n", encoding="utf-8")
         context = make_context(str(path))
 

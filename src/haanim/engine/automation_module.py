@@ -67,6 +67,10 @@ class ModuleLoader:
         self._run_file = run_file
         self.modules: dict[Path, AutomationModule] = {}
 
+    def display_name(self, path: Path) -> str:
+        """Return the name to report a file of the automation by: its path within the automation."""
+        return path.relative_to(self._root).as_posix() if path.is_relative_to(self._root) else path.name
+
     async def import_from(self, importer: Path, node: ast.ImportFrom, scope: SymbolTable) -> None:
         """Evaluate a relative import statement.
 

@@ -16,10 +16,12 @@ from typing import Any, TypeVar
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import issue_registry
 from homeassistant.helpers.service import async_get_all_descriptions
 from homeassistant.helpers.sun import get_astral_event_next
 from homeassistant.util import dt as dt_util
 
+from custom_components.haanim.const import DOMAIN
 from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.ha.state import StateManager
 from haanim.engine.errors import ServiceCallError
@@ -165,10 +167,55 @@ class HAFileSystem:
         """Return the file's contents decoded as UTF-8."""
         return await self._hass.async_add_executor_job(_read_text, path)
 
+    def is_dir(self, path: Path) -> bool:
+        """Return whether the path is an existing directory."""
+        return path.is_dir()
+
+    async def list_dir(self, path: Path) -> list[Path]:
+        """Return the files and directories directly in a directory, sorted."""
+        return await self._hass.async_add_executor_job(_list_dir, path)
+
 
 def _read_text(path: Path) -> str:
     """Read a file as UTF-8 text."""
     return path.read_text(encoding="utf-8")
+
+
+def _list_dir(path: Path) -> list[Path]:
+    """List a directory in sorted order."""
+    return sorted(path.iterdir())
+
+
+class HAIssueReporter:
+    """Reports problems as Home Assistant repair issues."""
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        """Initialize the reporter.
+
+        Args:
+            hass: Home Assistant instance.
+        """
+        self._hass = hass
+
+    def report(self, issue_id: str, key: str, placeholders: dict[str, str]) -> None:
+        """Create or update a repair issue.
+
+        The owner fixes these by renaming or removing a folder, so they are
+        not fixable from the UI and disappear when ``clear`` is called.
+        """
+        issue_registry.async_create_issue(
+            self._hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            severity=issue_registry.IssueSeverity.WARNING,
+            translation_key=key,
+            translation_placeholders=placeholders,
+        )
+
+    def clear(self, issue_id: str) -> None:
+        """Delete a repair issue. Does nothing if it does not exist."""
+        issue_registry.async_delete_issue(self._hass, DOMAIN, issue_id)
 
 
 def build_host(hass: HomeAssistant, state_manager: StateManager, event_manager: EventManager) -> Host:
@@ -189,5 +236,6 @@ def build_host(hass: HomeAssistant, state_manager: StateManager, event_manager: 
         clock=HAClock(),
         sun=HASunProvider(hass),
         files=HAFileSystem(hass),
+        issues=HAIssueReporter(hass),
         hass=hass,
     )

@@ -808,7 +808,8 @@ class AstEvaluator:
             clock=self.clock,
             checkpoint_interval=self._checkpoint_interval,
         )
-        evaluator.parse(await self._files.read_text(path), filename=path.name)
+        filename = self.loader.display_name(path) if self.loader is not None else path.name
+        evaluator.parse(await self._files.read_text(path), filename=filename)
         await evaluator.execute()
 
     async def _eval_pass(self, node: ast.Pass, scope: SymbolTable) -> None:

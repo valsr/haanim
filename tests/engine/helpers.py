@@ -9,7 +9,14 @@ from unittest.mock import MagicMock
 from haanim.engine.automation_context import AutomationContext
 from haanim.engine.automation_status import AutomationStatusManager
 from haanim.interfaces import Host
-from haanim.testing import FakeAutomationRegistry, FakeClock, FakeSunProvider, LocalFileSystem, make_host
+from haanim.testing import (
+    FakeAutomationRegistry,
+    FakeClock,
+    FakeIssueReporter,
+    FakeSunProvider,
+    LocalFileSystem,
+    make_host,
+)
 
 
 def mock_host(states: Any = None, events: Any = None) -> Host:
@@ -30,28 +37,46 @@ def mock_host(states: Any = None, events: Any = None) -> Host:
         clock=clock,
         sun=FakeSunProvider(),
         files=LocalFileSystem(),
+        issues=FakeIssueReporter(),
     )
 
 
-def make_context(automation_path: str, *, host: Host | None = None, **kwargs: Any) -> AutomationContext:
-    """Build an AutomationContext for an automation file on disk.
+def automation_file(root: Path, name: str) -> Path:
+    """Create the folder of an automation and return the path of its ``main.py``.
 
-    Uses a fake host whose file system reads real files, a fresh status manager
-    and an empty registry unless given. Storage goes next to the automation file.
+    The file itself is not written; the test writes the source it needs.
 
     Args:
-        automation_path: Path to the automation file.
+        root: The automations folder.
+        name: Name of the automation's folder.
+    """
+    folder = root / name
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / "main.py"
+
+
+def make_context(automation_path: str, *, host: Host | None = None, **kwargs: Any) -> AutomationContext:
+    """Build an AutomationContext for an automation on disk.
+
+    Uses a fake host whose file system reads real files, a fresh status manager
+    and an empty registry unless given. Storage goes next to the automation.
+
+    Args:
+        automation_path: Path of the automation's folder, or of its ``main.py``.
         host: Host to use. A fake host reading real files if omitted.
         **kwargs: Passed on to AutomationContext, overriding the defaults.
     """
+    folder = Path(automation_path)
+    if folder.name == "main.py":
+        folder = folder.parent
     defaults: dict[str, Any] = {
         "status_manager": AutomationStatusManager(),
-        "storage_path": str(Path(automation_path).parent / ".storage"),
+        "storage_path": str(folder.parent / ".storage"),
         "registry": FakeAutomationRegistry(),
     }
     defaults.update(kwargs)
     return AutomationContext(
         host=host or make_host(files=LocalFileSystem()),
-        automation_path=automation_path,
+        automation_path=str(folder),
         **defaults,
     )

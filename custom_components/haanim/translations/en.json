@@ -83,5 +83,15 @@
             "name": "Get Config",
             "description": "Get the current HAAnim configuration"
         }
+    },
+    "issues": {
+        "folder_without_id": {
+            "title": "Automation folder \"{folder}\" is not loaded",
+            "description": "The folder name \"{folder}\" contains no letters or digits, so no automation ID can be derived from it. Rename the folder to load the automation."
+        },
+        "folder_id_collision": {
+            "title": "Automation folder \"{folder}\" is not loaded",
+            "description": "The folders \"{folder}\" and \"{winner}\" both give the automation ID \"{automation_id}\". \"{winner}\" is loaded because its name sorts first. Rename or remove one of the folders."
+        }
     }
 }

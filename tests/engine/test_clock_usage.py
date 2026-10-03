@@ -28,7 +28,7 @@ from haanim.engine.triggers import CronTrigger, IntervalTrigger, StateTrigger
 from haanim.interfaces import Host
 from haanim.testing import FakeAutomationRegistry, FakeClock, FakeServiceCaller, FakeStateProvider, make_host
 from haanim.testing.fakes import DEFAULT_NOW
-from tests.engine.helpers import make_context
+from tests.engine.helpers import automation_file, make_context
 
 UTC = timezone.utc
 
@@ -454,7 +454,7 @@ class TestAutomationOnClock:
 
     async def test_loaded_at(self, clock: FakeClock, tmp_path: Path) -> None:
         """Test an automation's load time is the clock's time at load."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text("x = 1\n", encoding="utf-8")
         await clock.advance(hours=1)
 
@@ -465,7 +465,7 @@ class TestAutomationOnClock:
 
     async def test_sleep_helper_uses_the_clock(self, clock: FakeClock, tmp_path: Path) -> None:
         """Test the sleep helper available to automations waits on the clock, not on real time."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text(
             "from haanim import action, sleep\n"
             "steps = []\n"

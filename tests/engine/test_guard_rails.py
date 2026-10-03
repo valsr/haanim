@@ -27,7 +27,7 @@ from haanim.engine.safe_builtins import SafeBuiltins
 from haanim.engine.symbol_table import SymbolTable
 from haanim.engine.validation import check_source, find_disallowed, validate_files, validate_source
 from haanim.testing import FakeFileSystem, make_host
-from tests.engine.helpers import make_context
+from tests.engine.helpers import automation_file, make_context
 
 # The lists of the design's Imports section, written out here on purpose:
 # the code must be changed together with the design, not on its own.
@@ -285,10 +285,10 @@ class TestImportOptions:
 
     async def test_additional_import_in_an_automation(self, tmp_path: Path) -> None:
         """An automation can import a module added through the option, and no other."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text("import colorsys\nvalue = colorsys.rgb_to_hls(1, 0, 0)[0]\n", encoding="utf-8")
 
-        with pytest.raises(AutomationSecurityError, match=r"^auto.py:1: import of module 'colorsys'"):
+        with pytest.raises(AutomationSecurityError, match=r"^main.py:1: import of module 'colorsys'"):
             await make_context(str(path)).load()
 
         context = make_context(str(path), additional_imports=["colorsys"])
@@ -297,7 +297,7 @@ class TestImportOptions:
 
     async def test_allow_all_in_an_automation(self, tmp_path: Path) -> None:
         """With allow-all an automation can import anything."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text("import os.path\nname = os.path.basename('/a/b')\n", encoding="utf-8")
         context = make_context(str(path), allow_all_imports=True)
 
@@ -524,7 +524,7 @@ class TestEngineSuppliedModules:
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Both spellings give the wrapper, and records reach the automation's logger."""
-        path = tmp_path / "lights.py"
+        path = automation_file(tmp_path, "lights")
         path.write_text(
             "import logging\nfrom haanim import logging as from_haanim\n"
             "same = logging is from_haanim\n"
@@ -544,7 +544,7 @@ class TestEngineSuppliedModules:
     async def test_hass_is_the_hosts_instance(self, tmp_path: Path) -> None:
         """``import hass`` gives the object the host supplies."""
         instance = object()
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text(
             "import hass\nfrom haanim import hass as from_haanim\nsame = hass is from_haanim\n",
             encoding="utf-8",
@@ -558,7 +558,7 @@ class TestEngineSuppliedModules:
 
     async def test_hass_without_an_instance(self, tmp_path: Path) -> None:
         """A host with no instance to offer makes the import fail at load, as a missing module."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text("import hass\n", encoding="utf-8")
         context = make_context(str(path))
 
@@ -567,7 +567,7 @@ class TestEngineSuppliedModules:
 
     async def test_haanim_module_is_supplied(self, tmp_path: Path) -> None:
         """``from haanim import ...`` gives the automation's own objects."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text(
             "from haanim import haa, action\nimport haanim\nsame = haanim.haa is haa\n", encoding="utf-8"
         )
@@ -745,11 +745,11 @@ class TestRelativeImports:
             await load("from . import helper\n")
 
     async def test_in_a_loaded_automation(self, tmp_path: Path) -> None:
-        """An automation on disk imports a file next to it and shares its ``haa``."""
-        (tmp_path / "helper.py").write_text(
+        """An automation on disk imports a file of its folder and shares its ``haa``."""
+        path = automation_file(tmp_path, "auto")
+        (path.parent / "helper.py").write_text(
             "from haanim import haa\ndef automation_id():\n    return haa.id\n", encoding="utf-8"
         )
-        path = tmp_path / "auto.py"
         path.write_text(
             "from haanim import action\n"
             "from haanim import haa\nfrom .helper import automation_id\nfrom . import helper\n"
@@ -761,6 +761,16 @@ class TestRelativeImports:
 
         assert context.get_symbol("same") is True
         assert await context.run_action("which") == "auto"
+
+    async def test_cannot_import_from_another_automation(self, tmp_path: Path) -> None:
+        """A relative import cannot reach the folder of another automation."""
+        other = automation_file(tmp_path, "heating")
+        other.write_text("SECRET = 1\n", encoding="utf-8")
+        path = automation_file(tmp_path, "lights")
+        path.write_text("from ..heating.main import SECRET\n", encoding="utf-8")
+
+        with pytest.raises(AutomationSecurityError, match="outside the automation"):
+            await make_context(str(path)).load()
 
 
 class TestSymbolsForModules:

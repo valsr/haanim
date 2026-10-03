@@ -29,6 +29,7 @@ __all__ = [
     "EventBus",
     "FileSystem",
     "Host",
+    "IssueReporter",
     "ServiceCaller",
     "StateProvider",
     "SunProvider",
@@ -199,6 +200,35 @@ class FileSystem(Protocol):
             OSError: If the file cannot be read.
         """
 
+    def is_dir(self, path: Path) -> bool:
+        """Return whether the path is an existing directory."""
+
+    async def list_dir(self, path: Path) -> list[Path]:
+        """Return the paths of the files and directories directly in a directory, sorted.
+
+        Raises:
+            OSError: If the path is not a directory that can be read.
+        """
+
+
+class IssueReporter(Protocol):
+    """Problems the owner has to fix, shown to them until they are fixed.
+
+    In Home Assistant these are repair issues.
+    """
+
+    def report(self, issue_id: str, key: str, placeholders: dict[str, str]) -> None:
+        """Raise an issue, or update it if it is already raised.
+
+        Args:
+            issue_id: Identifies the issue; reporting the same ID again replaces it.
+            key: The kind of issue, which selects the text shown.
+            placeholders: Values to put into that text.
+        """
+
+    def clear(self, issue_id: str) -> None:
+        """Remove an issue. Does nothing if it is not raised."""
+
 
 class AutomationRegistry(Protocol):
     """The set of loaded automations and the operations on them.
@@ -242,6 +272,7 @@ class Host:
         clock: Current time.
         sun: Sunrise and sunset times.
         files: File access.
+        issues: Where problems the owner has to fix are reported.
         hass: What an automation gets from ``import hass``: the running Home
             Assistant instance. The engine never uses it itself. None if the
             host has none to offer.
@@ -253,4 +284,5 @@ class Host:
     clock: Clock
     sun: SunProvider
     files: FileSystem
+    issues: IssueReporter
     hass: Any = None

@@ -20,7 +20,7 @@ from haanim.engine.callables import as_coroutine_function
 from haanim.engine.errors import ActionCancelledError
 from haanim.engine.eval_function import CHECKPOINT, NATIVE_CALL_WARNING_SECONDS, run_to_completion
 from haanim.testing import FakeClock, LocalFileSystem, make_host
-from tests.engine.helpers import make_context
+from tests.engine.helpers import automation_file, make_context
 
 ENGINE_DIR = Path(__file__).parents[2] / "src" / "haanim" / "engine"
 
@@ -298,7 +298,7 @@ class TestCancellation:
 
     async def test_endless_action_does_not_block_another_action(self, tmp_path: Path) -> None:
         """While one action loops forever, another action of the automation runs and returns."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text(
             "from haanim import action\n"
             "@action\ndef forever():\n    while True:\n        pass\n\n@action\ndef quick():\n    return 'done'\n",
@@ -403,7 +403,7 @@ class TestSingleLoop:
     async def test_action_runs_on_the_event_loop_thread(self, tmp_path: Path, definition: str) -> None:
         """Through the context, a def and an async def action both run on the calling thread."""
         threads: list[int] = []
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text(
             "from haanim import action\n" f"@action\n{definition} where():\n    return record()\n",
             encoding="utf-8",
@@ -516,7 +516,7 @@ class TestBlockingWarning:
         clock = SteppingClock(step=0.6)
         host = make_host(files=LocalFileSystem())
         object.__setattr__(host.clock, "now", clock.now)
-        path = tmp_path / "lights.py"
+        path = automation_file(tmp_path, "lights")
         path.write_text(
             "from haanim import action\n"
             "def slow(v):\n    for i in range(10):\n        pass\n    return v\n\n"
@@ -529,7 +529,7 @@ class TestBlockingWarning:
         with caplog.at_level(logging.WARNING):
             assert await context.run_action("order") == [1, 2]
 
-        assert "lights.py:2: function 'slow' of automation 'lights'" in caplog.text
+        assert "main.py:2: function 'slow' of automation 'lights'" in caplog.text
 
     def test_run_to_completion_reports_each_checkpoint(self) -> None:
         """The driver calls back once per skipped checkpoint."""

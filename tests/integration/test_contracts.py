@@ -18,16 +18,33 @@ from typing import Any, Protocol
 import pytest
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import issue_registry
 
 from custom_components.haanim.ha.events import EventManager
-from custom_components.haanim.ha.host import HAClock, HAFileSystem, HAServiceCaller, HASunProvider
+from custom_components.haanim.const import DOMAIN
+from custom_components.haanim.ha.host import (
+    HAClock,
+    HAFileSystem,
+    HAIssueReporter,
+    HAServiceCaller,
+    HASunProvider,
+)
 from custom_components.haanim.ha.state import StateManager
 from haanim.engine.errors import ServiceCallError
-from haanim.interfaces import Clock, EventBus, FileSystem, ServiceCaller, StateProvider, SunProvider
+from haanim.interfaces import (
+    Clock,
+    EventBus,
+    FileSystem,
+    IssueReporter,
+    ServiceCaller,
+    StateProvider,
+    SunProvider,
+)
 from haanim.testing import (
     FakeClock,
     FakeEventBus,
     FakeFileSystem,
+    FakeIssueReporter,
     FakeServiceCaller,
     FakeStateProvider,
     FakeSunProvider,
@@ -556,6 +573,7 @@ class FileSetup:
         if self.fake is not None:
             self.fake.write(path, content)
         else:
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
         return path
 
@@ -592,6 +610,130 @@ class TestFileSystemContract:
         """Test an empty file is read as an empty string."""
         path = file_setup.write("empty.py", "")
         assert await file_setup.files.read_text(path) == ""
+
+    async def test_directories(self, file_setup: FileSetup) -> None:
+        """Test a directory exists, is a directory, and a file is not one."""
+        path = file_setup.write("lights/main.py", "")
+        assert file_setup.files.is_dir(file_setup.root / "lights") is True
+        assert file_setup.files.exists(file_setup.root / "lights") is True
+        assert file_setup.files.is_dir(path) is False
+        assert file_setup.files.is_dir(file_setup.root / "missing") is False
+
+    async def test_list_dir(self, file_setup: FileSetup) -> None:
+        """Test a directory lists its direct children, files and directories, sorted."""
+        for name in ("zeta/main.py", "alpha/main.py", "alpha/lib/helper.py", "Beta/main.py", "flat.py"):
+            file_setup.write(name, "")
+
+        listed = await file_setup.files.list_dir(file_setup.root)
+        assert [path.name for path in listed] == ["Beta", "alpha", "flat.py", "zeta"]
+        assert all(path.parent == file_setup.root for path in listed)
+        inner = await file_setup.files.list_dir(file_setup.root / "alpha")
+        assert [path.name for path in inner] == ["lib", "main.py"]
+
+    async def test_list_missing_dir(self, file_setup: FileSetup) -> None:
+        """Test listing a directory that does not exist raises OSError."""
+        with pytest.raises(OSError):
+            await file_setup.files.list_dir(file_setup.root / "missing")
+
+    async def test_discovery_on_each_file_system(self, file_setup: FileSetup) -> None:
+        """Test discovery gives the same result through each implementation."""
+        from haanim.engine.discovery import discover, source_files  # pylint: disable=import-outside-toplevel
+
+        for name in (
+            "Lights/main.py",
+            "Lights/lib/helper.py",
+            "Lights/assets/skip.py",
+            "lights/main.py",
+            "flat.py",
+        ):
+            file_setup.write(name, "")
+
+        discovery = await discover(file_setup.files, file_setup.root)
+        assert [(found.automation_id, found.folder.name) for found in discovery.automations] == [
+            ("lights", "Lights")
+        ]
+        assert [(entry.folder, entry.winner) for entry in discovery.rejected] == [("lights", "Lights")]
+        sources = await source_files(file_setup.files, file_setup.root / "Lights")
+        assert [path.relative_to(file_setup.root).as_posix() for path in sources] == [
+            "Lights/main.py",
+            "Lights/lib/helper.py",
+        ]
+
+
+# --- IssueReporter ---------------------------------------------------------------
+
+
+@dataclass
+class IssueSetup:
+    """An issue reporter and a way to read back what it shows."""
+
+    issues: IssueReporter
+    shown: Callable[[], dict[str, tuple[str, dict[str, str]]]]
+
+
+@pytest.fixture(params=IMPLEMENTATIONS)
+def issue_setup(request: pytest.FixtureRequest, hass: HomeAssistant) -> IssueSetup:
+    """An issue reporter in each implementation."""
+    if request.param == "fake":
+        fake = FakeIssueReporter()
+        return IssueSetup(fake, lambda: dict(fake.issues))
+
+    def shown() -> dict[str, tuple[str, dict[str, str]]]:
+        registry = issue_registry.async_get(hass)
+        return {
+            issue_id: (issue.translation_key or "", dict(issue.translation_placeholders or {}))
+            for (domain, issue_id), issue in registry.issues.items()
+            if domain == DOMAIN
+        }
+
+    return IssueSetup(HAIssueReporter(hass), shown)
+
+
+class TestIssueReporterContract:
+    """Behaviour every IssueReporter must have."""
+
+    def test_report_and_clear(self, issue_setup: IssueSetup) -> None:
+        """Test a reported issue is shown until it is cleared."""
+        issue_setup.issues.report("rejected_folder_---", "folder_without_id", {"folder": "---"})
+        assert issue_setup.shown() == {"rejected_folder_---": ("folder_without_id", {"folder": "---"})}
+
+        issue_setup.issues.clear("rejected_folder_---")
+        assert issue_setup.shown() == {}
+
+    def test_report_again_replaces(self, issue_setup: IssueSetup) -> None:
+        """Test reporting the same ID again replaces the issue."""
+        placeholders = {"folder": "b", "automation_id": "x", "winner": "a"}
+        issue_setup.issues.report("rejected_folder_b", "folder_id_collision", placeholders)
+        issue_setup.issues.report("rejected_folder_b", "folder_id_collision", {**placeholders, "winner": "A"})
+
+        assert issue_setup.shown() == {
+            "rejected_folder_b": ("folder_id_collision", {"folder": "b", "automation_id": "x", "winner": "A"})
+        }
+
+    def test_clear_unknown_issue(self, issue_setup: IssueSetup) -> None:
+        """Test clearing an issue that is not raised does nothing."""
+        issue_setup.issues.clear("never_reported")
+        assert issue_setup.shown() == {}
+
+    def test_issues_are_independent(self, issue_setup: IssueSetup) -> None:
+        """Test clearing one issue leaves the others."""
+        issue_setup.issues.report("one", "folder_without_id", {"folder": "1"})
+        issue_setup.issues.report("two", "folder_without_id", {"folder": "2"})
+
+        issue_setup.issues.clear("one")
+        assert list(issue_setup.shown()) == ["two"]
+
+    def test_folder_issues_through_each_reporter(self, issue_setup: IssueSetup) -> None:
+        """Test rejected folders are raised and cleared through each implementation."""
+        from haanim.engine.automation_ids import assign_ids  # pylint: disable=import-outside-toplevel
+        from haanim.engine.discovery import FolderIssues  # pylint: disable=import-outside-toplevel
+
+        folder_issues = FolderIssues(issue_setup.issues)
+        folder_issues.update(assign_ids(["My Automation", "my-automation", "---"]).rejected)
+        assert sorted(issue_setup.shown()) == ["rejected_folder_---", "rejected_folder_my-automation"]
+
+        folder_issues.update(assign_ids(["My Automation"]).rejected)
+        assert issue_setup.shown() == {}
 
 
 class TestAutomationIdContract:

@@ -27,7 +27,7 @@ from haanim.engine.haanim_api import (
 )
 from haanim.interfaces import Host
 from haanim.testing import FakeAutomationRegistry, FakeServiceCaller, FakeStateProvider, make_host
-from tests.engine.helpers import make_context
+from tests.engine.helpers import automation_file, make_context
 
 AUTOMATION_SOURCE = """
 from haanim import action
@@ -83,7 +83,7 @@ def haa(host: Host, registry: FakeAutomationRegistry, tmp_path: Path) -> HAAnim:
 @pytest.fixture
 async def other(registry: FakeAutomationRegistry, tmp_path: Path) -> AutomationContext:
     """A loaded automation called ``other``, added to the registry."""
-    path = tmp_path / "other.py"
+    path = automation_file(tmp_path, "other")
     path.write_text(AUTOMATION_SOURCE, encoding="utf-8")
     context = make_context(str(path), registry=registry)
     await context.load()
@@ -338,7 +338,7 @@ class TestOtherAutomations:
         self, registry: FakeAutomationRegistry, tmp_path: Path
     ) -> None:
         """Test a proxy for a context without metadata reports defaults."""
-        context = make_context(str(tmp_path / "broken.py"), registry=registry)
+        context = make_context(str(automation_file(tmp_path, "broken")), registry=registry)
         registry.add(context)
         proxy = HAAnimAutomationProxy("broken", registry)
         assert proxy.state == "off"
@@ -364,7 +364,7 @@ class TestCallingActions:
         self, registry: FakeAutomationRegistry, host: Host, tmp_path: Path
     ) -> None:
         """Test haa.call() calls an action of the automation that owns the haa instance."""
-        path = tmp_path / "other.py"
+        path = automation_file(tmp_path, "other")
         path.write_text(AUTOMATION_SOURCE, encoding="utf-8")
         context = make_context(str(path), registry=registry)
         await context.load()

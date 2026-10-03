@@ -20,7 +20,7 @@ from haanim.engine.validation import (
     validate_source,
 )
 from haanim.testing import FakeFileSystem
-from tests.engine.helpers import make_context
+from tests.engine.helpers import automation_file, make_context
 
 # Each unsupported construct of the design's "Supported Python" section:
 # (source, line of the construct, text expected in the message).
@@ -364,11 +364,11 @@ class TestLoad:
     async def test_load_rejects_unsupported_construct(self, case: str, tmp_path: Path) -> None:
         """Loading fails with the file and line, and the automation is not loaded."""
         source, lineno, _ = UNSUPPORTED[case]
-        path = tmp_path / "lights.py"
+        path = automation_file(tmp_path, "lights")
         path.write_text(source)
         context = make_context(str(path))
 
-        with pytest.raises(AutomationSyntaxError, match=rf"^lights.py:{lineno}: "):
+        with pytest.raises(AutomationSyntaxError, match=rf"^main.py:{lineno}: "):
             await context.load()
 
         assert not context.is_loaded
@@ -376,11 +376,11 @@ class TestLoad:
     async def test_nothing_runs_when_a_later_line_is_unsupported(self, tmp_path: Path) -> None:
         """Code before the unsupported construct is not executed."""
         marker = tmp_path / "ran"
-        path = tmp_path / "lights.py"
+        path = automation_file(tmp_path, "lights")
         path.write_text(f"open({str(marker)!r}, 'w').close()\nran = True\n\ndef gen():\n    yield 1\n")
         context = make_context(str(path), allow_all_imports=True)
 
-        with pytest.raises(AutomationSyntaxError, match=r"^lights.py:5: "):
+        with pytest.raises(AutomationSyntaxError, match=r"^main.py:5: "):
             await context.load()
 
         assert not marker.exists()
@@ -388,11 +388,11 @@ class TestLoad:
 
     async def test_syntax_error_at_load(self, tmp_path: Path) -> None:
         """A syntax error is reported with the file and line."""
-        path = tmp_path / "lights.py"
+        path = automation_file(tmp_path, "lights")
         path.write_text("x = 1\n\ndef broken(:\n")
         context = make_context(str(path))
 
-        with pytest.raises(AutomationSyntaxError, match=r"^lights.py:3: invalid syntax"):
+        with pytest.raises(AutomationSyntaxError, match=r"^main.py:3: invalid syntax"):
             await context.load()
 
 

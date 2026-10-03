@@ -16,6 +16,7 @@ from haanim.testing import (
     FakeClock,
     FakeEventBus,
     FakeFileSystem,
+    FakeIssueReporter,
     FakeServiceCaller,
     FakeStateProvider,
     FakeSunProvider,
@@ -24,7 +25,7 @@ from haanim.testing import (
     make_host,
 )
 from haanim.testing.fakes import DEFAULT_NOW
-from tests.engine.helpers import make_context
+from tests.engine.helpers import automation_file, make_context
 
 UTC = timezone.utc
 
@@ -802,7 +803,7 @@ class TestFakeAutomationRegistry:
     @pytest.fixture
     async def loaded_context(self, tmp_path: Path) -> Any:
         """Load an automation with a sync and an async action."""
-        path = tmp_path / "lights.py"
+        path = automation_file(tmp_path, "lights")
         path.write_text(
             "from haanim import action\n"
             "@action\n"
@@ -926,3 +927,85 @@ class TestMakeHost:
         host = make_host()
         with pytest.raises(AttributeError):
             host.clock = FakeClock()  # type: ignore[misc]
+
+
+class TestFakeFileSystemDirectories:
+    """Directories of the in-memory file system exist through the files below them."""
+
+    async def test_directories_follow_files(self) -> None:
+        """A directory exists while it has a file below it."""
+        files = FakeFileSystem()
+        files.write("/a/b/c.py", "")
+
+        assert files.is_dir(Path("/a")) and files.is_dir(Path("/a/b"))
+        assert files.exists(Path("/a/b"))
+        assert not files.is_dir(Path("/a/b/c.py"))
+        assert await files.list_dir(Path("/a")) == [Path("/a/b")]
+
+        files.delete("/a/b/c.py")
+        assert not files.is_dir(Path("/a"))
+        assert not files.exists(Path("/a/b"))
+
+    async def test_list_dir(self) -> None:
+        """Direct children are listed once each, sorted."""
+        files = FakeFileSystem()
+        for path in ("/r/b/x.py", "/r/b/y.py", "/r/a.py", "/r/c/d/e.py", "/other/z.py"):
+            files.write(path, "")
+
+        assert await files.list_dir(Path("/r")) == [Path("/r/a.py"), Path("/r/b"), Path("/r/c")]
+
+    async def test_list_dir_of_a_file_or_missing_path(self) -> None:
+        """Only directories can be listed."""
+        files = FakeFileSystem()
+        files.write("/r/a.py", "")
+
+        for path in ("/r/a.py", "/missing"):
+            with pytest.raises(FileNotFoundError):
+                await files.list_dir(Path(path))
+
+
+class TestLocalFileSystemDirectories:
+    """The real file system lists directories the same way."""
+
+    async def test_list_dir(self, tmp_path: Path) -> None:
+        """Direct children are listed sorted."""
+        (tmp_path / "b").mkdir()
+        (tmp_path / "a.py").write_text("", encoding="utf-8")
+        files = LocalFileSystem()
+
+        assert await files.list_dir(tmp_path) == [tmp_path / "a.py", tmp_path / "b"]
+        assert files.is_dir(tmp_path / "b") and not files.is_dir(tmp_path / "a.py")
+
+
+class TestFakeIssueReporter:
+    """Issues are held in memory and every call is recorded."""
+
+    def test_report_clear_and_history(self) -> None:
+        """The current issues and the calls made are both available to a test."""
+        reporter = FakeIssueReporter()
+        placeholders = {"folder": "x"}
+
+        reporter.report("one", "kind", placeholders)
+        placeholders["folder"] = "changed afterwards"
+        reporter.clear("one")
+        reporter.clear("unknown")
+
+        assert reporter.issues == {}
+        assert reporter.history == [("report", "one"), ("clear", "one"), ("clear", "unknown")]
+
+    def test_placeholders_are_copied(self) -> None:
+        """Changing the caller's dict afterwards does not change the issue."""
+        reporter = FakeIssueReporter()
+        placeholders = {"folder": "x"}
+
+        reporter.report("one", "kind", placeholders)
+        placeholders["folder"] = "y"
+
+        assert reporter.issues["one"] == ("kind", {"folder": "x"})
+
+    def test_make_host_creates_a_reporter(self) -> None:
+        """A host built from fakes has an issue reporter, or the one given."""
+        given = FakeIssueReporter()
+
+        assert isinstance(make_host().issues, FakeIssueReporter)
+        assert make_host(issues=given).issues is given

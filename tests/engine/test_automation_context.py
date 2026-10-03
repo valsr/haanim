@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from haanim.testing import make_host
-from tests.engine.helpers import make_context
+from tests.engine.helpers import automation_file, make_context
 from haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
 from haanim.engine.automation_context import (
     ActionDefinition,
@@ -163,18 +163,18 @@ class TestAutomationContext:
     def test_init(self, mock_hass: MagicMock) -> None:
         """Test AutomationContext initialization."""
         host = make_host()
-        context = make_context("/automations/test.py", host=host)
+        context = make_context("/automations/test", host=host)
         assert context.host is host
-        assert context.automation_path == "/automations/test.py"
+        assert context.automation_path == "/automations/test"
         assert context.automation_id == "test"
-        assert context.filename == "test.py"
+        assert context.filename == "main.py"
 
     @pytest.mark.parametrize(
         ("path", "expected_name", "expected_filename"),
         [
-            ("/automations/my_automation.py", "my_automation", "my_automation.py"),
-            ("/home/user/automation.py", "automation", "automation.py"),
-            ("./test.py", "test", "test.py"),
+            ("/automations/my_automation", "my_automation", "main.py"),
+            ("/home/user/My Automation", "my_automation", "main.py"),
+            ("./Café  Lights.v2", "cafe_lights_v2", "main.py"),
         ],
     )
     def test_automation_id_from_path(
@@ -184,7 +184,7 @@ class TestAutomationContext:
         expected_name: str,
         expected_filename: str,
     ) -> None:
-        """Test automation name is derived from path."""
+        """Test the automation ID is the slug of the folder name."""
         context = make_context(
             automation_path=path,
         )
@@ -194,42 +194,42 @@ class TestAutomationContext:
     def test_is_loaded_initially_false(self, mock_hass: MagicMock) -> None:
         """Test is_loaded is False before loading."""
         context = make_context(
-            automation_path="/automations/test.py",
+            automation_path="/automations/test",
         )
         assert context.is_loaded is False
 
     def test_get_metadata_before_load(self, mock_hass: MagicMock) -> None:
         """Test get_metadata returns None before loading."""
         context = make_context(
-            automation_path="/automations/test.py",
+            automation_path="/automations/test",
         )
         assert context.get_metadata() is None
 
     def test_get_actions_before_load(self, mock_hass: MagicMock) -> None:
         """Test get_actions returns empty list before loading."""
         context = make_context(
-            automation_path="/automations/test.py",
+            automation_path="/automations/test",
         )
         assert context.get_actions() == []
 
     def test_get_triggers_before_load(self, mock_hass: MagicMock) -> None:
         """Test get_triggers returns empty list before loading."""
         context = make_context(
-            automation_path="/automations/test.py",
+            automation_path="/automations/test",
         )
         assert context.get_triggers() == []
 
     def test_get_startup_func_before_load(self, mock_hass: MagicMock) -> None:
         """Test get_startup_func returns None before loading."""
         context = make_context(
-            automation_path="/automations/test.py",
+            automation_path="/automations/test",
         )
         assert context.get_startup_func() is None
 
     def test_get_shutdown_func_before_load(self, mock_hass: MagicMock) -> None:
         """Test get_shutdown_func returns None before loading."""
         context = make_context(
-            automation_path="/automations/test.py",
+            automation_path="/automations/test",
         )
         assert context.get_shutdown_func() is None
 
@@ -249,15 +249,15 @@ class TestAutomationContextLoad:
         from haanim.engine.errors import HAAnimError
 
         context = make_context(
-            automation_path="/nonexistent/path/automation.py",
+            automation_path="/nonexistent/path/automation",
         )
 
-        with pytest.raises(HAAnimError, match="Automation file not found"):
+        with pytest.raises(HAAnimError, match="Automation has no main.py"):
             await context.load()
 
     async def test_load_simple_automation(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading a simple valid automation."""
-        automation_path = tmp_path / "test_automation.py"
+        automation_path = automation_file(tmp_path, "test_automation")
         automation_path.write_text(
             """
 from haanim import action
@@ -284,7 +284,7 @@ def my_action():
     ) -> None:
         """Test every public error can be imported from the haanim module by an automation."""
         name = error_class.__name__
-        automation_path = tmp_path / "imports_error.py"
+        automation_path = automation_file(tmp_path, "imports_error")
         automation_path.write_text(f"from haanim import {name}\nimported = {name}\n")
 
         context = make_context(str(automation_path))
@@ -296,7 +296,7 @@ def my_action():
         self, mock_hass: MagicMock, tmp_path: Any
     ) -> None:
         """Test errors outside the public list are not exported to automations."""
-        automation_path = tmp_path / "imports_internal.py"
+        automation_path = automation_file(tmp_path, "imports_internal")
         automation_path.write_text("from haanim import ShutdownTimeoutError\n")
 
         context = make_context(str(automation_path))
@@ -305,7 +305,7 @@ def my_action():
 
     async def test_load_automation_with_triggers(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading an automation with triggers."""
-        automation_path = tmp_path / "trigger_automation.py"
+        automation_path = automation_file(tmp_path, "trigger_automation")
         automation_path.write_text(
             """
 from haanim import state_trigger, time_trigger
@@ -332,7 +332,7 @@ def on_hour():
 
     async def test_load_automation_with_startup_shutdown(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading an automation with startup and shutdown."""
-        automation_path = tmp_path / "lifecycle_automation.py"
+        automation_path = automation_file(tmp_path, "lifecycle_automation")
         automation_path.write_text(
             """
 from haanim import startup, shutdown
@@ -361,7 +361,7 @@ def on_shutdown():
         """Test loading an automation with syntax error raises error."""
         from haanim.engine.errors import HAAnimError
 
-        automation_path = tmp_path / "bad_automation.py"
+        automation_path = automation_file(tmp_path, "bad_automation")
         automation_path.write_text(
             """
 def broken(:
@@ -373,7 +373,7 @@ def broken(:
             automation_path=str(automation_path),
         )
 
-        with pytest.raises(HAAnimError, match=r"^bad_automation.py:2: invalid syntax"):
+        with pytest.raises(HAAnimError, match=r"^main.py:2: invalid syntax"):
             await context.load()
 
 
@@ -391,7 +391,7 @@ class TestAutomationContextGetters:
 
     async def test_get_actions(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test get_actions returns action definitions."""
-        automation_path = tmp_path / "action_automation.py"
+        automation_path = automation_file(tmp_path, "action_automation")
         automation_path.write_text(
             """
 from haanim import action
@@ -413,7 +413,7 @@ def second():
 
     async def test_get_triggers(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test get_triggers returns trigger definitions."""
-        automation_path = tmp_path / "trigger_automation.py"
+        automation_path = automation_file(tmp_path, "trigger_automation")
         automation_path.write_text(
             """
 from haanim import state_trigger
@@ -431,7 +431,7 @@ def on_high():
 
     async def test_get_metadata(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test get_metadata returns automation metadata."""
-        automation_path = tmp_path / "meta_automation.py"
+        automation_path = automation_file(tmp_path, "meta_automation")
         automation_path.write_text(
             """
 from haanim import action
@@ -446,7 +446,8 @@ def test():
 
         metadata = context.get_metadata()
         assert metadata is not None
-        assert metadata.filename == "meta_automation.py"
+        assert metadata.filename == "main.py"
+        assert metadata.name == "meta_automation"
 
     def test_get_metadata_not_loaded(self, mock_hass: MagicMock) -> None:
         """Test get_metadata returns None when not loaded."""
@@ -455,7 +456,7 @@ def test():
 
     async def test_automation_id_property(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test automation_id property returns name without .py."""
-        automation_path = tmp_path / "my_cool_automation.py"
+        automation_path = automation_file(tmp_path, "my_cool_automation")
         automation_path.write_text("x = 1")
 
         context = make_context(str(automation_path))
@@ -463,11 +464,11 @@ def test():
 
     async def test_filename_property(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test filename property returns filename with .py."""
-        automation_path = tmp_path / "my_automation.py"
+        automation_path = automation_file(tmp_path, "my_automation")
         automation_path.write_text("x = 1")
 
         context = make_context(str(automation_path))
-        assert context.filename == "my_automation.py"
+        assert context.filename == "main.py"
 
 
 class TestAutomationContextEdgeCases:
@@ -484,7 +485,7 @@ class TestAutomationContextEdgeCases:
 
     async def test_load_minimal_automation(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading a minimal automation with just a variable."""
-        automation_path = tmp_path / "minimal.py"
+        automation_path = automation_file(tmp_path, "minimal")
         automation_path.write_text("x = 1")
 
         context = make_context(str(automation_path))
@@ -496,7 +497,7 @@ class TestAutomationContextEdgeCases:
 
     async def test_load_automation_with_action_name(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading an automation with @action decorator sets display name."""
-        automation_path = tmp_path / "my_automation.py"
+        automation_path = automation_file(tmp_path, "my_automation")
         automation_path.write_text(
             """
 from haanim import action
@@ -517,14 +518,14 @@ def do_something():
         """Test loading a non-existent automation raises HAAnimError."""
         from haanim.engine.errors import HAAnimError
 
-        context = make_context("/nonexistent/path.py")
+        context = make_context("/nonexistent/path")
 
-        with pytest.raises(HAAnimError, match="not found"):
+        with pytest.raises(HAAnimError, match="has no main.py"):
             await context.load()
 
     async def test_get_startup_func_none(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test get_startup_func returns None when no startup defined."""
-        automation_path = tmp_path / "no_startup.py"
+        automation_path = automation_file(tmp_path, "no_startup")
         automation_path.write_text("x = 1")
 
         context = make_context(str(automation_path))
@@ -534,7 +535,7 @@ def do_something():
 
     async def test_get_shutdown_func_none(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test get_shutdown_func returns None when no shutdown defined."""
-        automation_path = tmp_path / "no_shutdown.py"
+        automation_path = automation_file(tmp_path, "no_shutdown")
         automation_path.write_text("x = 1")
 
         context = make_context(str(automation_path))
@@ -557,7 +558,7 @@ class TestTriggersAsActions:
 
     async def test_triggered_function_is_action(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test that a function with triggers is automatically an action."""
-        automation_path = tmp_path / "trigger_automation.py"
+        automation_path = automation_file(tmp_path, "trigger_automation")
         automation_path.write_text(
             """
 from haanim import state_trigger
@@ -577,7 +578,7 @@ def on_high():
 
     async def test_multiple_triggers_single_action(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test that multiple triggers on one function still creates one action."""
-        automation_path = tmp_path / "multi_trigger.py"
+        automation_path = automation_file(tmp_path, "multi_trigger")
         automation_path.write_text(
             """
 from haanim import state_trigger, time_trigger
@@ -599,7 +600,7 @@ def multi_trigger():
 
     async def test_triggered_action_with_metadata(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test that triggered function with @action decorator gets metadata."""
-        automation_path = tmp_path / "trigger_with_action.py"
+        automation_path = automation_file(tmp_path, "trigger_with_action")
         automation_path.write_text(
             """
 from haanim import action, state_trigger
@@ -622,7 +623,7 @@ def custom_action():
 
     async def test_triggered_action_default_settings(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test that triggered function without @action gets default settings."""
-        automation_path = tmp_path / "trigger_only.py"
+        automation_path = automation_file(tmp_path, "trigger_only")
         automation_path.write_text(
             """
 from haanim import time_trigger
@@ -643,7 +644,7 @@ def evening_lights():
 
     async def test_action_without_trigger(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test that @action without triggers still works."""
-        automation_path = tmp_path / "action_only.py"
+        automation_path = automation_file(tmp_path, "action_only")
         automation_path.write_text(
             """
 from haanim import action
@@ -663,7 +664,7 @@ def manual_only():
 
     async def test_mixed_actions_and_triggers(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test automation with mix of actions, triggers, and combined."""
-        automation_path = tmp_path / "mixed.py"
+        automation_path = automation_file(tmp_path, "mixed")
         automation_path.write_text(
             """
 from haanim import action, state_trigger, time_trigger

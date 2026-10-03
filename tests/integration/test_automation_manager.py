@@ -207,28 +207,99 @@ class TestAutomationManagerLoading:
         assert result == {}
 
     @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_async_load_all_automations_skips_underscored(
+    async def test_async_load_all_automations_ignores_flat_files(
         self,
         mock_get_config: MagicMock,
         mock_hass: MagicMock,
         mock_entry: MagicMock,
         tmp_path: Any,
     ) -> None:
-        """Test loading skips files starting with underscore."""
+        """Test a Python file directly in the automations folder is not an automation."""
         mock_config = MagicMock()
         mock_config.get_automation_path.return_value = str(tmp_path)
         mock_config.get_import_allowlist.return_value = []
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        # Create a file starting with underscore
-        underscored = tmp_path / "_private.py"
-        underscored.write_text("x = 1")
+        (tmp_path / "flat.py").write_text("x = 1")
+        (tmp_path / "no_main").mkdir()
+        (tmp_path / "no_main" / "helper.py").write_text("x = 1")
 
         manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = await manager.async_load_all_automations()
 
-        assert str(underscored) not in result
+        assert result == {}
+
+    @patch("custom_components.haanim.automation_manager.get_config_manager")
+    async def test_async_load_all_automations_in_id_order_with_rejected_folders(
+        self,
+        mock_get_config: MagicMock,
+        mock_hass: MagicMock,
+        mock_entry: MagicMock,
+        tmp_path: Any,
+    ) -> None:
+        """Test folders are loaded in ascending ID order and unusable folder names are reported."""
+        mock_config = MagicMock()
+        mock_config.get_automation_path.return_value = str(tmp_path)
+        mock_config.get_import_allowlist.return_value = []
+        mock_config.get_allow_all_imports.return_value = False
+        mock_get_config.return_value = mock_config
+
+        for name in ("Zeta", "My Automation", "my-automation", "---", "alpha"):
+            (tmp_path / name).mkdir()
+            (tmp_path / name / "main.py").write_text("x = 1\n")
+        (tmp_path / "alpha" / "metadata.json").write_text('{"name": "Alpha", "version": "2.0"}')
+
+        host = make_host(files=LocalFileSystem())
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=host)
+        result = await manager.async_load_all_automations()
+
+        assert [metadata.id for metadata in result.values()] == ["alpha", "my_automation", "zeta"]
+        assert list(result) == [str(tmp_path / name) for name in ("alpha", "My Automation", "Zeta")]
+        alpha = result[str(tmp_path / "alpha")]
+        assert (alpha.name, alpha.version) == ("Alpha", "2.0")
+        assert manager.get_context_by_name("my_automation") is not None
+        assert host.issues.issues == {
+            "rejected_folder_---": ("folder_without_id", {"folder": "---"}),
+            "rejected_folder_my-automation": (
+                "folder_id_collision",
+                {"folder": "my-automation", "automation_id": "my_automation", "winner": "My Automation"},
+            ),
+        }
+
+        # Renaming the losing folder clears its issue on the next scan.
+        (tmp_path / "my-automation").rename(tmp_path / "other")
+        await manager.async_reload_all_automations()
+
+        assert sorted(host.issues.issues) == ["rejected_folder_---"]
+        assert manager.get_context_by_name("other") is not None
+
+    @patch("custom_components.haanim.automation_manager.get_config_manager")
+    async def test_failed_automation_is_recorded(
+        self,
+        mock_get_config: MagicMock,
+        mock_hass: MagicMock,
+        mock_entry: MagicMock,
+        tmp_path: Any,
+    ) -> None:
+        """Test an automation with invalid metadata fails to load without stopping the others."""
+        mock_config = MagicMock()
+        mock_config.get_automation_path.return_value = str(tmp_path)
+        mock_config.get_import_allowlist.return_value = []
+        mock_config.get_allow_all_imports.return_value = False
+        mock_get_config.return_value = mock_config
+
+        for name in ("bad", "good"):
+            (tmp_path / name).mkdir()
+            (tmp_path / name / "main.py").write_text("x = 1\n")
+        (tmp_path / "bad" / "metadata.json").write_text('{"name": 5}')
+
+        manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
+        result = await manager.async_load_all_automations()
+
+        assert result[str(tmp_path / "bad")] == "metadata.json: field 'name' must be a string, not a number"
+        assert not isinstance(result[str(tmp_path / "good")], str)
+        assert manager.get_failed_automations() == {str(tmp_path / "bad"): result[str(tmp_path / "bad")]}
 
     @patch("custom_components.haanim.automation_manager.get_config_manager")
     async def test_async_load_all_automations_loads_valid(
@@ -246,8 +317,9 @@ class TestAutomationManagerLoading:
         mock_get_config.return_value = mock_config
 
         # Create a valid automation
-        automation = tmp_path / "test_automation.py"
-        automation.write_text(
+        automation = tmp_path / "test_automation"
+        automation.mkdir()
+        (automation / "main.py").write_text(
             """
 from haanim import action
 @action
@@ -705,8 +777,9 @@ class TestAutomationManagerReload:
         mock_get_config.return_value = mock_config
 
         # Create automation file
-        automation = tmp_path / "test.py"
-        automation.write_text(
+        automation = tmp_path / "test"
+        automation.mkdir()
+        (automation / "main.py").write_text(
             """
 from haanim import action
 @action
@@ -735,8 +808,9 @@ def test_action():
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        automation = tmp_path / "maths.py"
-        automation.write_text(
+        automation = tmp_path / "maths"
+        automation.mkdir()
+        (automation / "main.py").write_text(
             """
 from haanim import action
 @action("Add numbers")
@@ -766,8 +840,11 @@ async def add(a, b):
         mock_config.get_allow_all_imports.return_value = False
         mock_get_config.return_value = mock_config
 
-        automation = tmp_path / "maths.py"
-        automation.write_text("from haanim import action\n" "@action\ndef add(a, b):\n    return a + b\n")
+        automation = tmp_path / "maths"
+        automation.mkdir()
+        (automation / "main.py").write_text(
+            "from haanim import action\n" "@action\ndef add(a, b):\n    return a + b\n"
+        )
 
         manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         await manager.async_load_automation(str(automation))
@@ -926,8 +1003,9 @@ class TestAutomationManagerStartupShutdown:
         mock_get_config.return_value = mock_config
 
         # Create invalid automation file
-        automation = tmp_path / "bad_automation.py"
-        automation.write_text("def broken(")
+        automation = tmp_path / "bad_automation"
+        automation.mkdir()
+        (automation / "main.py").write_text("def broken(")
 
         manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
 

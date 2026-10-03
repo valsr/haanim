@@ -257,7 +257,7 @@ custom_components/haanim/
 
 ## Example Script
 
-A comprehensive demo script has been created at `examples/demo_script.py` showcasing:
+A comprehensive demo automation has been created in `examples/demo/` (`main.py` and `metadata.json`) showcasing:
 - All trigger types
 - All execution modes
 - Entity access

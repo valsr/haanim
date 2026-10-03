@@ -62,6 +62,10 @@ class AutomationSyntaxError(SourceError):
     """
 
 
+class AutomationMetadataError(HAAnimError):
+    """Exception raised when an automation's ``metadata.json`` cannot be used."""
+
+
 class AutomationRuntimeError(HAAnimError):
     """Exception raised for runtime errors in automations."""
 

@@ -17,7 +17,7 @@ from haanim.engine.eval_function import FUNCTION_ATTRIBUTE, get_eval_function, r
 from haanim.engine.import_controller import ImportController
 from haanim.engine.symbol_table import SCOPE_CLASS, SCOPE_COMPREHENSION, SCOPE_FUNCTION, SymbolTable
 from haanim.engine.validation import validate_source
-from tests.engine.helpers import make_context
+from tests.engine.helpers import automation_file, make_context
 
 
 async def load(source: str) -> dict[str, Any]:
@@ -739,7 +739,7 @@ class TestEngineCalls:
     @pytest.mark.parametrize("definition", ["def", "async def"])
     async def test_action_without_parameters(self, tmp_path: Path, definition: str) -> None:
         """An action that declares no parameters is not given any."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text(
             "from haanim import action\n" f"@action\n{definition} compute():\n    return 7\n",
             encoding="utf-8",
@@ -752,7 +752,7 @@ class TestEngineCalls:
     @pytest.mark.parametrize("definition", ["def", "async def"])
     async def test_action_taking_manual(self, tmp_path: Path, definition: str) -> None:
         """An action that declares ``manual`` receives it."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text(
             "from haanim import action\n"
             f"@action\n{definition} compute(manual, extra=1):\n    return (manual, extra)\n",
@@ -765,7 +765,7 @@ class TestEngineCalls:
 
     async def test_action_using_a_class(self, tmp_path: Path) -> None:
         """An automation can define a class with methods and use it from an action."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text(
             "from haanim import action\n"
             "class Counter:\n"
@@ -789,12 +789,12 @@ class TestEngineCalls:
 
     async def test_top_level_await_fails_the_load(self, tmp_path: Path) -> None:
         """An automation that awaits at the top level is rejected and nothing runs."""
-        path = tmp_path / "auto.py"
+        path = automation_file(tmp_path, "auto")
         path.write_text("from haanim import sleep\nran = True\nawait sleep(1)\n", encoding="utf-8")
         context = make_context(str(path))
 
         with pytest.raises(
-            AutomationSyntaxError, match=r"^auto.py:3: invalid syntax: 'await' outside function"
+            AutomationSyntaxError, match=r"^main.py:3: invalid syntax: 'await' outside function"
         ):
             await context.load()
 

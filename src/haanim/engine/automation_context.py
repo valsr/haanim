@@ -7,7 +7,6 @@ symbol tables, metadata, and lifecycle management.
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -21,11 +20,15 @@ from haanim.engine import (
     SymbolTable,
 )
 from haanim.engine.ast_evaluator import AstEvaluator
+from haanim.engine.automation_ids import automation_id as derive_automation_id
 from haanim.engine.callables import accepted_kwargs, as_coroutine_function
 from haanim.engine.decorators import FunctionMetadata, get_metadata
+from haanim.engine.discovery import MAIN_FILENAME, has_main, last_modified, source_files
 from haanim.engine.errors import HAAnimError
 from haanim.engine.haanim_module import DecoratorRegistry, build_haanim_module
 from haanim.engine.logging_wrapper import create_logger_wrapper
+from haanim.engine.metadata import DEFAULT_VERSION, load_metadata
+from haanim.engine.validation import validate_files
 from haanim.engine.automation_status import AutomationStatusManager
 from haanim.interfaces import AutomationRegistry, Host
 
@@ -77,9 +80,13 @@ class AutomationMetadata:
     """Metadata about a loaded automation.
 
     Args:
-        name: Display name of the automation.
-        path: Filesystem path to the automation.
-        filename: Just the filename without path.
+        id: The automation's ID.
+        path: Path of the automation's folder.
+        filename: Name of the entry point within the folder.
+        name: Display name, from ``metadata.json`` or the folder name.
+        description: Short description, from ``metadata.json``.
+        author: Author, from ``metadata.json``.
+        version: Version string, from ``metadata.json``.
         loaded_at: When the automation was loaded.
         modified_at: Last modification time of the file.
         actions: List of manually executable actions.
@@ -96,6 +103,10 @@ class AutomationMetadata:
     id: str
     path: str
     filename: str
+    name: str = ""
+    description: str = ""
+    author: str = ""
+    version: str = DEFAULT_VERSION
     loaded_at: datetime | None = None
     modified_at: datetime | None = None
     actions: list[ActionDefinition] = field(default_factory=list[ActionDefinition])
@@ -122,6 +133,7 @@ class AutomationContext:
         host: Host,
         automation_path: str,
         *,
+        automation_id: str | None = None,
         status_manager: AutomationStatusManager,
         storage_path: str,
         registry: AutomationRegistry,
@@ -132,7 +144,8 @@ class AutomationContext:
 
         Args:
             host: The host the engine runs in.
-            automation_path: Path to the automation file.
+            automation_path: Path of the automation's folder, which holds its ``main.py``.
+            automation_id: The automation's ID. Derived from the folder name if omitted.
             status_manager: Where this automation's status is recorded.
             storage_path: Directory holding the persistent storage files of automations.
             registry: The loaded automations, used by ``haa`` to reach other automations.
@@ -144,8 +157,11 @@ class AutomationContext:
         self._storage_path = storage_path
         self._registry = registry
         self.automation_path = automation_path
-        self.filename = os.path.basename(automation_path)
-        self.automation_id = os.path.splitext(self.filename)[0].replace(" ", "_")
+        self.folder = Path(automation_path)
+        self.filename = MAIN_FILENAME
+        self.automation_id = automation_id or derive_automation_id(self.folder.name)
+        if not self.automation_id:
+            raise HAAnimError(f"Folder name '{self.folder.name}' gives no automation ID")
 
         # Create logger for this automation
         self._logger = logging.getLogger(f"{__name__}.{self.automation_id}")
@@ -245,7 +261,10 @@ class AutomationContext:
         self._shutdown_func = None
 
     async def load(self) -> AutomationMetadata:
-        """Load and parse the automation file.
+        """Load the automation from its folder.
+
+        Reads ``metadata.json``, checks every Python file of the folder, and
+        only then runs ``main.py``.
 
         Returns:
             AutomationMetadata with information about the loaded automation.
@@ -253,25 +272,31 @@ class AutomationContext:
         Raises:
             HAAnimError: If loading or parsing fails.
         """
-        path = Path(self.automation_path)
+        files = self.host.files
+        path = self.folder / MAIN_FILENAME
 
-        if not self.host.files.exists(path):
-            raise HAAnimError(f"Automation file not found: {self.automation_path}")
+        if not has_main(files, self.folder):
+            raise HAAnimError(f"Automation has no {MAIN_FILENAME}: {self.automation_path}")
 
-        # Read the source
-        try:
-            self._source = await self.host.files.read_text(path)
-        except OSError as err:
-            raise HAAnimError(f"Failed to read automation file: {err}") from err
-
-        if not self._source:
-            raise HAAnimError(f"Failed to read automation file: {self.automation_path}")
-
-        # Get file modification time
-        modified_at = self.host.files.modified_time(path)
+        info = await load_metadata(files, self.folder)
 
         # Build the automation's own haanim module
         self._build_modules()
+
+        # Check every file of the automation before any of it runs
+        try:
+            sources = await source_files(files, self.folder)
+            await validate_files(
+                files,
+                sources,
+                imports=self._import_controller,
+                restricted_builtins=self._safe_builtins.restricted,
+                relative_to=self.folder,
+            )
+            self._source = await files.read_text(path)
+            modified_at = await last_modified(files, self.folder)
+        except OSError as err:
+            raise HAAnimError(f"Failed to read automation '{self.automation_id}': {err}") from err
 
         # Create evaluator
         self._evaluator = AstEvaluator(
@@ -280,7 +305,7 @@ class AutomationContext:
             import_controller=self._import_controller,
             safe_builtins=self._safe_builtins,
             logger=self._logger,
-            files=self.host.files,
+            files=files,
             path=path,
             clock=self.host.clock,
         )
@@ -309,6 +334,10 @@ class AutomationContext:
             id=self.automation_id,
             path=self.automation_path,
             filename=self.filename,
+            name=info.name,
+            description=info.description,
+            author=info.author,
+            version=info.version,
             loaded_at=self.host.clock.now(),
             modified_at=modified_at,
             actions=list(self._actions.values()),

@@ -33,6 +33,7 @@ from haanim.engine.automation_context import (
     AutomationMetadata,
 )
 from haanim.engine.automation_status import AutomationStatus, AutomationStatusManager
+from haanim.engine.discovery import DiscoveredAutomation, FolderIssues, discover, last_modified
 from haanim.interfaces import Host
 from haanim.engine.errors import (
     ActionCancelledError,
@@ -85,7 +86,11 @@ class AutomationManager:
 
         # File watcher
         self._watcher_task: asyncio.Task[Any] | None = None
-        self._file_mtimes: dict[str, float] = {}
+        self._file_mtimes: dict[str, datetime] = {}
+
+        # Folders that are not loaded because of their name, kept in step with repair issues
+        self._folder_issues = FolderIssues(host.issues)
+        self._automation_ids: dict[str, str] = {}  # folder path -> automation ID
 
         # Action worker pool for concurrent execution
         self._action_pool = ActionWorkerPool(
@@ -169,35 +174,49 @@ class AutomationManager:
 
         _LOGGER.info("Automation manager stopped")
 
-    async def async_load_all_automations(self) -> dict[str, AutomationMetadata | str]:
-        """Load all Python automations from the automation folder.
+    async def _discover(self) -> list[DiscoveredAutomation]:
+        """Scan the automation folder and report the folders that cannot be loaded.
 
         Returns:
-            Dictionary mapping automation paths to their metadata or error message.
+            The automations to load, in ascending order of automation ID.
         """
-        folder = Path(self._automation_path)
+        discovery = await discover(self.host.files, Path(self._automation_path))
+        self._folder_issues.update(discovery.rejected)
+        for rejected in discovery.rejected:
+            _LOGGER.warning(
+                "Automation folder '%s' is not loaded: %s",
+                rejected.folder,
+                (
+                    f"its ID '{rejected.automation_id}' is taken by folder '{rejected.winner}'"
+                    if rejected.winner
+                    else "its name gives no automation ID"
+                ),
+            )
+        self._automation_ids = {str(found.folder): found.automation_id for found in discovery.automations}
+        return discovery.automations
+
+    async def async_load_all_automations(self) -> dict[str, AutomationMetadata | str]:
+        """Load every automation in the automation folder.
+
+        An automation is a folder that contains a ``main.py``. They are loaded
+        in ascending order of automation ID.
+
+        Returns:
+            Dictionary mapping automation folder paths to their metadata or error message.
+        """
         results: dict[str, AutomationMetadata | str] = {}
 
-        if not folder.exists():
-            _LOGGER.warning("Automation folder does not exist: %s", folder)
-            return results
-
-        # Find all .py files
-        for automation_path in folder.glob("*.py"):
-            # Skip files starting with underscore
-            if automation_path.name.startswith("_"):
-                continue
-
+        for found in await self._discover():
+            automation_path = str(found.folder)
             try:
-                metadata = await self.async_load_automation(str(automation_path))
-                results[str(automation_path)] = metadata
+                results[automation_path] = await self.async_load_automation(automation_path)
             except HAAnimError as err:
-                results[str(automation_path)] = str(err)
-                _LOGGER.error("Failed to load automation %s: %s", automation_path.name, err)
+                results[automation_path] = str(err)
+                _LOGGER.error("Failed to load automation %s: %s", found.automation_id, err)
             except Exception as err:  # pylint: disable=broad-exception-caught
                 # Catch any unexpected errors that aren't HAAnimError
-                results[str(automation_path)] = str(err)
-                _LOGGER.exception("Unexpected error loading automation %s: %s", automation_path.name, err)
+                results[automation_path] = str(err)
+                _LOGGER.exception("Unexpected error loading automation %s: %s", found.automation_id, err)
 
         _LOGGER.info(
             "Loaded %d automations (%d failed)",
@@ -207,11 +226,18 @@ class AutomationManager:
 
         return results
 
+    async def _modified_time(self, automation_path: str) -> datetime | None:
+        """Return when an automation's code or metadata last changed, or None if it cannot be told."""
+        try:
+            return await last_modified(self.host.files, Path(automation_path))
+        except OSError:
+            return None
+
     async def async_load_automation(self, automation_path: str) -> AutomationMetadata:
         """Load a single automation.
 
         Args:
-            automation_path: Path to the automation file.
+            automation_path: Path of the automation's folder.
 
         Returns:
             AutomationMetadata for the loaded automation.
@@ -227,6 +253,7 @@ class AutomationManager:
         context = AutomationContext(
             host=self.host,
             automation_path=automation_path,
+            automation_id=self._automation_ids.get(automation_path),
             status_manager=self._status_manager,
             storage_path=self._storage_path,
             registry=self,
@@ -234,15 +261,18 @@ class AutomationManager:
             allow_all_imports=self._allow_all_imports,
         )
 
+        # Record when the files last changed, for hot reload; also when loading fails,
+        # so that a broken automation is retried only once it has been edited
+        modified = await self._modified_time(automation_path)
+        if modified is not None:
+            self._file_mtimes[automation_path] = modified
+
         try:
             # Load the automation
             metadata = await context.load()
 
             # Store context
             self._contexts[automation_path] = context
-
-            # Record file mtime for hot reload
-            self._file_mtimes[automation_path] = Path(automation_path).stat().st_mtime
 
             # Remove from failed automations if present
             self._failed_automations.pop(automation_path, None)
@@ -352,21 +382,16 @@ class AutomationManager:
 
     async def _watch_automations(self) -> None:
         """Watch the automation folder for changes and hot-reload automations."""
-        folder = Path(self._automation_path)
-
         while not self._stop_event.is_set():
             try:
                 # Check for changes every 5 seconds
                 await asyncio.sleep(self._config.get_automation_refresh_interval())
 
-                if not folder.exists():
-                    continue
+                # Get the current automation folders
+                current_files = {str(found.folder) for found in await self._discover()}
 
-                # Get current files
-                current_files = {str(p) for p in folder.glob("*.py") if not p.name.startswith("_")}
-
-                # Check for new files
-                for automation_path in current_files:
+                # Check for new automations
+                for automation_path in sorted(current_files):
                     if (
                         automation_path not in self._contexts
                         and automation_path not in self._failed_automations
@@ -377,39 +402,27 @@ class AutomationManager:
                         except HAAnimError:
                             pass  # Error already logged
 
-                # Check for removed files
+                # Check for removed automations
                 for automation_path in list(self._contexts.keys()):
                     if automation_path not in current_files:
                         _LOGGER.info("Automation removed: %s", automation_path)
                         await self.async_unload_automation(automation_path)
-
-                # Check for modified files
-                for automation_path in list(self._contexts.keys()):
-                    try:
-                        current_mtime = Path(automation_path).stat().st_mtime
-                        if current_mtime > self._file_mtimes.get(automation_path, 0):
-                            _LOGGER.info("Automation modified: %s", automation_path)
-                            try:
-                                await self.async_reload_automation(automation_path)
-                            except HAAnimError:
-                                pass  # Error already logged
-                    except OSError:
-                        # File may have been deleted
-                        pass
-
-                # Retry failed automations
                 for automation_path in list(self._failed_automations.keys()):
-                    if automation_path in current_files:
-                        try:
-                            current_mtime = Path(automation_path).stat().st_mtime
-                            if current_mtime > self._file_mtimes.get(automation_path, 0):
-                                _LOGGER.info("Retrying failed automation: %s", automation_path)
-                                try:
-                                    await self.async_load_automation(automation_path)
-                                except HAAnimError:
-                                    pass
-                        except OSError:
-                            pass
+                    if automation_path not in current_files:
+                        self._failed_automations.pop(automation_path, None)
+                        self._file_mtimes.pop(automation_path, None)
+
+                # Check for modified automations, loaded or failed
+                for automation_path in [*self._contexts, *self._failed_automations]:
+                    modified = await self._modified_time(automation_path)
+                    recorded = self._file_mtimes.get(automation_path)
+                    if modified is None or (recorded is not None and modified <= recorded):
+                        continue
+                    _LOGGER.info("Automation modified: %s", automation_path)
+                    try:
+                        await self.async_load_automation(automation_path)
+                    except HAAnimError:
+                        pass  # Error already logged
 
             except asyncio.CancelledError:
                 break
