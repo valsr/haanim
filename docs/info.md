@@ -17,7 +17,7 @@ smart home.
 1. Open HACS in Home Assistant
 2. Go to "Integrations"
 3. Click the three dots menu (⋮) → "Custom repositories"
-4. Add repository URL: `https://gitlab.com/valsr/haanim`
+4. Add repository URL: `https://github.com/valsr/haanim`
 5. Category: "Integration"
 6. Click "Explore & Download Repositories"
 7. Search for "HAAnim"
@@ -40,8 +40,8 @@ After installation:
 
 ## 🐛 Issues & Support
 
-- **Report bugs**: <https://gitlab.com/valsr/haanim/issues>
-- **Documentation**: <https://gitlab.com/valsr/haanim>
+- **Report bugs**: <https://github.com/valsr/haanim/issues>
+- **Documentation**: <https://github.com/valsr/haanim>
 
 ## 📝 Requirements
 
@@ -49,4 +49,4 @@ After installation:
 
 ## 📄 License
 
-See [LICENSE](https://gitlab.com/valsr/haanim/-/blob/main/LICENSE) file in the repository.
+See [LICENSE](https://github.com/valsr/haanim/-/blob/main/LICENSE) file in the repository.

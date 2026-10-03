@@ -184,7 +184,7 @@ UV creates a virtual environment in `.venv/`:
 
 ```bash
 # Clone the repository
-git clone https://gitlab.com/valsr/haanim.git
+git clone https://github.com/valsr/haanim.git
 cd haanim
 
 # Install UV and dependencies
@@ -296,37 +296,15 @@ python --version
 
 ## CI/CD Integration
 
-### GitLab CI (Current Platform)
+### GitHub Actions (Current Platform)
 
-The project includes a comprehensive `.gitlab-ci.yml` that:
-- Tests on Python 3.13
+The project includes a comprehensive `.github/workflows/ci.yml` that:
+- Tests on Python 3.12 and 3.13
 - Runs all linting and formatting checks
 - Generates coverage reports
-- Caches dependencies for faster builds
+- Scans for committed secrets
 
-Example job from our GitLab CI:
-
-```yaml
-test:python3.12:
-  image: python:3.12
-  before_script:
-    - curl -LsSf https://astral.sh/uv/install.sh | sh
-    - export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
-    - uv sync --all-extras
-  script:
-    - uv run pytest --cov=custom_components/haanim --cov-report=xml
-  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
-```
-
-The full configuration is in `.gitlab-ci.yml` with stages:
-- **setup**: Prepare environment
-- **test**: Run tests on multiple Python versions
-- **lint**: Run Black, Pylint, Flake8, and Mypy
-- **security**: Secret detection
-
-### GitHub Actions (Alternative)
-
-For GitHub, use the provided `.github/workflows/ci.yml`:
+Example step from our GitHub Actions workflow:
 
 ```yaml
 steps:

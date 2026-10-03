@@ -11,7 +11,7 @@
 ### 1. Clone the Repository
 
 ```bash
-git clone https://gitlab.com/valsr/haanim.git
+git clone https://github.com/valsr/haanim.git
 cd haanim
 ```
 

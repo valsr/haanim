@@ -1,7 +1,7 @@
 # HAAnim
 
-[![pipeline status](https://img.shields.io/badge/pipeline-passing-brightgreen)](https://gitlab.com/valsr/haanim/-/pipelines)
-[![coverage report](https://img.shields.io/badge/coverage-check%20CI-blue)](https://gitlab.com/valsr/haanim/-/commits/main)
+[![CI](https://github.com/valsr/haanim/actions/workflows/ci.yml/badge.svg)](https://github.com/valsr/haanim/actions/workflows/ci.yml)
+[![coverage report](https://img.shields.io/badge/coverage-check%20CI-blue)](https://github.com/valsr/haanim/actions/workflows/ci.yml)
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![GitHub release](https://img.shields.io/github/release/valsr/haanim.svg)](https://github.com/valsr/haanim/releases)
 [![License](https://img.shields.io/github/license/valsr/haanim.svg)](LICENSE)
@@ -25,7 +25,7 @@ HAAnim is a custom integration for Home Assistant that allows you to [describe w
 #### Quick Install
 
 1. Open **HACS** → **⋮** (three dots) → **Custom repositories**
-2. Repository: `https://gitlab.com/valsr/haanim`
+2. Repository: `https://github.com/valsr/haanim`
 3. Category: **Integration**
 4. Click **ADD**
 
@@ -56,7 +56,7 @@ The fastest way to develop and test the integration is using the pre-configured 
 
 ```bash
 # Clone the repository
-git clone https://gitlab.com/valsr/haanim.git
+git clone https://github.com/valsr/haanim.git
 cd haanim
 
 # Build and start the development environment (one command!)
@@ -138,7 +138,7 @@ For local development without containers:
 
 ```bash
 # Clone the repository
-git clone https://gitlab.com/valsr/haanim.git
+git clone https://github.com/valsr/haanim.git
 cd haanim
 
 # Install UV (if not already installed)
@@ -199,13 +199,13 @@ make check     # Run all checks
 
 ## Continuous Integration
 
-This project uses GitLab CI for automated testing and quality checks. Every push and merge request triggers:
+This project uses GitHub Actions for automated testing and quality checks. Every push and pull request triggers:
 
 - **Code quality checks**: Black, Pylint, Flake8, and Mypy
 - **Coverage reporting**: Automatic coverage calculation and reporting
 - **Security scanning**: Secret detection and dependency scanning
 
-See [docs/GITLAB_CI_GUIDE.md](docs/GITLAB_CI_GUIDE.md) for detailed pipeline documentation.
+See [docs/GITHUB_CI_GUIDE.md](docs/GITHUB_CI_GUIDE.md) for detailed pipeline documentation.
 
 ## Contributing
 
@@ -215,7 +215,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 If you encounter any issues or have questions:
 
-- Open an issue on [GitLab](https://gitlab.com/valsr/haanim/-/issues)
+- Open an issue on [GitHub](https://github.com/valsr/haanim/issues)
 - Check the [Home Assistant Community](https://community.home-assistant.io/)
 
 ## License

@@ -33,7 +33,7 @@ The HAAnim project has been successfully migrated to use [UV](https://docs.astra
    - Includes installation, usage, workflows, and troubleshooting
 
 6. **`.github/workflows/ci.yml`**
-   - GitHub Actions CI workflow
+   - GitHub Actions CI workflow (primary)
    - Runs tests, linting, and formatting checks automatically
    - Uses UV for fast dependency installation
 
@@ -94,7 +94,7 @@ The HAAnim project has been successfully migrated to use [UV](https://docs.astra
 
 ```bash
 # Clone the repository
-git clone https://gitlab.com/valsr/haanim.git
+git clone https://github.com/valsr/haanim.git
 cd haanim
 
 # Install UV and all dependencies (one command!)
@@ -219,37 +219,27 @@ However, **UV is now the recommended approach** for consistency and speed.
 
 ## CI/CD
 
-### GitLab CI (Primary Platform)
+### GitHub Actions (Primary Platform)
 
-The project uses GitLab CI with comprehensive pipeline in `.gitlab-ci.yml`:
+The project uses GitHub Actions with a comprehensive pipeline in `.github/workflows/ci.yml`:
 
 **Features:**
-- Parallel test and lint jobs
-- Coverage reporting with artifacts
-- Caching for faster builds
-- Security scanning with secret detection
+- Matrix test job across Python 3.12 and 3.13
+- Separate lint job (Black, Pylint, Flake8, Mypy)
+- Coverage uploaded to Codecov and stored as a workflow artifact
+- Secret detection with Gitleaks
 
-**Pipeline Stages:**
-1. **Setup** - UV installation and dependency sync (cached)
-2. **Test** - Run pytest with coverage on multiple Python versions
-3. **Lint** - Black formatting, Pylint, Flake8, and Mypy checks
-4. **Security** - Secret detection and security scanning
-
-**Performance:**
-- First run: ~2-3 minutes (with caching)
-- Subsequent runs: ~30-60 seconds (cache hit)
-- Parallel execution of test and lint jobs
-
-### GitHub Actions (Alternative)
-
-A GitHub Actions workflow is also available in `.github/workflows/ci.yml` for projects that migrate to GitHub.
+**Jobs:**
+1. **test** - Run pytest with coverage on multiple Python versions
+2. **lint** - Black formatting, Pylint, Flake8, and Mypy checks
+3. **secret-detection** - Secret scanning with Gitleaks
 
 ## Next Steps
 
 1. **Add Real Tests**: The test structure is in place, add actual test implementations
-2. **Configure GitLab Coverage**: Coverage reports are generated automatically
+2. **Configure Codecov**: Add a `CODECOV_TOKEN` repository secret if the repo is private
 3. **Add Pre-commit Hooks**: Automate formatting and linting before commits
-4. **Pipeline Optimization**: Fine-tune cache settings for your workflow
+4. **Pipeline Optimization**: Fine-tune the UV setup for your workflow
 
 ## Resources
 

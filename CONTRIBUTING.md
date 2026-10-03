@@ -6,13 +6,13 @@ instructions for contributing to the project.
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://gitlab.com/YOUR_USERNAME/haanim.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/haanim.git`
 3. Create a new branch: `git checkout -b feature/your-feature-name`
 4. Make your changes
 5. Test your changes
 6. Commit your changes: `git commit -m "Add your feature"`
 7. Push to your fork: `git push origin feature/your-feature-name`
-8. Create a merge request
+8. Create a pull request
 
 ## Development Setup
 
@@ -22,7 +22,7 @@ The fastest way to develop and test:
 
 ```bash
 # Clone the repository
-git clone https://gitlab.com/valsr/haanim.git
+git clone https://github.com/valsr/haanim.git
 cd haanim
 
 # Build and start the development environment (one command!)
@@ -74,7 +74,7 @@ UV is a fast Python package manager that makes dependency management easy:
 
 ```bash
 # Clone the repository
-git clone https://gitlab.com/valsr/haanim.git
+git clone https://github.com/valsr/haanim.git
 cd haanim
 
 # Install UV and dependencies
@@ -101,7 +101,7 @@ If you prefer not to use UV:
 
 ```bash
 # Clone the repository
-git clone https://gitlab.com/valsr/haanim.git
+git clone https://github.com/valsr/haanim.git
 cd haanim
 
 # Create a virtual environment
@@ -125,7 +125,7 @@ pip install black flake8 pylint mypy pytest
 
 ## Testing
 
-Before submitting a merge request:
+Before submitting a pull request:
 
 1. Run the test suite: `make test` (or `uv run pytest`)
 2. Ensure code is formatted: `make format` (or `uv run black custom_components/haanim/`)
@@ -159,18 +159,18 @@ uv run pytest -v
 - Start with a verb in present tense (e.g., "Add", "Fix", "Update")
 - Reference issues when applicable (e.g., "Fix #123")
 
-## Merge Request Process
+## Pull Request Process
 
 1. Update the CHANGELOG.md with details of your changes
 2. Update the README.md if you've added new features or changed functionality
 3. Ensure your code follows the style guidelines
-4. Your merge request will be reviewed by maintainers
+4. Your pull request will be reviewed by maintainers
 
 ## Questions?
 
 If you have questions, feel free to:
 
-- Open an issue on GitLab
+- Open an issue on GitHub
 - Ask in the Home Assistant community forums
 
 ## Code of Conduct
