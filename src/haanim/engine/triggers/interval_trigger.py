@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from haanim.const import TRIGGER_INTERVAL
 from haanim.engine.triggers.base import BaseTrigger
+from haanim.events import IntervalEvent
 from haanim.interfaces import Host
 
 if TYPE_CHECKING:
@@ -97,7 +98,12 @@ class IntervalTrigger(BaseTrigger):
                 # Check constraints
                 if await self._check_constraints():
                     self._execution_count += 1
-                    await self._execute_function()
+                    event = self._event(
+                        IntervalEvent,
+                        interval_seconds=float(self._interval_seconds),
+                        execution_count=self._execution_count,
+                    )
+                    await self._execute_function(event)
 
                 # Wait for next interval
                 await self.host.clock.sleep(self._interval_seconds)

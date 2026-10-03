@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from haanim.engine.ast_evaluator import AstEvaluator
-from haanim.engine.callables import accepted_kwargs, as_coroutine_function
+from haanim.engine.callables import as_coroutine_function
 from haanim.engine.errors import AutomationRuntimeError, AutomationSyntaxError
 from haanim.engine.eval_function import FUNCTION_ATTRIBUTE, get_eval_function, run_to_completion
 from haanim.engine.import_controller import ImportController
@@ -704,35 +704,6 @@ class TestFunctionObjects:
         assert run_to_completion(checkpoints(), "f") == "done"
 
 
-class TestAcceptedKwargs:
-    """The engine passes a function only the context it declares."""
-
-    @pytest.mark.parametrize(
-        ("source", "expected"),
-        [
-            ("def f():\n    pass\n", {}),
-            ("def f(manual):\n    pass\n", {"manual": False}),
-            ("def f(value, *, manual=True):\n    pass\n", {"manual": False, "value": 1}),
-            ("def f(**context):\n    pass\n", {"manual": False, "value": 1, "extra": 2}),
-            ("def f(manual, /):\n    pass\n", {}),
-            ("f = lambda value: value\n", {"value": 1}),
-        ],
-        ids=["none", "one", "keyword-only", "var keyword", "positional-only", "lambda"],
-    )
-    async def test_automation_function(self, source: str, expected: dict[str, Any]) -> None:
-        """Only declared parameters are kept."""
-        func = (await load(source))["f"]
-
-        assert accepted_kwargs(func, {"manual": False, "value": 1, "extra": 2}) == expected
-
-    def test_callable_without_signature_gets_everything(self) -> None:
-        """A callable Python cannot inspect is given all of the context."""
-        offered = {"manual": False}
-
-        assert accepted_kwargs(dict.update, offered) == offered or accepted_kwargs(dict.update, offered) == {}
-        assert accepted_kwargs(type, offered) == offered
-
-
 class TestEngineCalls:
     """The engine runs def and async def actions the same way."""
 
@@ -748,20 +719,6 @@ class TestEngineCalls:
         await load_and_run(context)
 
         assert await context.run_action("compute") == 7
-
-    @pytest.mark.parametrize("definition", ["def", "async def"])
-    async def test_action_taking_manual(self, tmp_path: Path, definition: str) -> None:
-        """An action that declares ``manual`` receives it."""
-        path = automation_file(tmp_path, "auto")
-        path.write_text(
-            "from haanim import action\n"
-            f"@action\n{definition} compute(manual, extra=1):\n    return (manual, extra)\n",
-            encoding="utf-8",
-        )
-        context = make_context(str(path))
-        await load_and_run(context)
-
-        assert await context.run_action("compute", manual=True, extra=5) == (True, 5)
 
     async def test_action_using_a_class(self, tmp_path: Path) -> None:
         """An automation can define a class with methods and use it from an action."""

@@ -719,7 +719,7 @@ class TestAutomationManagerRunAction:
         manager._contexts["/tmp/test.py"] = mock_context
         running = MagicMock()
         running.automation_id = "test_automation"
-        running.accepts_calls.return_value = True
+        running.call_action = AsyncMock(side_effect=ActionNotFoundError("test_automation", "missing_action"))
         manager._automations["/tmp/test.py"] = running
 
         with pytest.raises(HAAnimError, match="not found"):
@@ -822,8 +822,8 @@ def test_action():
             """
 from haanim import action
 @action(name="Add numbers", aliases=["add"])
-async def add(a, b):
-    return a + b
+async def add(event):
+    return (event.data["a"] + event.data["b"], event.source, event.caller)
 """
         )
 
@@ -833,8 +833,10 @@ async def add(a, b):
         await manager.async_start_automation("maths")
         assert manager.get_automation_state("maths") is AutomationState.ON
 
-        assert await manager.async_call_action("maths", "add", 2, 3) == 5
-        assert await manager.async_call_action("maths", "Add numbers", a=4, b=5) == 9
+        assert await manager.async_call_action("maths", "add", {"a": 2, "b": 3}) == (5, "manual", None)
+        called = await manager.async_call_action("maths", "Add numbers", {"a": 4, "b": 5}, caller="lights")
+        assert called == (9, "automation", "lights")
+        assert await manager.async_run_action("maths", "add", {"a": 1, "b": 1}) == (2, "manual", None)
 
     @patch("custom_components.haanim.automation_manager.get_config_manager")
     async def test_async_call_action_errors(
@@ -853,9 +855,7 @@ async def add(a, b):
 
         automation = tmp_path / "maths"
         automation.mkdir()
-        (automation / "main.py").write_text(
-            "from haanim import action\n" "@action\ndef add(a, b):\n    return a + b\n"
-        )
+        (automation / "main.py").write_text("from haanim import action\n@action\ndef add():\n    return 1\n")
 
         manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         await manager.async_load_automation(str(automation))

@@ -808,12 +808,12 @@ class TestFakeAutomationRegistry:
         path.write_text(
             "from haanim import action\n"
             "@action\n"
-            "def add(a, b):\n"
-            "    return a + b\n"
+            "def add(event):\n"
+            "    return event.data['a'] + event.data['b']\n"
             "\n"
             "@action\n"
-            "async def greet(name='world'):\n"
-            "    return 'hello ' + name\n",
+            "async def greet(event):\n"
+            "    return 'hello ' + event.data.get('name', 'world')\n",
             encoding="utf-8",
         )
         context = make_context(str(path))
@@ -837,8 +837,11 @@ class TestFakeAutomationRegistry:
         """Test actions are called with their arguments and return their result."""
         registry = FakeAutomationRegistry()
         registry.add(loaded_context)
-        assert await registry.async_call_action("lights", "add", 2, 3) == 5
-        assert await registry.async_call_action("lights", "greet", name="there") == "hello there"
+        assert await registry.async_call_action("lights", "add", {"a": 2, "b": 3}) == 5
+        assert (
+            await registry.async_call_action("lights", "greet", {"name": "there"}, caller="heating")
+            == "hello there"
+        )
 
     async def test_call_action_unknown_automation(self) -> None:
         """Test calling into an automation that is not registered raises."""

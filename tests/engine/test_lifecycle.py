@@ -91,11 +91,18 @@ class World:
         automation = self.automations.get(automation_id)
         return automation.context if automation else None
 
-    async def async_call_action(self, automation_id: str, action_name: str, *args: Any, **kwargs: Any) -> Any:
+    async def async_call_action(
+        self,
+        automation_id: str,
+        action_name: str,
+        data: dict[str, Any] | None = None,
+        *,
+        caller: str | None = None,
+    ) -> Any:
         """Call an action through the automation's lifecycle, as the integration does."""
         if automation_id not in self.automations:
             raise NonExistingAutomationError(automation_id)
-        return await self.automations[automation_id].call_action(action_name, *args, **kwargs)
+        return await self.automations[automation_id].call_action(action_name, data, caller=caller)
 
     # --- Test controls ------------------------------------------------------------
 
@@ -566,7 +573,8 @@ RUNNING = """
 from haanim import action, shutdown, sleep, on_state, haa
 
 @action
-async def work(seconds):
+async def work(event):
+    seconds = event.data["seconds"]
     log.append("work started")
     try:
         await sleep(seconds)
@@ -625,7 +633,7 @@ class TestStop:
     async def test_running_action_finishes_within_the_grace_period(self, world: World) -> None:
         """An action that ends within the grace period is not cancelled, and its caller gets the result."""
         automation = await world.started("lights", RUNNING)
-        call = asyncio.create_task(automation.call_action("work", 0.3))
+        call = asyncio.create_task(automation.call_action("work", {"seconds": 0.3}))
         await world.clock.settle()
 
         stopping = asyncio.create_task(automation.stop())
@@ -638,7 +646,7 @@ class TestStop:
     async def test_running_action_is_cancelled_after_the_grace_period(self, world: World) -> None:
         """An action still running after the grace period is cancelled; its caller gets ActionCancelledError."""
         automation = await world.started("lights", RUNNING)
-        call = asyncio.create_task(automation.call_action("work", 100))
+        call = asyncio.create_task(automation.call_action("work", {"seconds": 100}))
         await world.clock.settle()
 
         stopping = asyncio.create_task(automation.stop())
@@ -678,7 +686,7 @@ class TestStop:
     async def test_no_new_calls_while_stopping(self, world: World) -> None:
         """Once stopping has begun, actions can no longer be called from outside."""
         automation = await world.started("lights", RUNNING)
-        call = asyncio.create_task(automation.call_action("work", 100))
+        call = asyncio.create_task(automation.call_action("work", {"seconds": 100}))
         await world.clock.settle()
         stopping = asyncio.create_task(automation.stop())
         await world.clock.settle()
@@ -864,11 +872,11 @@ class TestUnload:
     async def test_storage_is_kept(self, world: World) -> None:
         """Persistent storage survives stop and unload, as for a folder that is removed and put back."""
         source = (
-            "from haanim import action, haa\n\n@action\nasync def remember(value):\n"
-            "    await haa.set_variable('kept', value)\n\n@action\ndef recall():\n    return haa.get_variable('kept')\n"
+            "from haanim import action, haa\n\n@action\nasync def remember(event):\n"
+            "    await haa.set_variable('kept', event.data['value'])\n\n@action\ndef recall():\n    return haa.get_variable('kept')\n"
         )
         automation = await world.started("lights", source)
-        await automation.call_action("remember", "42")
+        await automation.call_action("remember", {"value": "42"})
         await automation.unload()
 
         again = await world.started("lights", source)

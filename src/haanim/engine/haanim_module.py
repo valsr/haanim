@@ -36,6 +36,8 @@ EVENT_CLASSES = (
     events.CronEvent,
     events.StateEvent,
     events.EventTriggerEvent,
+    events.ManualEvent,
+    events.AutomationEvent,
 )
 
 

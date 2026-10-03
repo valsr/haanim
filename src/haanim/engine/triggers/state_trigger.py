@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 from haanim.const import TRIGGER_STATE
 from haanim.engine.triggers.base import BaseTrigger
+from haanim.events import StateEvent
 from haanim.interfaces import Host
 from haanim.types import StateChangedEvent
 
@@ -203,11 +204,25 @@ class StateTrigger(BaseTrigger):
                 self._hold_and_execute(notification),
             )
         else:
-            await self._execute_function(
-                var_name=notification.entity_id,
-                value=notification.new_state,
-                old_value=notification.old_state,
+            await self._execute_function(self._state_event(notification))
+
+    def _state_event(self, notification: StateChangedEvent | None) -> StateEvent:
+        """Build the event of a firing.
+
+        Without a notification (the expression was already true when the
+        trigger was checked) the event describes the first watched entity as
+        it is now, with no old state.
+        """
+        if notification is not None:
+            return self._event(
+                StateEvent,
+                entity_id=notification.entity_id,
+                old_state=notification.old_state,
+                new_state=notification.new_state,
             )
+        entity_id = next(iter(self._watch_entities), "")
+        current = self.state_manager.get(entity_id) if entity_id else None
+        return self._event(StateEvent, entity_id=entity_id, old_state=None, new_state=current)
 
     async def _hold_and_execute(self, notification: StateChangedEvent) -> None:
         """Wait for hold period and execute if still true.
@@ -222,11 +237,7 @@ class StateTrigger(BaseTrigger):
             # Re-check trigger condition
             if self._evaluate_trigger():
                 if await self._check_constraints():
-                    await self._execute_function(
-                        var_name=notification.entity_id,
-                        value=notification.new_state,
-                        old_value=notification.old_state,
-                    )
+                    await self._execute_function(self._state_event(notification))
         except asyncio.CancelledError:
             pass
 
@@ -234,4 +245,4 @@ class StateTrigger(BaseTrigger):
         """Check trigger condition and execute if met."""
         if self._evaluate_trigger():
             if await self._check_constraints():
-                await self._execute_function()
+                await self._execute_function(self._state_event(None))

@@ -254,7 +254,7 @@ class TestRunActionView:
             await view.post(request)
             call_args = mock_json.call_args[0][0]
             assert call_args["success"] is True
-            mock_manager.async_run_action.assert_called_once_with("test", "action", manual=True)
+            mock_manager.async_run_action.assert_called_once_with("test", "action")
 
 
 class TestReloadAutomationsView:

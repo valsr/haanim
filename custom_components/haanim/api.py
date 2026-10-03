@@ -174,7 +174,7 @@ class RunActionView(HAAnimAPIView):
             return self.json({"success": False, "error": "Automation manager not available"})
 
         try:
-            await manager.async_run_action(automation_id, action_name, manual=True)
+            await manager.async_run_action(automation_id, action_name)
             return self.json({"success": True})
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.error("Failed to run action %s.%s: %s", automation_id, action_name, err)

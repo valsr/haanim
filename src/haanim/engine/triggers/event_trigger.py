@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from haanim import const
 from haanim.engine.triggers.base import BaseTrigger
+from haanim.events import EventTriggerEvent
 from haanim.interfaces import Host
 from haanim.types import EventData
 
@@ -93,10 +94,14 @@ class EventTrigger(BaseTrigger):
 
                 # Check constraints and execute
                 if await self._check_constraints():
-                    await self._execute_function(
+                    event = self._event(
+                        EventTriggerEvent,
                         event_type=notification.event_type,
-                        data=notification.data,
+                        event_data=notification.data,
+                        time_fired=notification.time_fired,
+                        user_id=notification.context_user_id,
                     )
+                    await self._execute_function(event)
 
             except asyncio.CancelledError:
                 break

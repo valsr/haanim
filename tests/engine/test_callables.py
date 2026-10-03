@@ -111,12 +111,14 @@ from haanim import action
 calls = []
 
 @action
-def sync_action(value=1, **kwargs):
+def sync_action(event):
+    value = event.data.get("value", 1)
     calls.append(("sync", value))
     return value * 2
 
 @action
-async def async_action(value=1, **kwargs):
+async def async_action(event):
+    value = event.data.get("value", 1)
     calls.append(("async", value))
     return value * 3
 
@@ -149,7 +151,7 @@ class TestAutomationFunctionsActuallyRun:
         self, context: Any, action: str, expected: int, recorded: tuple[str, int]
     ) -> None:
         """Test AutomationContext.run_action runs the body and returns its result."""
-        assert await context.run_action(action, value=5) == expected
+        assert await context.run_action(action, {"value": 5}) == expected
         assert context.get_symbol("calls") == [recorded]
 
     async def test_context_run_function(self, context: Any) -> None:
@@ -173,7 +175,9 @@ class TestAutomationFunctionsActuallyRun:
 
         pool = ActionWorkerPool(status_manager=AutomationStatusManager(), clock=FakeClock())
         func = context.get_action(action).func
-        assert await pool.submit_action("auto", action, func, value=4) == expected
+        assert (
+            await pool.submit_action("auto", action, func, context.make_event(data={"value": 4})) == expected
+        )
         assert context.get_symbol("calls") == [recorded]
 
     @pytest.mark.parametrize(
@@ -200,12 +204,12 @@ class TestAutomationFunctionsActuallyRun:
                 """Stop."""
 
         trigger_def = TriggerDefinition(
-            trigger_type="state_trigger",
+            trigger_type="state",
             trigger_expr="sensor.x > 1",
             func_name=action,
             func=context.get_action(action).func,
             automation_id="auto",
         )
         trigger = Trigger(make_host(), trigger_def)
-        assert await trigger._execute_function(value=3) == expected
+        assert await trigger._execute_function(context.make_event(data={"value": 3})) == expected
         assert context.get_symbol("calls") == [recorded]

@@ -6,32 +6,39 @@ Each trigger type has its own event class inheriting from ActionEvent.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
 from haanim.types import StateVal
 
 
+SOURCE_TRIGGER = "trigger"
+SOURCE_MANUAL = "manual"
+SOURCE_AUTOMATION = "automation"
+
+
 @dataclass(frozen=True, kw_only=True)
 class ActionEvent:
-    """Base event class containing caller information.
+    """What an action is told about the call: when, by whom, and with what data.
 
-    This class represents the context of an action call, including when it was called,
-    the current automation ID, and information about what triggered the call.
+    Every event type derives from this class.
     """
 
     call_time: datetime
     """Timestamp when the action was called."""
 
     automation_id: str
-    """ID of the current automation."""
+    """ID of the automation the action belongs to."""
 
     source: str
-    """How the action was invoked ('trigger', 'manual', or 'automation')."""
+    """How the action was invoked: ``"trigger"``, ``"manual"`` or ``"automation"``."""
 
     caller: str | None = None
-    """ID of the calling automation (only when source == 'automation')."""
+    """ID of the calling automation; only when ``source == "automation"``."""
+
+    data: dict[str, Any] = field(default_factory=dict)
+    """Arguments passed by the caller; empty for trigger-fired calls."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -92,9 +99,9 @@ class StateEvent(ActionEvent):
 
 @dataclass(frozen=True, kw_only=True)
 class EventTriggerEvent(ActionEvent):
-    """Event data for Home Assistant event triggers.
+    """Event data for event triggers.
 
-    Contains information about Home Assistant events.
+    Contains information about the event that was fired.
     """
 
     event_type: str
@@ -103,62 +110,28 @@ class EventTriggerEvent(ActionEvent):
     event_data: dict[str, Any]
     """Data associated with the event."""
 
+    time_fired: datetime
+    """When the host fired the event."""
+
+    user_id: str | None = None
+    """The user that caused the event, if any."""
+
 
 @dataclass(frozen=True, kw_only=True)
 class ManualEvent(ActionEvent):
-    """Event data for manually triggered actions.
+    """Event for an action run by hand, from the GUI or a service call.
 
-    Represents an action called manually from the UI or other manual trigger.
-    This class has predefined source and caller values.
+    Also what a trigger function receives when it is run by hand.
     """
 
-    source: str = "manual"  # type: ignore[assignment]
-    caller: str | None = None  # type: ignore[assignment]
+    source: str = SOURCE_MANUAL
 
 
 @dataclass(frozen=True, kw_only=True)
 class AutomationEvent(ActionEvent):
-    """Event data for automation-to-automation calls.
+    """Event for an action called by an automation; ``caller`` names it.
 
-    Represents an action called by another automation.
-    This class has predefined source value.
+    Also what a trigger function receives when an automation calls it.
     """
 
-    source: str = "automation"  # type: ignore[assignment]
-
-
-def create_manual_event(call_time: datetime, automation_id: str) -> ManualEvent:
-    """Create a manual event.
-
-    Args:
-        call_time: When the action was called.
-        automation_id: ID of the current automation.
-
-    Returns:
-        ManualEvent instance.
-    """
-    return ManualEvent(
-        call_time=call_time,
-        automation_id=automation_id,
-        source="manual",
-        caller=None,
-    )
-
-
-def create_automation_event(call_time: datetime, automation_id: str, caller: str) -> AutomationEvent:
-    """Create an automation-to-automation call event.
-
-    Args:
-        call_time: When the action was called.
-        automation_id: ID of the current automation.
-        caller: ID of the calling automation.
-
-    Returns:
-        AutomationEvent instance.
-    """
-    return AutomationEvent(
-        call_time=call_time,
-        automation_id=automation_id,
-        source="automation",
-        caller=caller,
-    )
+    source: str = SOURCE_AUTOMATION

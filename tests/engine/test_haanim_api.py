@@ -32,12 +32,12 @@ from tests.engine.helpers import automation_file, load_and_run, make_context
 AUTOMATION_SOURCE = """
 from haanim import action
 @action(name="Add numbers", description="Adds two numbers")
-def add(a, b):
-    return a + b
+def add(event):
+    return event.data["a"] + event.data["b"]
 
 @action
-async def greet(name="world"):
-    return "hello " + name
+async def greet(event):
+    return "hello " + event.data.get("name", "world")
 """
 
 

@@ -6,13 +6,13 @@ import asyncio
 import logging
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from haanim import const
-from haanim.engine.callables import accepted_kwargs, as_coroutine_function
+from haanim.engine.callables import as_coroutine_function, event_arguments
+from haanim.events import SOURCE_TRIGGER, ActionEvent
 from haanim.interfaces import EventBus, Host, StateProvider
 
 if TYPE_CHECKING:
@@ -20,8 +20,7 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-# Type variable for decorator functions
-F = Callable[..., Any]
+E = TypeVar("E", bound=ActionEvent)
 
 
 class BaseTrigger(ABC):
@@ -245,21 +244,33 @@ class BaseTrigger(ABC):
         self._logger.warning("Could not evaluate state expression: %s", expr)
         return False
 
-    async def _execute_function(self, **kwargs: Any) -> Any:
-        """Execute the trigger function.
+    def _event(self, event_class: type[E], **fields: Any) -> E:
+        """Build the event of a firing of this trigger.
 
         Args:
-            **kwargs: Arguments to pass to the function.
+            event_class: The event type of this kind of trigger.
+            **fields: The fields specific to that type.
+        """
+        return event_class(
+            call_time=self.host.clock.now(),
+            automation_id=self.trigger_def.automation_id or "",
+            source=SOURCE_TRIGGER,
+            **fields,
+        )
+
+    async def _execute_function(self, event: ActionEvent) -> Any:
+        """Call the trigger function with the event of this firing, if it takes one.
+
+        Args:
+            event: The event of the firing.
 
         Returns:
             Return value from the function.
         """
         func = self.trigger_def.func
-        kwargs["manual"] = False
-        kwargs = accepted_kwargs(func, kwargs)
 
         try:
-            return await as_coroutine_function(func)(**kwargs)
+            return await as_coroutine_function(func)(*event_arguments(func, event))
         except Exception as err:
             self._logger.error(
                 "Trigger function %s.%s failed: %s",

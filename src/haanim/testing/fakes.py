@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from haanim.engine.errors import ActionNotFoundError, NonExistingAutomationError, ServiceCallError
+from haanim.engine.errors import NonExistingAutomationError, ServiceCallError
 from haanim.interfaces import FileSystem, Host, IssueReporter, StorageBackend
 from haanim.types import EventData, ServiceInfo, StateChangedEvent, StateVal
 
@@ -754,23 +754,24 @@ class FakeAutomationRegistry:
         """Return the context of the automation with the given ID, or ``None``."""
         return self._contexts.get(automation_id)
 
-    async def async_call_action(self, automation_id: str, action_name: str, *args: Any, **kwargs: Any) -> Any:
-        """Call an action directly on the registered context.
+    async def async_call_action(
+        self,
+        automation_id: str,
+        action_name: str,
+        data: dict[str, Any] | None = None,
+        *,
+        caller: str | None = None,
+    ) -> Any:
+        """Call an action of a registered automation directly.
 
         Raises:
-            NonExistingAutomationError: If the automation is not registered.
+            NonExistingAutomationError: If no such automation is registered.
             ActionNotFoundError: If the automation has no such action.
         """
         context = self._contexts.get(automation_id)
         if context is None:
             raise NonExistingAutomationError(automation_id)
-        action = context.get_action(action_name)
-        if action is None:
-            raise ActionNotFoundError(automation_id, action_name)
-        result = action.func(*args, **kwargs)
-        if inspect.isawaitable(result):
-            return await result
-        return result
+        return await context.run_action(action_name, data, caller=caller)
 
     async def async_enable_automation(self, automation_id: str) -> None:
         """Record an enable request."""

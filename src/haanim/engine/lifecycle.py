@@ -16,6 +16,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
 
 from haanim.const import DEFAULT_SHUTDOWN_TIMEOUT, DEFAULT_STARTUP_TIMEOUT, DEFAULT_STOP_GRACE_PERIOD
+from haanim.engine.callables import event_arguments
 from haanim.engine.errors import (
     ActionNotFoundError,
     AutomationAlreadyRunningError,
@@ -23,6 +24,7 @@ from haanim.engine.errors import (
     AutomationNotLoadedError,
     AutomationNotRunningError,
 )
+from haanim.events import SOURCE_TRIGGER
 
 if TYPE_CHECKING:
     from haanim.engine.action_pool import ActionWorkerPool
@@ -258,7 +260,13 @@ class Automation:
         token = _HANDLER_OF.set(self)
         try:
             await self._clock.wait_for(
-                self._pool.submit_action(self.automation_id, STARTUP_ACTION, startup, is_lifecycle=True),
+                self._pool.submit_action(
+                    self.automation_id,
+                    STARTUP_ACTION,
+                    startup,
+                    *self._handler_arguments(startup),
+                    is_lifecycle=True,
+                ),
                 timeout,
             )
         except TimeoutError as err:
@@ -268,6 +276,10 @@ class Automation:
         finally:
             _HANDLER_OF.reset(token)
             self._handler_running = False
+
+    def _handler_arguments(self, handler: Any) -> tuple[Any, ...]:
+        """Return what to call a lifecycle handler with: its event, if it takes one."""
+        return event_arguments(handler, self.context.make_event(source=SOURCE_TRIGGER))
 
     async def _abandon_start(self) -> None:
         """Undo a start that failed part-way."""
@@ -329,7 +341,13 @@ class Automation:
         token = _HANDLER_OF.set(self)
         try:
             await self._clock.wait_for(
-                self._pool.submit_action(self.automation_id, SHUTDOWN_ACTION, shutdown, is_lifecycle=True),
+                self._pool.submit_action(
+                    self.automation_id,
+                    SHUTDOWN_ACTION,
+                    shutdown,
+                    *self._handler_arguments(shutdown),
+                    is_lifecycle=True,
+                ),
                 timeout,
             )
         except TimeoutError:
@@ -367,20 +385,31 @@ class Automation:
             return True
         return self._state is AutomationState.ON and not self._stopping
 
-    async def call_action(self, action_name: str, *args: Any, **kwargs: Any) -> Any:
+    async def call_action(
+        self,
+        action_name: str,
+        data: dict[str, Any] | None = None,
+        *,
+        caller: str | None = None,
+    ) -> Any:
         """Call an action of the automation.
 
+        The action receives an ``AutomationEvent`` if ``caller`` is given, else
+        a ``ManualEvent``; this holds for trigger functions too. The data is
+        delivered as ``event.data``.
+
         Args:
-            action_name: Name of the action.
-            *args: Positional arguments for the action.
-            **kwargs: Keyword arguments for the action.
+            action_name: A name of the action.
+            data: The arguments of the call.
+            caller: ID of the calling automation. Without it the call is a manual one.
 
         Returns:
             What the action returns.
 
         Raises:
             AutomationNotRunningError: If the automation is not running.
-            ActionNotFoundError: If the automation has no such action.
+            ActionNotFoundError: If the automation has no such action, or it is disabled.
+            Exception: Whatever the action raises.
         """
         if not self.accepts_calls():
             raise AutomationNotRunningError(self.automation_id)
@@ -390,10 +419,14 @@ class Automation:
         if action is None or action.disabled:
             raise ActionNotFoundError(self.automation_id, action_name)
 
+        event = self.context.make_event(caller=caller, data=data)
+
         # The action runs in a task of its own: if the caller is cancelled (its
         # automation is stopped, say), the call it already made runs to completion here.
         running = asyncio.ensure_future(
-            self._pool.submit_action(self.automation_id, action_name, action.func, *args, **kwargs)
+            self._pool.submit_action(
+                self.automation_id, action_name, action.func, *event_arguments(action.func, event)
+            )
         )
         running.add_done_callback(_retrieve_exception)
         return await asyncio.shield(running)

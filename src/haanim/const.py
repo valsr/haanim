@@ -17,10 +17,6 @@ __all__ = [
     "CONSTRAINT_STATE",
     # Host events
     "EVENT_HOST_STARTED",
-    # Execution sources
-    "EXEC_MODE_MANUAL",
-    "EXEC_MODE_TRIGGER",
-    "EXEC_MODE_AUTOMATION",
     # Defaults
     "DEFAULT_ACTION_QUEUE_SIZE",
     "DEFAULT_ACTION_TIMEOUT",
@@ -64,11 +60,6 @@ CONSTRAINT_STATE: Final = "state"
 
 # Event the host fires once it has finished starting
 EVENT_HOST_STARTED: Final = "homeassistant_started"
-
-# How an action was invoked
-EXEC_MODE_MANUAL: Final = "manual"
-EXEC_MODE_TRIGGER: Final = "trigger"
-EXEC_MODE_AUTOMATION: Final = "automation"
 
 # Default action settings
 DEFAULT_ACTION_QUEUE_SIZE: Final = 100

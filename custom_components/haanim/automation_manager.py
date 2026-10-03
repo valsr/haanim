@@ -37,10 +37,9 @@ from haanim.engine.automation_ids import RejectedFolder
 from haanim.engine.discovery import DiscoveredAutomation, FolderIssues, discover
 from haanim.engine.hot_reload import HotReloader
 from haanim.interfaces import Host
-from haanim.engine.callables import accepted_kwargs
 from haanim.engine.control import AutomationControl, EnabledFlags
 from haanim.engine.errors import (
-    AutomationNotRunningError,
+    ActionNotFoundError,
     HAAnimError,
     NonExistingAutomationError,
 )
@@ -469,53 +468,30 @@ class AutomationManager:
         self,
         automation_id: str,
         action_name: str,
-        *args: Any,
-        manual: bool = True,
-        **kwargs: Any,
+        data: dict[str, Any] | None = None,
     ) -> Any:
-        """Run an action by automation and action name.
+        """Run an action by hand, as from the GUI or the run_action service.
 
-        This method uses the action worker pool to manage concurrent execution.
-        Multiple actions from the same automation can run concurrently, limited only
-        by the global worker pool size.
+        The action receives a ``ManualEvent`` whose ``data`` is the data given.
 
         Args:
-            automation_id: Name of the automation.
-            action_name: Name of the action.
-            *args: Positional arguments for the action.
-            manual: If True, this is a manual execution.
-            **kwargs: Keyword arguments for the action.
+            automation_id: The automation's ID.
+            action_name: A name of the action.
+            data: The arguments of the call.
 
         Returns:
-            The return value of the action.
+            The result of the action.
 
         Raises:
-            HAAnimError: If automation or action not found.
-            PoolExhaustedError: If no workers are available.
+            HAAnimError: If the automation or the action is not found.
+            AutomationNotRunningError: If the automation is not running.
         """
-        context = self.get_context_by_name(automation_id)
-        if not context:
-            raise HAAnimError(f"Automation '{automation_id}' not found")
-
-        if not self._automation(context.automation_id).accepts_calls():
-            raise AutomationNotRunningError(context.automation_id)
-
-        # A disabled action is listed but cannot be run
-        action = context.get_action(action_name)
-        if action is None or action.disabled:
-            raise HAAnimError(f"Action '{action_name}' not found in automation '{automation_id}'")
-
-        # Offer the manual flag to actions that declare it
-        kwargs.update(accepted_kwargs(action.func, {"manual": manual}))
-
-        # Submit to the worker pool
-        return await self._action_pool.submit_action(
-            automation_id=context.automation_id,
-            action_name=action_name,
-            func=action.func,
-            *args,
-            **kwargs,
-        )
+        try:
+            return await self._automation(automation_id).call_action(action_name, data)
+        except NonExistingAutomationError as err:
+            raise HAAnimError(f"Automation '{automation_id}' not found") from err
+        except ActionNotFoundError as err:
+            raise HAAnimError(f"Action '{action_name}' not found in automation '{automation_id}'") from err
 
     def _automation(self, automation_id: str) -> Automation:
         """Return the automation with an ID.
@@ -550,16 +526,17 @@ class AutomationManager:
         self,
         automation_id: str,
         action_name: str,
-        *args: Any,
-        **kwargs: Any,
+        data: dict[str, Any] | None = None,
+        *,
+        caller: str | None = None,
     ) -> Any:
         """Call an automation action.
 
         Args:
             automation_id: Automation identifier.
-            action_name: Name of the action to call.
-            args: Positional arguments for the action.
-            kwargs: Keyword arguments for the action.
+            action_name: A name of the action to call.
+            data: The arguments of the call; the action gets them as ``event.data``.
+            caller: ID of the calling automation. Without it the call is a manual one.
 
         Returns:
             Action return value.
@@ -569,7 +546,7 @@ class AutomationManager:
             AutomationNotRunningError: If the automation is not running.
             ActionNotFoundError: If action not found.
         """
-        return await self._automation(automation_id).call_action(action_name, *args, **kwargs)
+        return await self._automation(automation_id).call_action(action_name, data, caller=caller)
 
     async def async_enable_automation(self, automation_id: str) -> None:
         """Mark an automation enabled and start it. Does nothing if it is enabled.

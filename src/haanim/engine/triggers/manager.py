@@ -16,9 +16,10 @@ from typing import TYPE_CHECKING, Any
 
 from haanim import const
 from haanim.engine.action_pool import ActionWorkerPool
-from haanim.engine.callables import accepted_kwargs
+from haanim.engine.callables import event_arguments
 from haanim.engine.constraints import ConstraintChecker
 from haanim.interfaces import EventBus, Host, StateProvider
+from haanim.events import SOURCE_TRIGGER, ActionEvent, StateEvent, TimeEvent
 from haanim.types import StateChangedEvent
 
 if TYPE_CHECKING:
@@ -581,6 +582,30 @@ class TriggerManager:
     # Trigger Execution
     # =========================================================================
 
+    def _event(self, trigger_def: TriggerDefinition, notification: StateChangedEvent | None) -> ActionEvent:
+        """Build the event of a firing of a trigger.
+
+        Args:
+            trigger_def: The trigger that fires.
+            notification: The state change that caused it, for a state trigger.
+        """
+        now = self.host.clock.now()
+        fields: dict[str, Any] = {
+            "call_time": now,
+            "automation_id": trigger_def.automation_id or "",
+            "source": SOURCE_TRIGGER,
+        }
+        if notification is not None:
+            return StateEvent(
+                entity_id=notification.entity_id,
+                old_state=notification.old_state,
+                new_state=notification.new_state,
+                **fields,
+            )
+        if trigger_def.trigger_type == const.TRIGGER_TIME:
+            return TimeEvent(trigger_time=now, **fields)
+        return ActionEvent(**fields)
+
     async def _execute_trigger(
         self,
         trigger_id: str,
@@ -597,20 +622,14 @@ class TriggerManager:
             return
 
         try:
-            # Build kwargs for the function
-            kwargs: dict[str, Any] = {"manual": False}
-
-            if notification:
-                kwargs["var_name"] = notification.entity_id
-                kwargs["value"] = notification.new_state
-                kwargs["old_value"] = notification.old_state
+            event = self._event(trigger_def, notification)
 
             # Execute through action pool
             await self.action_pool.submit_action(
-                automation_id=trigger_def.automation_id or "",
-                action_name=trigger_def.func_name,
-                func=trigger_def.func,
-                **accepted_kwargs(trigger_def.func, kwargs),
+                trigger_def.automation_id or "",
+                trigger_def.func_name,
+                trigger_def.func,
+                *event_arguments(trigger_def.func, event),
             )
 
         except Exception as err:

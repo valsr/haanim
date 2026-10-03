@@ -135,6 +135,7 @@ class ActionEvent:
     automation_id: str
     source: str  # 'trigger', 'manual', or 'automation'
     caller: str | None  # Automation ID if source == 'automation'
+    data: dict[str, Any]  # Arguments passed by the caller; empty for trigger-fired calls
 
 class TimeEvent(ActionEvent):
     """Event for time-based triggers."""
@@ -165,6 +166,8 @@ class EventTriggerEvent(ActionEvent):
 
     event_type: str
     event_data: dict[str, Any]
+    time_fired: datetime
+    user_id: str | None
 
 class ManualEvent(ActionEvent):
     """Event for manual UI-triggered actions."""

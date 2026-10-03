@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tests.engine.helpers import mock_host
+from haanim.events import ActionEvent, StateEvent
 from haanim.engine.triggers import (
     BaseTrigger,
     StateTrigger,
@@ -217,9 +218,11 @@ class TestBaseTrigger:
             automation_id="test_automation",
         )
 
-        result = await trigger._execute_function(arg1="value1")
+        event = trigger._event(StateEvent, entity_id="sensor.test", old_state=None, new_state=None)
+        result = await trigger._execute_function(event)
 
-        async_func.assert_called_once_with(arg1="value1", manual=False)
+        async_func.assert_called_once_with(event)
+        assert (event.automation_id, event.source, event.data) == ("test_automation", "trigger", {})
         assert result == "result"
 
     async def test_execute_function_sync(
@@ -238,7 +241,7 @@ class TestBaseTrigger:
             automation_id="test_automation",
         )
 
-        result = await trigger._execute_function()
+        result = await trigger._execute_function(trigger._event(ActionEvent))
 
         assert result == "sync_result"
 
@@ -1105,7 +1108,7 @@ class TestBaseTriggerConstraints:
             host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
         )
-        result = await trigger._execute_function()
+        result = await trigger._execute_function(trigger._event(ActionEvent))
         assert result == "result"
         async_func.assert_awaited_once()
 
@@ -1130,7 +1133,7 @@ class TestBaseTriggerConstraints:
             host=mock_host(states=mock_state_manager, events=mock_event_manager),
             trigger_def=trigger_def,
         )
-        result = await trigger._execute_function()
+        result = await trigger._execute_function(trigger._event(ActionEvent))
         assert result == "sync_result"
 
     @pytest.mark.parametrize(

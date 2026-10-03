@@ -169,15 +169,18 @@ class HAAnimAutomationProxy:
         self,
         automation_id: str,
         automation_manager: AutomationRegistry,
+        caller: str | None = None,
     ) -> None:
         """Initialize automation proxy.
 
         Args:
             automation_id: The automation ID.
             automation_manager: The automation manager instance.
+            caller: ID of the automation that uses the proxy; calls made through it name this caller.
         """
         self.id = automation_id
         self._manager = automation_manager
+        self._caller = caller
 
     @property
     def state(self) -> str:
@@ -245,22 +248,22 @@ class HAAnimAutomationProxy:
         """Check if the automation is enabled."""
         return self._manager.is_automation_enabled(self.id)
 
-    async def call(self, action_name: str, **kwargs: Any) -> Any:
-        """Call an action in this automation.
+    async def call(self, action_name: str, **data: Any) -> Any:
+        """Call an action of this automation.
 
         Args:
-            action_name: Name of the action to call.
-            **kwargs: Arguments to pass to the action.
+            action_name: A name of the action.
+            **data: The arguments of the call. The action receives them as ``event.data``.
 
         Returns:
-            The result of the action call.
+            What the action returns.
 
         Raises:
             NonExistingAutomationError: If the automation doesn't exist.
-            AutomationNotLoadedError: If the automation is not loaded.
-            ActionNotFoundError: If the action doesn't exist.
+            AutomationNotRunningError: If the automation is not running.
+            ActionNotFoundError: If the action doesn't exist or is disabled.
         """
-        return await self._manager.async_call_action(self.id, action_name, **kwargs)
+        return await self._manager.async_call_action(self.id, action_name, data, caller=self._caller)
 
     async def enable(self) -> None:
         """Enable and start the automation."""
@@ -474,7 +477,7 @@ class HAAnim:
         """
         if self._manager.get_context_by_name(automation_id) is None:
             raise NonExistingAutomationError(automation_id)
-        return HAAnimAutomationProxy(automation_id, self._manager)
+        return HAAnimAutomationProxy(automation_id, self._manager, self._automation_id)
 
     def automations(self) -> list[HAAnimAutomationProxy]:
         """Get list of all automation proxies.
@@ -483,21 +486,23 @@ class HAAnim:
             List of HAAnimAutomationProxy objects for all loaded automations.
         """
         return [
-            HAAnimAutomationProxy(context.automation_id, self._manager)
+            HAAnimAutomationProxy(context.automation_id, self._manager, self._automation_id)
             for context in self._manager.get_all_contexts()
         ]
 
-    async def call(self, action_name: str, **kwargs: Any) -> Any:
-        """Call an action in the current automation.
+    async def call(self, action_name: str, **data: Any) -> Any:
+        """Call an action of the current automation.
 
         Args:
-            action_name: Name of the action.
-            **kwargs: Arguments to pass to the action.
+            action_name: A name of the action.
+            **data: The arguments of the call. The action receives them as ``event.data``.
 
         Returns:
-            The result of the action call.
+            What the action returns.
         """
-        return await self._manager.async_call_action(self._automation_id, action_name, **kwargs)
+        return await self._manager.async_call_action(
+            self._automation_id, action_name, data, caller=self._automation_id
+        )
 
     async def disable(self) -> None:
         """Disable the current automation, which stops it. The calling action ends at this call."""

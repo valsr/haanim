@@ -203,7 +203,7 @@ class TestServiceHandlers:
 
         await service_manager._handle_run_action(mock_service_call)
 
-        mock_manager.async_run_action.assert_called_once_with("test_automation", "test_action", manual=True)
+        mock_manager.async_run_action.assert_called_once_with("test_automation", "test_action")
 
     @patch("custom_components.haanim.ha.services.async_get_manager")
     async def test_handle_run_action_no_manager(

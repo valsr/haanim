@@ -271,8 +271,22 @@ class AutomationRegistry(Protocol):
     def get_context_by_name(self, automation_id: str) -> AutomationContext | None:
         """Return the context of the automation with the given ID, or ``None``."""
 
-    async def async_call_action(self, automation_id: str, action_name: str, *args: Any, **kwargs: Any) -> Any:
-        """Call an action of an automation and return its result."""
+    async def async_call_action(
+        self,
+        automation_id: str,
+        action_name: str,
+        data: dict[str, Any] | None = None,
+        *,
+        caller: str | None = None,
+    ) -> Any:
+        """Call an action of an automation and return its result.
+
+        Args:
+            automation_id: ID of the automation that has the action.
+            action_name: A name of the action.
+            data: The arguments of the call; the action gets them as ``event.data``.
+            caller: ID of the calling automation. Without it the call is a manual one.
+        """
 
     async def async_enable_automation(self, automation_id: str) -> None:
         """Enable and start an automation."""

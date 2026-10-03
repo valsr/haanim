@@ -15,6 +15,7 @@ from croniter import croniter
 
 from haanim.const import TRIGGER_CRON
 from haanim.engine.triggers.base import BaseTrigger
+from haanim.events import CronEvent
 from haanim.interfaces import Host
 
 if TYPE_CHECKING:
@@ -84,7 +85,8 @@ class CronTrigger(BaseTrigger):
 
                 # Check constraints
                 if await self._check_constraints():
-                    await self._execute_function()
+                    event = self._event(CronEvent, cron_expression=self._cron_expr, trigger_time=next_time)
+                    await self._execute_function(event)
 
             except asyncio.CancelledError:
                 break

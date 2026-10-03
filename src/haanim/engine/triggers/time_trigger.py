@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 
 from haanim.const import TRIGGER_TIME
 from haanim.engine.triggers.base import BaseTrigger
+from haanim.events import TimeEvent
 from haanim.interfaces import Host
 
 if TYPE_CHECKING:
@@ -90,7 +91,8 @@ class TimeTrigger(BaseTrigger):
                     if "startup" in str(specs) and not self._startup_triggered:
                         self._startup_triggered = True
                         if await self._check_constraints():
-                            await self._execute_function()
+                            now = self.host.clock.now()
+                            await self._execute_function(self._event(TimeEvent, trigger_time=now))
                     await self.host.clock.sleep(60)  # Check again in a minute
                     continue
 
@@ -103,7 +105,7 @@ class TimeTrigger(BaseTrigger):
 
                 # Check constraints and execute
                 if await self._check_constraints():
-                    await self._execute_function()
+                    await self._execute_function(self._event(TimeEvent, trigger_time=next_time))
 
                 # Small delay to prevent rapid re-triggering
                 await self.host.clock.sleep(1)

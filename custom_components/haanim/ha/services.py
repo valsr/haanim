@@ -131,7 +131,7 @@ class ServiceManager:
             return
 
         try:
-            await manager.async_run_action(automation_id, action_name, manual=True)
+            await manager.async_run_action(automation_id, action_name)
         except Exception as err:
             _LOGGER.error("Failed to run action %s.%s: %s", automation_id, action_name, err)
             raise

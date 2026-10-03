@@ -21,10 +21,16 @@ from haanim.engine import (
 )
 from haanim.engine.ast_evaluator import AstEvaluator
 from haanim.engine.automation_ids import automation_id as derive_automation_id
-from haanim.engine.callables import accepted_kwargs, as_coroutine_function
+from haanim.engine.callables import as_coroutine_function, event_arguments, signature_problem
 from haanim.engine.decorators import ActionInfo, FunctionMetadata, get_metadata
 from haanim.engine.discovery import MAIN_FILENAME, has_main, last_modified, source_files
-from haanim.engine.errors import AutomationDefinitionError, AutomationNotLoadedError, HAAnimError
+from haanim.engine.errors import (
+    ActionNotFoundError,
+    AutomationDefinitionError,
+    AutomationNotLoadedError,
+    HAAnimError,
+)
+from haanim.events import SOURCE_TRIGGER, ActionEvent, AutomationEvent, ManualEvent
 from haanim.engine.haanim_module import DecoratorRegistry, build_haanim_module
 from haanim.engine.logging_wrapper import create_logger_wrapper
 from haanim.engine.metadata import DEFAULT_VERSION, load_metadata
@@ -429,6 +435,11 @@ class AutomationContext:
             func: The function object.
             metadata: What the decorators recorded.
         """
+        # Data is never bound to parameters: these functions take the event or nothing
+        problem = signature_problem(func)
+        if problem is not None:
+            raise AutomationDefinitionError(f"'{func_name}' cannot be called: {problem}")
+
         # A function with @action or with a trigger is one action
         if metadata.is_action:
             info = metadata.action_info or ActionInfo()
@@ -481,45 +492,66 @@ class AutomationContext:
                 )
             self._shutdown_func, self._shutdown_name = func, func_name
 
+    def make_event(
+        self,
+        *,
+        caller: str | None = None,
+        data: dict[str, Any] | None = None,
+        source: str | None = None,
+    ) -> ActionEvent:
+        """Build the event for a direct call of one of this automation's functions.
+
+        Args:
+            caller: ID of the calling automation, for a call from an automation.
+            data: The arguments of the call. They become ``event.data``, by
+                reference: the action sees the caller's objects.
+            source: ``"trigger"`` for a call by the engine itself (the lifecycle
+                handlers). Otherwise the source follows from ``caller``.
+
+        Returns:
+            An ``AutomationEvent`` if there is a caller, a plain ``ActionEvent``
+            for ``source="trigger"``, else a ``ManualEvent``.
+        """
+        fields: dict[str, Any] = {
+            "call_time": self.host.clock.now(),
+            "automation_id": self.automation_id,
+            "data": data if data is not None else {},
+        }
+        if caller is not None:
+            return AutomationEvent(caller=caller, **fields)
+        if source == SOURCE_TRIGGER:
+            return ActionEvent(source=SOURCE_TRIGGER, **fields)
+        return ManualEvent(**fields)
+
     async def run_action(
         self,
         action_name: str,
-        *args: Any,
-        manual: bool = True,
-        **kwargs: Any,
+        data: dict[str, Any] | None = None,
+        *,
+        caller: str | None = None,
     ) -> Any:
-        """Run a specific action by name.
+        """Run an action directly, outside the lifecycle and the worker pool.
 
         Args:
-            action_name: The name of the action to run.
-            *args: Positional arguments to pass to the action.
-            manual: If True, this is a manual execution (bypasses constraints).
-            **kwargs: Keyword arguments to pass to the action.
+            action_name: A name of the action.
+            data: The arguments of the call; delivered as ``event.data``.
+            caller: ID of the calling automation. Without it the call is a
+                manual one.
 
         Returns:
             The return value of the action.
 
         Raises:
-            HAAnimError: If the action is not found or execution fails.
+            ActionNotFoundError: If the automation has no such action or it is disabled.
+            Exception: Whatever the action raises.
         """
         action = self.get_action(action_name)
         if action is None or action.disabled:
-            raise HAAnimError(f"Action '{action_name}' not found in automation '{self.automation_id}'")
+            raise ActionNotFoundError(self.automation_id, action_name)
 
-        # Offer the manual flag to actions that declare it
-        kwargs.update(accepted_kwargs(action.func, {"manual": manual}))
-
-        self._logger.info(
-            "Running action '%s' (%s)",
-            action.name,
-            const.EXEC_MODE_MANUAL if manual else const.EXEC_MODE_TRIGGER,
-        )
-
-        try:
-            return await as_coroutine_function(action.func)(*args, **kwargs)
-        except Exception as err:
-            self._logger.error("Action '%s' failed: %s", action_name, err)
-            raise HAAnimError(f"Action '{action_name}' failed: {err}") from err
+        event = self.make_event(caller=caller, data=data)
+        self._logger.info("Running action '%s' (%s)", action.name, event.source)
+        return await as_coroutine_function(action.func)(*event_arguments(action.func, event))
 
     async def run_function(
         self,
@@ -604,13 +636,6 @@ class AutomationContext:
             value: The value to set.
         """
         self._global_symbols.set(name, value)
-
-    @property
-    def id(self) -> str:
-        """Get the id of the automation."""
-        if self._metadata:
-            return self._metadata.id
-        return self.automation_id
 
     @property
     def is_loaded(self) -> bool:

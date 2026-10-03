@@ -28,8 +28,6 @@ from custom_components.haanim.const import (
     EVENT_AUTOMATION_EXECUTED,
     EVENT_AUTOMATION_LOADED,
     EVENT_AUTOMATION_UNLOADED,
-    EXEC_MODE_MANUAL,
-    EXEC_MODE_TRIGGER,
     NAME,
     RESTRICTED_BUILTINS,
     SERVICE_GET_CONFIG,
@@ -67,15 +65,6 @@ class TestKindConstants:
         assert TRIGGER_EVENT == "event"
         assert CONSTRAINT_TIME == "time"
         assert CONSTRAINT_STATE == "state"
-
-
-class TestExecutionModes:
-    """Tests for execution mode constants."""
-
-    def test_execution_modes(self) -> None:
-        """Test execution mode constants."""
-        assert EXEC_MODE_MANUAL == "manual"
-        assert EXEC_MODE_TRIGGER == "trigger"
 
 
 class TestEventConstants:
