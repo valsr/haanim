@@ -8,6 +8,7 @@ so that an automation is rejected before any of its code runs.
 from __future__ import annotations
 
 import ast
+import warnings
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,6 +53,17 @@ class SyntaxProblem:
         return f"{location}: {self.message}"
 
 
+def _position(problem: SyntaxProblem) -> tuple[int, int]:
+    """Sort key that puts problems in source order."""
+    return (problem.lineno or 0, problem.col_offset or 0)
+
+
+def _syntax_problem(err: SyntaxError, filename: str) -> SyntaxProblem:
+    """Describe a Python syntax error as a problem."""
+    column = None if err.offset is None else max(err.offset - 1, 0)
+    return SyntaxProblem(filename, err.lineno, column, f"invalid syntax: {err.msg}")
+
+
 def find_unsupported(tree: ast.AST, filename: str) -> list[SyntaxProblem]:
     """Find every construct in a parsed source that the interpreter does not support.
 
@@ -79,7 +91,7 @@ def find_unsupported(tree: ast.AST, filename: str) -> list[SyntaxProblem]:
                 )
             )
 
-    problems.sort(key=lambda problem: (problem.lineno or 0, problem.col_offset or 0))
+    problems.sort(key=_position)
     return problems
 
 
@@ -97,10 +109,21 @@ def check_source(source: str, filename: str) -> tuple[ast.Module | None, list[Sy
     try:
         tree = ast.parse(source, filename=filename, mode="exec")
     except SyntaxError as err:
-        column = None if err.offset is None else max(err.offset - 1, 0)
-        return None, [SyntaxProblem(filename, err.lineno, column, f"invalid syntax: {err.msg}")]
+        return None, [_syntax_problem(err, filename)]
 
-    return tree, find_unsupported(tree, filename)
+    problems = find_unsupported(tree, filename)
+
+    # The compiler rejects what the parser lets through: 'await' outside an
+    # async function, 'return' outside a function and the like. Nothing runs.
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", SyntaxWarning)
+            compile(source, filename, "exec", dont_inherit=True)
+    except SyntaxError as err:
+        problems.append(_syntax_problem(err, filename))
+        problems.sort(key=_position)
+
+    return tree, problems
 
 
 def _raise_for(problems: list[SyntaxProblem]) -> None:

@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from haanim.engine.callables import is_coroutine_callable
+from haanim.engine.callables import as_coroutine_function, is_coroutine_callable
 from tests.engine.helpers import make_context
 
 
@@ -72,7 +72,7 @@ class TestIsCoroutineCallable:
 
     @pytest.mark.parametrize("definition", ["def", "async def"])
     async def test_automation_functions_need_awaiting(self, tmp_path: Path, definition: str) -> None:
-        """Test a function defined in an automation is awaitable whether written def or async def."""
+        """Test a function defined in an automation runs as a coroutine whether written def or async def."""
         path = tmp_path / "auto.py"
         path.write_text(f"@action\n{definition} compute():\n    return 7\n", encoding="utf-8")
         context = make_context(str(path))
@@ -81,7 +81,7 @@ class TestIsCoroutineCallable:
         action = context.get_action("compute")
         assert action is not None
         assert is_coroutine_callable(action.func) is True
-        assert await action.func() == 7
+        assert await as_coroutine_function(action.func)() == 7
 
 
 AUTOMATION = """

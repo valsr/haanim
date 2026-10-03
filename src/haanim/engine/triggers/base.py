@@ -12,7 +12,7 @@ from datetime import datetime, time
 from typing import TYPE_CHECKING, Any
 
 from haanim import const
-from haanim.engine.callables import is_coroutine_callable
+from haanim.engine.callables import accepted_kwargs, as_coroutine_function, is_coroutine_callable
 from haanim.interfaces import EventBus, Host, StateProvider
 
 if TYPE_CHECKING:
@@ -271,10 +271,11 @@ class BaseTrigger(ABC):
         """
         func = self.trigger_def.func
         kwargs["manual"] = False
+        kwargs = accepted_kwargs(func, kwargs)
 
         try:
             if is_coroutine_callable(func):
-                return await func(**kwargs)
+                return await as_coroutine_function(func)(**kwargs)
             else:
                 return await asyncio.get_running_loop().run_in_executor(None, lambda: func(**kwargs))
         except Exception as err:

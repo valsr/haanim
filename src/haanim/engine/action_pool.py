@@ -16,7 +16,7 @@ from enum import Enum
 from typing import Any
 
 from haanim.const import DEFAULT_MAX_CONCURRENT_ACTIONS, DEFAULT_WORKER_SHUTDOWN_TIMEOUT
-from haanim.engine.callables import is_coroutine_callable
+from haanim.engine.callables import as_coroutine_function, is_coroutine_callable
 from haanim.engine.errors import (
     ActionCancelledError,
     PoolExhaustedError,
@@ -289,7 +289,7 @@ class ActionWorkerPool:
             An async wrapper function.
         """
         if is_coroutine_callable(func):
-            return func
+            return as_coroutine_function(func)
 
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             loop = asyncio.get_event_loop()

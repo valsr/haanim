@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from haanim import const
 from haanim.engine.action_pool import ActionWorkerPool
+from haanim.engine.callables import accepted_kwargs
 from haanim.engine.constraints import ConstraintChecker
 from haanim.interfaces import EventBus, Host, StateProvider
 from haanim.types import StateChangedEvent
@@ -609,7 +610,7 @@ class TriggerManager:
                 automation_id=trigger_def.automation_id or "",
                 action_name=trigger_def.func_name,
                 func=trigger_def.func,
-                **kwargs,
+                **accepted_kwargs(trigger_def.func, kwargs),
             )
 
         except Exception as err:

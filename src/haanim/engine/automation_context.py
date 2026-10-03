@@ -25,7 +25,7 @@ from haanim.engine import (
     decorators,
 )
 from haanim.engine.ast_evaluator import AstEvaluator
-from haanim.engine.callables import is_coroutine_callable
+from haanim.engine.callables import accepted_kwargs, as_coroutine_function, is_coroutine_callable
 from haanim.engine.decorators import FunctionMetadata, get_metadata, has_metadata
 from haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
 from haanim.engine.automation_status import AutomationStatusManager
@@ -482,8 +482,8 @@ class AutomationContext:
 
         action = self._actions[action_name]
 
-        # Add manual flag to kwargs
-        kwargs["manual"] = manual
+        # Offer the manual flag to actions that declare it
+        kwargs.update(accepted_kwargs(action.func, {"manual": manual}))
 
         self._logger.info(
             "Running action '%s' (%s)",
@@ -493,7 +493,7 @@ class AutomationContext:
 
         try:
             if is_coroutine_callable(action.func):
-                return await action.func(*args, **kwargs)
+                return await as_coroutine_function(action.func)(*args, **kwargs)
             else:
                 # Wrap sync function in async
                 loop = asyncio.get_running_loop()
@@ -525,7 +525,7 @@ class AutomationContext:
 
         try:
             if is_coroutine_callable(func):
-                return await func(*args, **kwargs)
+                return await as_coroutine_function(func)(*args, **kwargs)
 
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))

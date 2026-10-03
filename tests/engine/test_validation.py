@@ -55,7 +55,7 @@ UNSUPPORTED: dict[str, tuple[str, int, str]] = {
     "except*": ("try:\n    pass\nexcept* ValueError:\n    pass\n", 1, "'except*'"),
 }
 
-# Constructs the interpreter handles today: (source, expected value of `r`).
+# Supported Python: (source, expected result). See run() for what the result is.
 SUPPORTED: dict[str, tuple[str, Any]] = {
     "class with attributes": ("class A:\n    x = 1\n    y = x + 1\nr = (A.x, A().y)", (1, 2)),
     "lambda": ("f = lambda a, b: a + b\nr = f(1, 2)", 3),
@@ -71,7 +71,7 @@ SUPPORTED: dict[str, tuple[str, Any]] = {
         [(0, 0), (0, 1), (1, 0), (1, 1)],
     ),
     "await inside a comprehension": (
-        "async def g(x):\n    return x\nasync def f():\n    return [await g(x) for x in range(2)]\nr = await f()",
+        "async def g(x):\n    return x\nasync def f():\n    return [await g(x) for x in range(2)]\nasync def main():\n    return await f()",
         [0, 1],
     ),
     "with": ("from contextlib import nullcontext\nwith nullcontext(5) as v:\n    r = v", 5),
@@ -101,7 +101,7 @@ SUPPORTED: dict[str, tuple[str, Any]] = {
     "annotated assignment": ("x: int = 4\nr = x", 4),
     "tuple unpacking": ("a, (b, c) = 1, (2, 3)\nr = a + b + c", 6),
     "assert": ("assert True, 'm'\nr = 1", 1),
-    "async def and await": ("async def f():\n    return 7\nr = await f()", 7),
+    "async def and await": ("async def f():\n    return 7\nasync def main():\n    return await f()", 7),
     "import": ("import math\nfrom json import dumps as d\nr = (math.floor(1.5), d([1]))", (1, "[1]")),
     "constants": ("r = (b'a', ..., None, 1j)", (b"a", ..., None, 1j)),
     "generic function": ("def f[T](a: T) -> T:\n    return a\nr = f(1)", 1),
@@ -114,11 +114,6 @@ SUPPORTED: dict[str, tuple[str, Any]] = {
         (True, True, True, True),
     ),
     "docstrings": ("'''doc'''\ndef f():\n    '''doc'''\n    return 1\nr = f()", 1),
-}
-
-# Python the design counts as supported but the interpreter gets wrong today.
-# Each case is expected to fail; when one starts passing, move it to SUPPORTED.
-INTERPRETER_GAPS: dict[str, tuple[str, Any]] = {
     "method using self": ("class A:\n    x = 1\n    def m(self):\n        return self.x + 1\nr = A().m()", 2),
     "super()": (
         "class A:\n    def m(self):\n        return 1\nclass B(A):\n    def m(self):\n        return super().m() + 1\nr = B().m()",
@@ -133,7 +128,7 @@ INTERPRETER_GAPS: dict[str, tuple[str, Any]] = {
     ),
     "async context manager class": (
         "class C:\n    async def __aenter__(self):\n        return 5\n    async def __aexit__(self, *a):\n"
-        "        return False\nasync def f():\n    async with C() as v:\n        return v\nr = await f()",
+        "        return False\nasync def f():\n    async with C() as v:\n        return v\nasync def main():\n    return await f()",
         5,
     ),
     "with suppressing an exception": (
@@ -165,10 +160,17 @@ INTERPRETER_GAPS: dict[str, tuple[str, Any]] = {
 
 
 async def run(source: str) -> Any:
-    """Run a source in the interpreter and return the value of its ``r``."""
+    """Run a source in the interpreter and return its result.
+
+    The result is the value of ``r``, or what ``main()`` returns if the source
+    defines it (for sources that have to await).
+    """
     evaluator = AstEvaluator(name="test", import_controller=ImportController(allow_all=True))
     evaluator.parse(source)
-    return (await evaluator.execute()).get("r")
+    symbols = await evaluator.execute()
+    if "main" in symbols:
+        return await symbols["main"]()
+    return symbols.get("r")
 
 
 class TestUnsupportedConstructs:
@@ -395,27 +397,11 @@ class TestLoad:
 
 
 class TestSupportedConstructs:
-    """Pins what the interpreter handles today."""
+    """Everything the design counts as supported Python gives the result Python gives."""
 
     @pytest.mark.parametrize("case", SUPPORTED)
     async def test_runs(self, case: str) -> None:
         """The construct passes validation and gives the result Python gives."""
         source, expected = SUPPORTED[case]
-
-        assert await run(source) == expected
-
-    @pytest.mark.parametrize("case", INTERPRETER_GAPS)
-    def test_gap_passes_validation(self, case: str) -> None:
-        """Supported Python is never rejected by the validator, even where the interpreter is wrong."""
-        source, _ = INTERPRETER_GAPS[case]
-
-        validate_source(source)
-
-    @pytest.mark.parametrize("case", INTERPRETER_GAPS)
-    @pytest.mark.filterwarnings("ignore::RuntimeWarning")
-    @pytest.mark.xfail(strict=True, reason="interpreter gap, see phase 5b")
-    async def test_gap(self, case: str) -> None:
-        """Python the design supports but the interpreter does not handle yet."""
-        source, expected = INTERPRETER_GAPS[case]
 
         assert await run(source) == expected
