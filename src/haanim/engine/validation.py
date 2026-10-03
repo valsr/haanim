@@ -1,19 +1,21 @@
 """Load-time validation of automation source code.
 
 The interpreter supports Python with a few exceptions (see "Supported Python" in
-the design). This module finds those exceptions by inspecting the parsed source,
-so that an automation is rejected before any of its code runs.
+the design), and automations may only use allowed imports and builtins (see
+"Imports"). This module finds violations of both by inspecting the parsed
+source, so that an automation is rejected before any of its code runs.
 """
 
 from __future__ import annotations
 
 import ast
 import warnings
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from haanim.engine.errors import AutomationSyntaxError
+from haanim.engine.errors import AutomationSecurityError, AutomationSyntaxError
+from haanim.engine.import_controller import ImportController
 from haanim.interfaces import FileSystem
 
 _GENERATOR_HINT = "use a list comprehension"
@@ -32,7 +34,7 @@ _COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp)
 
 
 @dataclass(frozen=True)
-class SyntaxProblem:
+class Problem:
     """One reason an automation's source cannot be loaded.
 
     Args:
@@ -40,12 +42,15 @@ class SyntaxProblem:
         lineno: Line of the problem, starting at 1. None if unknown.
         col_offset: Column of the problem, starting at 0. None if unknown.
         message: What is wrong.
+        security: Whether this is a disallowed import or builtin rather than
+            unsupported or invalid Python.
     """
 
     filename: str
     lineno: int | None
     col_offset: int | None
     message: str
+    security: bool = False
 
     def __str__(self) -> str:
         """Return the problem as ``file:line: message``."""
@@ -53,18 +58,18 @@ class SyntaxProblem:
         return f"{location}: {self.message}"
 
 
-def _position(problem: SyntaxProblem) -> tuple[int, int]:
+def _position(problem: Problem) -> tuple[int, int]:
     """Sort key that puts problems in source order."""
     return (problem.lineno or 0, problem.col_offset or 0)
 
 
-def _syntax_problem(err: SyntaxError, filename: str) -> SyntaxProblem:
+def _syntax_problem(err: SyntaxError, filename: str) -> Problem:
     """Describe a Python syntax error as a problem."""
     column = None if err.offset is None else max(err.offset - 1, 0)
-    return SyntaxProblem(filename, err.lineno, column, f"invalid syntax: {err.msg}")
+    return Problem(filename, err.lineno, column, f"invalid syntax: {err.msg}")
 
 
-def find_unsupported(tree: ast.AST, filename: str) -> list[SyntaxProblem]:
+def find_unsupported(tree: ast.AST, filename: str) -> list[Problem]:
     """Find every construct in a parsed source that the interpreter does not support.
 
     Args:
@@ -74,7 +79,7 @@ def find_unsupported(tree: ast.AST, filename: str) -> list[SyntaxProblem]:
     Returns:
         The problems in source order. Empty if the source is supported.
     """
-    problems: list[SyntaxProblem] = []
+    problems: list[Problem] = []
 
     for node in ast.walk(tree):
         message = _UNSUPPORTED_NODES.get(type(node))
@@ -83,7 +88,7 @@ def find_unsupported(tree: ast.AST, filename: str) -> list[SyntaxProblem]:
                 message = "async comprehensions are not supported"
         if message is not None:
             problems.append(
-                SyntaxProblem(
+                Problem(
                     filename=filename,
                     lineno=getattr(node, "lineno", None),
                     col_offset=getattr(node, "col_offset", None),
@@ -95,12 +100,84 @@ def find_unsupported(tree: ast.AST, filename: str) -> list[SyntaxProblem]:
     return problems
 
 
-def check_source(source: str, filename: str) -> tuple[ast.Module | None, list[SyntaxProblem]]:
+def _bound_names(tree: ast.AST) -> set[str]:
+    """Return every name the source itself defines, in any scope."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            names.add(node.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.arg):
+            names.add(node.arg)
+        elif isinstance(node, ast.alias):
+            names.add((node.asname or node.name).split(".")[0])
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            names.add(node.name)
+    return names
+
+
+def find_disallowed(
+    tree: ast.AST,
+    filename: str,
+    imports: ImportController | None = None,
+    restricted_builtins: Collection[str] = (),
+) -> list[Problem]:
+    """Find every import and builtin in a parsed source that automations may not use.
+
+    A restricted builtin name that the source defines itself (``def open(): ...``)
+    is not a use of the builtin and is not reported.
+
+    Args:
+        tree: The parsed source.
+        filename: Filename to report the problems against.
+        imports: The import rules. Imports are not checked if omitted.
+        restricted_builtins: Names of the builtins that are disabled.
+
+    Returns:
+        The problems in source order. Empty if nothing is disallowed.
+    """
+    problems: list[Problem] = []
+    own_names = _bound_names(tree) if restricted_builtins else set()
+
+    def report(node: ast.AST, message: str) -> None:
+        lineno, col_offset = getattr(node, "lineno", None), getattr(node, "col_offset", None)
+        problems.append(Problem(filename, lineno, col_offset, message, security=True))
+
+    for node in ast.walk(tree):
+        modules: list[str] = []
+        if isinstance(node, ast.Import):
+            modules = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            if any(alias.name == "*" for alias in node.names):
+                report(node, "wildcard imports are not allowed")
+            # Relative imports stay within the automation and are always allowed.
+            modules = [node.module] if node.level == 0 and node.module else []
+        elif isinstance(node, ast.Name) and node.id in restricted_builtins and node.id not in own_names:
+            report(node, f"builtin '{node.id}' is not available in automations")
+
+        if imports is not None:
+            for module in modules:
+                if not imports.is_allowed(module):
+                    report(node, f"import of module '{module}' is not allowed")
+
+    problems.sort(key=_position)
+    return problems
+
+
+def check_source(
+    source: str,
+    filename: str,
+    imports: ImportController | None = None,
+    restricted_builtins: Collection[str] = (),
+) -> tuple[ast.Module | None, list[Problem]]:
     """Parse a source and collect its problems without raising.
 
     Args:
         source: Python source code.
         filename: Filename to report the problems against.
+        imports: The import rules. Imports are not checked if omitted.
+        restricted_builtins: Names of the builtins that are disabled.
 
     Returns:
         The parsed module and its problems. The module is None if the source
@@ -121,52 +198,74 @@ def check_source(source: str, filename: str) -> tuple[ast.Module | None, list[Sy
             compile(source, filename, "exec", dont_inherit=True)
     except SyntaxError as err:
         problems.append(_syntax_problem(err, filename))
-        problems.sort(key=_position)
 
+    problems.extend(find_disallowed(tree, filename, imports, restricted_builtins))
+    problems.sort(key=_position)
     return tree, problems
 
 
-def _raise_for(problems: list[SyntaxProblem]) -> None:
-    """Raise an AutomationSyntaxError describing the problems, if there are any."""
+def _raise_for(problems: list[Problem]) -> None:
+    """Raise the error describing the problems, if there are any.
+
+    Invalid or unsupported Python is reported first, as AutomationSyntaxError.
+    A source that is valid but uses something disallowed is reported as
+    AutomationSecurityError.
+    """
     if not problems:
         return
 
-    first = problems[0]
-    message = str(first)
-    if len(problems) > 1:
-        message += "".join(f"\n{problem}" for problem in problems[1:])
-    raise AutomationSyntaxError(
-        message,
+    syntax = [problem for problem in problems if not problem.security]
+    reported = syntax or problems
+    error = AutomationSyntaxError if syntax else AutomationSecurityError
+    first = reported[0]
+    raise error(
+        "\n".join(str(problem) for problem in reported),
         lineno=first.lineno,
         col_offset=first.col_offset,
         filename=first.filename,
-        problems=problems,
+        problems=reported,
     )
 
 
-def validate_source(source: str, filename: str = "<automation>") -> ast.Module:
-    """Parse a source and check that the interpreter supports all of it.
+def validate_source(
+    source: str,
+    filename: str = "<automation>",
+    *,
+    imports: ImportController | None = None,
+    restricted_builtins: Collection[str] = (),
+) -> ast.Module:
+    """Parse a source and check that an automation may contain all of it.
 
     Nothing in the source is executed.
 
     Args:
         source: Python source code.
         filename: Filename to report the problems against.
+        imports: The import rules. Imports are not checked if omitted.
+        restricted_builtins: Names of the builtins that are disabled.
 
     Returns:
         The parsed module.
 
     Raises:
         AutomationSyntaxError: If the source does not parse or uses an
-            unsupported construct. The error lists every problem found.
+            unsupported construct. The error lists every such problem.
+        AutomationSecurityError: If the source is supported Python but uses a
+            disallowed import or builtin. The error lists every such problem.
     """
-    tree, problems = check_source(source, filename)
+    tree, problems = check_source(source, filename, imports, restricted_builtins)
     _raise_for(problems)
     assert tree is not None
     return tree
 
 
-async def validate_files(files: FileSystem, paths: Iterable[Path]) -> dict[Path, ast.Module]:
+async def validate_files(
+    files: FileSystem,
+    paths: Iterable[Path],
+    *,
+    imports: ImportController | None = None,
+    restricted_builtins: Collection[str] = (),
+) -> dict[Path, ast.Module]:
     """Check every source file of an automation.
 
     All files are checked before anything is reported, so one error lists the
@@ -175,6 +274,8 @@ async def validate_files(files: FileSystem, paths: Iterable[Path]) -> dict[Path,
     Args:
         files: The file system to read from.
         paths: The source files to check.
+        imports: The import rules. Imports are not checked if omitted.
+        restricted_builtins: Names of the builtins that are disabled.
 
     Returns:
         The parsed module of each file.
@@ -182,13 +283,15 @@ async def validate_files(files: FileSystem, paths: Iterable[Path]) -> dict[Path,
     Raises:
         AutomationSyntaxError: If any file does not parse or uses an
             unsupported construct.
+        AutomationSecurityError: If the files are supported Python but one uses
+            a disallowed import or builtin.
         OSError: If a file cannot be read.
     """
     trees: dict[Path, ast.Module] = {}
-    problems: list[SyntaxProblem] = []
+    problems: list[Problem] = []
 
     for path in paths:
-        tree, found = check_source(await files.read_text(path), path.name)
+        tree, found = check_source(await files.read_text(path), path.name, imports, restricted_builtins)
         problems.extend(found)
         if tree is not None:
             trees[path] = tree

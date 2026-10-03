@@ -24,15 +24,8 @@ class HAAnimError(Exception):
         self.col_offset = col_offset
 
 
-class AutomationSecurityError(HAAnimError):
-    """Exception raised for security violations in automations."""
-
-
-class AutomationSyntaxError(HAAnimError):
-    """Exception raised when an automation's source cannot be loaded.
-
-    Raised for invalid Python and for Python the interpreter does not support.
-    """
+class SourceError(HAAnimError):
+    """Base of the errors found by checking an automation's source before it runs."""
 
     def __init__(
         self,
@@ -43,7 +36,7 @@ class AutomationSyntaxError(HAAnimError):
         filename: str | None = None,
         problems: Sequence[Any] = (),
     ) -> None:
-        """Initialize the syntax error.
+        """Initialize the error.
 
         Args:
             message: Error message.
@@ -56,6 +49,17 @@ class AutomationSyntaxError(HAAnimError):
         super().__init__(message, lineno=lineno, col_offset=col_offset)
         self.filename = filename
         self.problems = tuple(problems)
+
+
+class AutomationSecurityError(SourceError):
+    """Exception raised when an automation uses a disallowed import, builtin or module member."""
+
+
+class AutomationSyntaxError(SourceError):
+    """Exception raised when an automation's source cannot be loaded.
+
+    Raised for invalid Python and for Python the interpreter does not support.
+    """
 
 
 class AutomationRuntimeError(HAAnimError):

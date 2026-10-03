@@ -335,6 +335,9 @@ class HAAnim:
 # Global haa instance (injected at runtime)
 haa: HAAnim
 
+hass: Any
+"""The running Home Assistant instance. Also available as ``import hass``."""
+
 # =============================================================================
 # Decorators
 # =============================================================================

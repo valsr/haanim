@@ -70,94 +70,6 @@ class TestSafeBuiltins:
         assert "test" not in builtins2
 
 
-class TestImportController:
-    """Tests for ImportController class."""
-
-    def test_default_allowlist(self) -> None:
-        """Test default import allowlist."""
-        controller = ImportController()
-
-        # Default allowed modules
-        assert controller.is_allowed("datetime")
-        assert controller.is_allowed("json")
-        assert controller.is_allowed("math")
-        assert controller.is_allowed("re")
-        assert controller.is_allowed("logging")
-
-        # Not in default allowlist
-        assert not controller.is_allowed("os")
-        assert not controller.is_allowed("subprocess")
-        assert not controller.is_allowed("socket")
-
-    def test_custom_allowlist(self) -> None:
-        """Test custom import allowlist."""
-        controller = ImportController(allowlist=["custom_module", "another"])
-
-        assert controller.is_allowed("custom_module")
-        assert controller.is_allowed("another")
-        assert not controller.is_allowed("datetime")  # Not in custom list
-
-    def test_allow_all(self) -> None:
-        """Test allow_all flag."""
-        controller = ImportController(allow_all=True)
-
-        assert controller.is_allowed("os")
-        assert controller.is_allowed("subprocess")
-        assert controller.is_allowed("anything")
-
-    def test_submodule_checking(self) -> None:
-        """Test that submodules are checked by top-level name."""
-        controller = ImportController(allowlist=["datetime"])
-
-        assert controller.is_allowed("datetime.datetime")
-        assert controller.is_allowed("datetime.timedelta")
-        assert not controller.is_allowed("os.path")
-
-    def test_safe_import_allowed(self) -> None:
-        """Test importing an allowed module."""
-        controller = ImportController(allowlist=["json"])
-        module = controller.safe_import("json")
-
-        assert module is not None
-        assert hasattr(module, "dumps")
-        assert hasattr(module, "loads")
-
-    def test_safe_import_blocked(self) -> None:
-        """Test importing a blocked module raises SecurityError."""
-        controller = ImportController(allowlist=["json"])
-
-        with pytest.raises(AutomationSecurityError) as exc_info:
-            controller.safe_import("os")
-
-        assert "not allowed" in str(exc_info.value)
-
-    def test_safe_import_nonexistent(self) -> None:
-        """Test importing a non-existent module raises RuntimeError."""
-        controller = ImportController(allowlist=["nonexistent_module_xyz"])
-
-        with pytest.raises(AutomationRuntimeError) as exc_info:
-            controller.safe_import("nonexistent_module_xyz")
-
-        assert "Failed to import" in str(exc_info.value)
-
-    def test_register_virtual_module(self) -> None:
-        """Test registering and importing a virtual module."""
-
-        class MockHAanim:
-            version = "1.0.0"
-
-        controller = ImportController()
-        controller.register_virtual_module("haanim", MockHAanim)
-
-        # Virtual module should be allowed
-        assert controller.is_allowed("haanim")
-
-        # Import should return the virtual module
-        module = controller.safe_import("haanim")
-        assert module is MockHAanim
-        assert module.version == "1.0.0"
-
-
 class TestSymbolTable:
     """Tests for SymbolTable class."""
 
@@ -344,44 +256,6 @@ class TestSymbolTableAdvanced:
 
         result = child.as_dict()
         assert result["var"] == 2
-
-
-class TestImportControllerAdvanced:
-    """Advanced tests for ImportController class."""
-
-    def test_allow_all(self) -> None:
-        """Test allow_all bypasses allowlist."""
-        controller = ImportController(allow_all=True)
-        assert controller.is_allowed("any_module") is True
-        assert controller.is_allowed("dangerous.module") is True
-
-    def test_safe_import_virtual(self) -> None:
-        """Test importing a virtual module."""
-        controller = ImportController()
-        mock_module = MagicMock()
-        controller.register_virtual_module("custom", mock_module)
-
-        result = controller.safe_import("custom")
-        assert result is mock_module
-
-    def test_safe_import_not_allowed(self) -> None:
-        """Test importing a not-allowed module raises error."""
-        controller = ImportController(allowlist=["safe"])
-
-        with pytest.raises(AutomationSecurityError, match="not allowed"):
-            controller.safe_import("dangerous")
-
-    def test_safe_import_allowed(self) -> None:
-        """Test importing an allowed module works."""
-        controller = ImportController(allowlist=["math"])
-        result = controller.safe_import("math")
-        assert result is not None
-
-    def test_submodule_check(self) -> None:
-        """Test that submodule checks the top-level name."""
-        controller = ImportController(allowlist=["os"])
-        assert controller.is_allowed("os.path") is True
-        assert controller.is_allowed("sys.path") is False
 
 
 class TestSafeBuiltinsAdvanced:
@@ -790,7 +664,7 @@ class TestAstEvaluatorImport:
     @pytest.fixture
     def evaluator(self) -> AstEvaluator:
         """Create an AstEvaluator with import controller."""
-        import_controller = ImportController(allowlist=["math", "datetime"])
+        import_controller = ImportController()
         return AstEvaluator(name="test", import_controller=import_controller)
 
     async def test_import_allowed_module(self, evaluator: AstEvaluator) -> None:
@@ -814,12 +688,6 @@ result = pi > 3
         )
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") is True
-
-    async def test_import_blocked_module(self, evaluator: AstEvaluator) -> None:
-        """Test importing a blocked module raises error."""
-        evaluator.parse("import os")
-        with pytest.raises(AutomationSecurityError, match="not allowed"):
-            await evaluator.execute()
 
 
 class TestAstEvaluatorAsync:

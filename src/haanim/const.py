@@ -32,6 +32,9 @@ __all__ = [
     "DEFAULT_IMPORT_ALLOWLIST",
     # Security
     "RESTRICTED_BUILTINS",
+    "DISABLED_MODULE_MEMBERS",
+    "DISABLED_LOOP_MEMBERS",
+    "LOOP_GETTERS",
 ]
 
 
@@ -75,7 +78,8 @@ DEFAULT_ACTION_TIMEOUT: Final = 0  # 0 = no timeout
 DEFAULT_MAX_CONCURRENT_ACTIONS: Final = 20
 DEFAULT_WORKER_SHUTDOWN_TIMEOUT: Final = 0.2  # 200ms
 
-# Default import allowlist - safe modules for automations
+# Modules an automation can import by default (see "Imports" in the design).
+# "hass" and "haanim" are supplied by the engine; the rest are standard modules.
 DEFAULT_IMPORT_ALLOWLIST: Final[list[str]] = [
     "asyncio",
     "datetime",
@@ -95,23 +99,44 @@ DEFAULT_IMPORT_ALLOWLIST: Final[list[str]] = [
     "fractions",
     "enum",
     "dataclasses",
+    "hass",
+    "haanim",
 ]
 
-# Restricted builtins that should not be available in automations
+# Builtins that are not available in automations
 RESTRICTED_BUILTINS: Final[set[str]] = {
     "eval",
     "exec",
     "compile",
+    "__import__",
     "open",
     "input",
-    "__import__",
     "breakpoint",
-    "memoryview",
     "globals",
     "locals",
-    "vars",
-    "dir",
-    "delattr",
-    "setattr",
-    "getattr",
 }
+
+# Members of allowed modules that block the event loop or leave it, with what to use instead
+DISABLED_MODULE_MEMBERS: Final[dict[str, dict[str, str]]] = {
+    "time": {
+        "sleep": "use 'await haa.sleep()'",
+    },
+    "asyncio": {
+        "run": "automations already run on the event loop",
+        "new_event_loop": "automations run on Home Assistant's event loop",
+        "set_event_loop": "automations run on Home Assistant's event loop",
+        "to_thread": "automations do not use threads",
+        "create_subprocess_exec": "automations cannot start processes",
+        "create_subprocess_shell": "automations cannot start processes",
+    },
+}
+
+# Methods of the event loop that are disabled for the same reason
+DISABLED_LOOP_MEMBERS: Final[dict[str, str]] = {
+    "run_forever": "the event loop is already running",
+    "run_until_complete": "the event loop is already running; use 'await'",
+    "run_in_executor": "automations do not use threads",
+}
+
+# Functions of asyncio that return the event loop
+LOOP_GETTERS: Final[set[str]] = {"get_event_loop", "get_running_loop"}

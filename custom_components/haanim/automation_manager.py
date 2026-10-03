@@ -230,7 +230,7 @@ class AutomationManager:
             status_manager=self._status_manager,
             storage_path=self._storage_path,
             registry=self,
-            import_allowlist=self._import_allowlist,
+            additional_imports=self._import_allowlist,
             allow_all_imports=self._allow_all_imports,
         )
 

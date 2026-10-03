@@ -717,11 +717,13 @@ def make_host(
     clock: FakeClock | None = None,
     sun: FakeSunProvider | None = None,
     files: FileSystem | None = None,
+    hass: Any = None,
 ) -> Host:
     """Build a Host from fakes.
 
     Fakes that are not passed are created. The created state provider, event
-    bus and file system share the host's clock.
+    bus and file system share the host's clock. ``hass`` is what automations
+    get from ``import hass``; pass a stand-in to test an automation that uses it.
 
     Returns:
         A Host whose members are the given or created fakes.
@@ -734,4 +736,5 @@ def make_host(
         clock=clock,
         sun=sun or FakeSunProvider(),
         files=files or FakeFileSystem(clock),
+        hass=hass,
     )

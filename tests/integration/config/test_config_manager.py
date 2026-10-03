@@ -274,13 +274,10 @@ class TestConfigManagerHelpers:
         assert manager.get_option("unknown") is None
 
     def test_get_import_allowlist(self, reset_config_manager: None) -> None:
-        """Test getting import allowlist."""
+        """Test the additional imports are empty by default: the default allowlist is the engine's."""
         manager = ConfigManager()
-        allowlist = manager.get_import_allowlist()
 
-        assert isinstance(allowlist, list)
-        assert "asyncio" in allowlist
-        assert "datetime" in allowlist
+        assert manager.get_import_allowlist() == []
 
     def test_get_allow_all_imports_default_false(self, reset_config_manager: None) -> None:
         """Test allow_all_imports defaults to False."""

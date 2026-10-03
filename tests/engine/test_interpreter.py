@@ -386,6 +386,11 @@ ERRORS: dict[str, tuple[str, type[BaseException], str]] = {
 
 # Sources whose module-level ``r`` must be what CPython computes for the same source.
 SAME_AS_PYTHON: list[str] = [
+    "a = b = [1]\na += [2]\nr = (a, b, a is b)",
+    "a = b = (1,)\na += (2,)\nr = (a, b)",
+    "s = t = {1}\ns |= {2}\ns &= {2, 3}\nr = (s, t)",
+    "class M:\n    def __matmul__(self, o):\n        return 'mat'\n    def __imatmul__(self, o):\n        return 'imat'\nm = M()\nr1 = m @ 1\nm @= 1\nr = (r1, m)",
+    "x = 7\nx //= 2\nx **= 2\nx %= 5\nx <<= 2\nx >>= 1\nx ^= 1\nx /= 2\nr = x",
     "r = (0 or 'd', 1 and 2, None or 0 or [], 1 and 0 and 3, '' or None)",
     "s = 'a'\nr = f'{s!r} {s!s} {s!a:>5} {1+1=}'",
     "w = 6\nr = f'{3.14159:{w}.2f}|{12:>{w}}'",

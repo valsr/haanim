@@ -103,10 +103,10 @@ class ConfigManager:
                 ConfigOption(
                     key=const.CONFIG_IMPORT_ALLOWLIST,
                     config_type=ConfigType.LIST,
-                    default=const.DEFAULT_IMPORT_ALLOWLIST,
+                    default=[],
                     required=False,
-                    label="Import Allowlist",
-                    description="List of allowed module names for import",
+                    label="Additional Allowed Imports",
+                    description="Modules automations may import in addition to the default allowlist",
                     show_in_setup=False,
                 ),
             ],
@@ -460,12 +460,12 @@ class ConfigManager:
         return os.path.join(self._hass.config.config_dir, path)
 
     def get_import_allowlist(self) -> list[str]:
-        """Get the list of allowed imports.
+        """Get the modules allowed in addition to the default import allowlist.
 
         Returns:
-            List of allowed module names.
+            List of additional module names.
         """
-        allowlist: Any = self.get(const.CONFIG_IMPORT_ALLOWLIST, const.DEFAULT_IMPORT_ALLOWLIST)
+        allowlist: Any = self.get(const.CONFIG_IMPORT_ALLOWLIST, [])
         if not isinstance(allowlist, list):
             _LOGGER.warning("Import allowlist is not a list, returning empty list")
             return []

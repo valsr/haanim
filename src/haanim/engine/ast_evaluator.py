@@ -1,5 +1,7 @@
 """Interpreter that executes automation source by walking its AST."""
 
+from __future__ import annotations
+
 import ast
 import inspect
 import logging
@@ -7,9 +9,12 @@ import sys
 import types
 import typing
 from collections.abc import Callable
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from haanim.engine.eval_function import ControlFlow, EvalFunction, ReturnValue, get_eval_function
+from haanim.engine import operators
+from haanim.engine.automation_module import AutomationModule
 from haanim.engine.import_controller import ImportController
 from haanim.engine.safe_builtins import SafeBuiltins
 from haanim.engine.symbol_table import SCOPE_CLASS, SCOPE_COMPREHENSION, SCOPE_MODULE, SymbolTable
@@ -19,6 +24,9 @@ from haanim.engine.errors import (
     AutomationSecurityError,
 )
 from haanim.engine.validation import validate_source
+
+if TYPE_CHECKING:
+    from haanim.interfaces import FileSystem
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +50,10 @@ class AstEvaluator:
         import_controller: ImportController | None = None,
         safe_builtins: SafeBuiltins | None = None,
         logger: logging.Logger | None = None,
+        files: FileSystem | None = None,
+        path: Path | None = None,
+        root: Path | None = None,
+        modules: dict[Path, AutomationModule] | None = None,
     ) -> None:
         """Initialize the AST evaluator.
 
@@ -51,6 +63,14 @@ class AstEvaluator:
             import_controller: Controller for safe imports.
             safe_builtins: Provider of safe builtin functions.
             logger: Logger instance for this evaluator.
+            files: File system to read relatively imported files from. Without
+                it relative imports are not available.
+            path: Path of the file being evaluated; relative imports are
+                resolved against its directory.
+            root: Directory relative imports must stay within. Defaults to the
+                directory of ``path``.
+            modules: The relatively imported modules loaded so far, shared by
+                all files of an automation.
         """
         self.name = name
         self._logger = logger or _LOGGER
@@ -60,18 +80,21 @@ class AstEvaluator:
         self._ast: ast.Module | None = None
         self._source: str | None = None
         self._filename = "<automation>"
+        self._files = files
+        self._path = path
+        self._root = root if root is not None else (path.parent if path is not None else None)
+        self._modules: dict[Path, AutomationModule] = modules if modules is not None else {}
 
         # Add builtins to global scope
         for builtin_name, value in self._safe_builtins.get_builtins().items():
             self._global_symbols.set(builtin_name, value)
+        if not self._global_symbols.exists("__name__"):
+            self._global_symbols.set("__name__", name)
 
         # Register evaluators
         self._evaluators: dict[type[ast.AST], Callable[[Any, SymbolTable], Any]] = {
             # Expression evaluators
             ast.Constant: self._eval_constant,
-            ast.Num: self._eval_num,  # pyright: ignore[reportDeprecated]
-            ast.Str: self._eval_str,  # pyright: ignore[reportDeprecated]
-            ast.Index: self._eval_index,  # pyright: ignore[reportDeprecated]
             ast.Name: self._eval_name,
             ast.Attribute: self._eval_attribute,
             ast.Subscript: self._eval_subscript,
@@ -132,10 +155,17 @@ class AstEvaluator:
         Raises:
             AutomationSyntaxError: If the source has syntax errors or uses
                 Python the interpreter does not support.
+            AutomationSecurityError: If the source uses a disallowed import or
+                builtin.
         """
         self._source = source
         self._filename = filename
-        self._ast = validate_source(source, filename=filename)
+        self._ast = validate_source(
+            source,
+            filename=filename,
+            imports=self._import_controller,
+            restricted_builtins=self._safe_builtins.restricted,
+        )
 
     async def execute(self) -> dict[str, Any]:
         """Execute the parsed AST.
@@ -188,25 +218,13 @@ class AstEvaluator:
         """Evaluate a constant value."""
         return node.value
 
-    async def _eval_num(self, node: ast.Num, _: SymbolTable) -> Any:  # pyright: ignore[reportDeprecated]
-        """Evaluate a number (Python 3.7 compatibility)."""
-        return node.n  # pyright: ignore[reportDeprecated]
-
-    async def _eval_str(self, node: ast.Str, _: SymbolTable) -> Any:  # pyright: ignore[reportDeprecated]
-        """Evaluate a string (Python 3.7 compatibility)."""
-        return node.s  # pyright: ignore[reportDeprecated]
-
-    async def _eval_index(
-        self, node: ast.Index, scope: SymbolTable  # pyright: ignore[reportDeprecated]
-    ) -> Any:
-        """Evaluate an index (Python 3.8 compatibility)."""
-        return await self.aeval(node.value, scope)  # type: ignore
-
     async def _eval_name(self, node: ast.Name, scope: SymbolTable) -> Any:
         """Evaluate a name reference."""
         name = node.id
         if scope.exists(name):
             return scope.get(name)
+        if name in self._safe_builtins.restricted:
+            raise AutomationSecurityError(f"Builtin '{name}' is not available in automations")
         raise NameError(f"name '{name}' is not defined")
 
     async def _eval_attribute(self, node: ast.Attribute, scope: SymbolTable) -> Any:
@@ -267,43 +285,11 @@ class AstEvaluator:
         """Evaluate a binary operation."""
         left = await self.aeval(node.left, scope)
         right = await self.aeval(node.right, scope)
-
-        ops: dict[type[ast.operator], Callable[[Any, Any], Any]] = {
-            ast.Add: lambda a, b: a + b,
-            ast.Sub: lambda a, b: a - b,
-            ast.Mult: lambda a, b: a * b,
-            ast.Div: lambda a, b: a / b,
-            ast.FloorDiv: lambda a, b: a // b,
-            ast.Mod: lambda a, b: a % b,
-            ast.Pow: lambda a, b: a**b,
-            ast.LShift: lambda a, b: a << b,
-            ast.RShift: lambda a, b: a >> b,
-            ast.BitOr: lambda a, b: a | b,
-            ast.BitXor: lambda a, b: a ^ b,
-            ast.BitAnd: lambda a, b: a & b,
-            ast.MatMult: lambda a, b: a @ b,
-        }
-
-        op_func = ops.get(type(node.op))
-        if op_func is None:
-            raise AutomationRuntimeError(f"Unsupported binary operator: {type(node.op).__name__}")
-        return op_func(left, right)
+        return operators.BINARY[type(node.op)](left, right)
 
     async def _eval_unary_operator(self, node: ast.UnaryOp, scope: SymbolTable) -> Any:
         """Evaluate a unary operation."""
-        operand = await self.aeval(node.operand, scope)
-
-        ops: dict[type[ast.unaryop], Callable[[Any], Any]] = {
-            ast.UAdd: lambda a: +a,
-            ast.USub: lambda a: -a,
-            ast.Not: lambda a: not a,
-            ast.Invert: lambda a: ~a,
-        }
-
-        op_func = ops.get(type(node.op))
-        if op_func is None:
-            raise AutomationRuntimeError(f"Unsupported unary operator: {type(node.op).__name__}")
-        return op_func(operand)
+        return operators.UNARY[type(node.op)](await self.aeval(node.operand, scope))
 
     async def _eval_bool_operator(self, node: ast.BoolOp, scope: SymbolTable) -> Any:
         """Evaluate a boolean operation (and/or).
@@ -367,9 +353,15 @@ class AstEvaluator:
             else:
                 kwargs[keyword.arg] = await self.aeval(keyword.value, scope)
 
-        if func is super and not args and not kwargs:
-            # super() without arguments needs the class and instance of the calling method.
-            return super(scope.get("__class__"), scope.enclosing_first_arg())
+        if not args and not kwargs:
+            if func is super:
+                # super() without arguments needs the class and instance of the calling method.
+                return super(scope.get("__class__"), scope.enclosing_first_arg())
+            if func is dir:
+                # Without arguments these describe the caller's scope, which lives in the interpreter.
+                return sorted(scope.function_scope().own_symbols())
+            if func is vars:
+                return scope.function_scope().own_symbols()
 
         return await self.call(func, *args, **kwargs)
 
@@ -579,30 +571,7 @@ class AstEvaluator:
         """Evaluate an augmented assignment (+=, -=, etc.)."""
         current = await self.aeval(node.target, scope)
         value = await self.aeval(node.value, scope)
-
-        ops: dict[type[ast.operator], Callable[[Any, Any], Any]] = {
-            ast.Add: lambda a, b: a + b,
-            ast.Sub: lambda a, b: a - b,
-            ast.Mult: lambda a, b: a * b,
-            ast.Div: lambda a, b: a / b,
-            ast.FloorDiv: lambda a, b: a // b,
-            ast.Mod: lambda a, b: a % b,
-            ast.Pow: lambda a, b: a**b,
-            ast.LShift: lambda a, b: a << b,
-            ast.RShift: lambda a, b: a >> b,
-            ast.BitOr: lambda a, b: a | b,
-            ast.BitXor: lambda a, b: a ^ b,
-            ast.BitAnd: lambda a, b: a & b,
-        }
-
-        op_func = ops.get(type(node.op))
-        if op_func is None:
-            raise AutomationRuntimeError(
-                f"Unsupported augmented assignment operator: {type(node.op).__name__}"
-            )
-
-        result = op_func(current, value)
-        await self._assign_target(node.target, result, scope)
+        await self._assign_target(node.target, operators.IN_PLACE[type(node.op)](current, value), scope)
 
     async def _assign_target(self, target: ast.AST, value: Any, scope: SymbolTable) -> None:
         """Assign a value to a target (name, tuple, list, etc.)."""
@@ -647,14 +616,10 @@ class AstEvaluator:
         test = await self.aeval(node.test, scope)
         if test:
             for stmt in node.body:
-                result = await self.aeval(stmt, scope)
-                if isinstance(result, ReturnValue):
-                    return result
+                await self.aeval(stmt, scope)
         elif node.orelse:
             for stmt in node.orelse:
-                result = await self.aeval(stmt, scope)
-                if isinstance(result, ReturnValue):
-                    return result
+                await self.aeval(stmt, scope)
         return None
 
     async def _eval_for(self, node: ast.For, scope: SymbolTable) -> Any:
@@ -664,9 +629,7 @@ class AstEvaluator:
             await self._assign_target(node.target, item, scope)
             try:
                 for stmt in node.body:
-                    result = await self.aeval(stmt, scope)
-                    if isinstance(result, ReturnValue):
-                        return result
+                    await self.aeval(stmt, scope)
             except BreakLoop:
                 break
             except ContinueLoop:
@@ -674,9 +637,7 @@ class AstEvaluator:
         else:
             # Execute else clause if loop completed without break
             for stmt in node.orelse:
-                result = await self.aeval(stmt, scope)
-                if isinstance(result, ReturnValue):
-                    return result
+                await self.aeval(stmt, scope)
         return None
 
     async def _eval_while(self, node: ast.While, scope: SymbolTable) -> Any:
@@ -684,18 +645,14 @@ class AstEvaluator:
         while await self.aeval(node.test, scope):
             try:
                 for stmt in node.body:
-                    result = await self.aeval(stmt, scope)
-                    if isinstance(result, ReturnValue):
-                        return result
+                    await self.aeval(stmt, scope)
             except BreakLoop:
                 break
             except ContinueLoop:
                 continue
         else:
             for stmt in node.orelse:
-                result = await self.aeval(stmt, scope)
-                if isinstance(result, ReturnValue):
-                    return result
+                await self.aeval(stmt, scope)
         return None
 
     async def _eval_break(self, node: ast.Break, scope: SymbolTable) -> None:
@@ -755,18 +712,99 @@ class AstEvaluator:
         """Evaluate an import statement."""
         for alias in node.names:
             module = self._import_controller.safe_import(alias.name)
-            name = alias.asname or alias.name.split(".")[0]
-            scope.set(name, module)
+            if alias.asname:
+                scope.set(alias.asname, module)
+            else:
+                # 'import a.b' binds 'a', as in Python.
+                top_level = alias.name.split(".")[0]
+                scope.set(top_level, self._import_controller.safe_import(top_level))
 
     async def _eval_import_from(self, node: ast.ImportFrom, scope: SymbolTable) -> None:
         """Evaluate a from ... import statement."""
-        module = self._import_controller.safe_import(node.module or "")
+        if any(alias.name == "*" for alias in node.names):
+            raise AutomationSecurityError("Wildcard imports are not allowed")
+
+        if node.level > 0:
+            await self._import_relative(node, scope)
+            return
+
+        module_name = node.module or ""
+        module = self._import_controller.safe_import(module_name)
         for alias in node.names:
-            if alias.name == "*":
-                raise AutomationSecurityError("Wildcard imports are not allowed")
-            obj = getattr(module, alias.name)
-            name = alias.asname or alias.name
-            scope.set(name, obj)
+            try:
+                obj = getattr(module, alias.name)
+            except AttributeError:
+                raise ImportError(f"cannot import name '{alias.name}' from '{module_name}'") from None
+            scope.set(alias.asname or alias.name, obj)
+
+    async def _import_relative(self, node: ast.ImportFrom, scope: SymbolTable) -> None:
+        """Evaluate a relative import: another file of the same automation."""
+        if self._files is None or self._path is None or self._root is None:
+            raise ImportError("relative imports are not available here")
+
+        package = self._path.parent
+        for _ in range(node.level - 1):
+            package = package.parent
+        if not package.is_relative_to(self._root):
+            raise AutomationSecurityError("Relative import reaches outside the automation")
+
+        if node.module:
+            # from .helper import name
+            module = await self._load_module(package.joinpath(*node.module.split(".")), node)
+            for alias in node.names:
+                try:
+                    obj = getattr(module, alias.name)
+                except AttributeError:
+                    raise ImportError(f"cannot import name '{alias.name}' from '.{node.module}'") from None
+                scope.set(alias.asname or alias.name, obj)
+        else:
+            # from . import helper
+            for alias in node.names:
+                module = await self._load_module(package / alias.name, node)
+                scope.set(alias.asname or alias.name, module)
+
+    async def _load_module(self, location: Path, node: ast.ImportFrom) -> AutomationModule:
+        """Load a file of the automation as a module, once.
+
+        Args:
+            location: Path of the module without its ``.py`` suffix.
+            node: The import statement, for the error message.
+
+        Returns:
+            The module. The same object is returned on every import of the file.
+        """
+        assert self._files is not None and self._path is not None
+        candidates = [location.with_name(location.name + ".py"), location / "__init__.py"]
+        path = next((candidate for candidate in candidates if self._files.exists(candidate)), None)
+        if path is None:
+            dotted = "." * node.level + (node.module or location.name)
+            raise ModuleNotFoundError(f"No module named '{dotted}' in automation '{self.name}'")
+
+        if path in self._modules:
+            return self._modules[path]
+
+        module_scope = SymbolTable()
+        module = AutomationModule(path, module_scope)
+        # Registered before it runs, so that two files importing each other terminate.
+        self._modules[path] = module
+        evaluator = AstEvaluator(
+            name=self.name,
+            global_symbols=module_scope,
+            import_controller=self._import_controller,
+            safe_builtins=self._safe_builtins,
+            logger=self._logger,
+            files=self._files,
+            path=path,
+            root=self._root,
+            modules=self._modules,
+        )
+        try:
+            evaluator.parse(await self._files.read_text(path), filename=path.name)
+            await evaluator.execute()
+        except BaseException:
+            del self._modules[path]
+            raise
+        return module
 
     async def _eval_pass(self, node: ast.Pass, scope: SymbolTable) -> None:
         """Evaluate a pass statement."""

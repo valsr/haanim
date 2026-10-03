@@ -13,7 +13,7 @@ from haanim.engine.ast_evaluator import AstEvaluator
 from haanim.engine.errors import AutomationSyntaxError, HAAnimError
 from haanim.engine.import_controller import ImportController
 from haanim.engine.validation import (
-    SyntaxProblem,
+    Problem,
     check_source,
     find_unsupported,
     validate_files,
@@ -305,7 +305,7 @@ class TestProblems:
 
     def test_problem_without_line(self) -> None:
         """A problem with no line is shown with the file only."""
-        assert str(SyntaxProblem("main.py", None, None, "bad")) == "main.py: bad"
+        assert str(Problem("main.py", None, None, "bad")) == "main.py: bad"
 
     def test_nothing_is_executed(self) -> None:
         """Validating does not run the source."""

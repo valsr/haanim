@@ -111,7 +111,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONFIG_ALLOW_ALL_IMPORTS,
                             defaults.get("allow_all_imports", DEFAULT_ALLOW_ALL_IMPORTS),
                         ),
-                        CONFIG_IMPORT_ALLOWLIST: defaults.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST),
+                        CONFIG_IMPORT_ALLOWLIST: defaults.get("import_allowlist", []),
                     },
                 )
 
@@ -165,12 +165,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             if not is_valid:
                 errors[CONFIG_AUTOMATION_PATH] = "invalid_path"
             else:
-                # Parse import allowlist from comma-separated string
+                # Parse the additional imports from a comma-separated string; empty means none
                 allowlist_str = user_input.get("import_allowlist_str", "")
                 if allowlist_str:
                     allowlist = [m.strip() for m in allowlist_str.split(",") if m.strip()]
                 else:
-                    allowlist = config_manager.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
+                    allowlist = []
 
                 return self.async_create_entry(
                     title="",
@@ -189,7 +189,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         # Get current values
         current_path = config_manager.get("automation_path", DEFAULT_AUTOMATION_PATH)
         current_allow_all = config_manager.get("allow_all_imports", DEFAULT_ALLOW_ALL_IMPORTS)
-        current_allowlist = config_manager.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
+        current_allowlist = config_manager.get("import_allowlist", [])
 
         # Convert allowlist to comma-separated string for display
         allowlist_str = ", ".join(current_allowlist) if current_allowlist else ""
@@ -202,16 +202,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             }
         )
 
-        # Get defaults for description placeholder
-        defaults = config_manager.get_defaults()
-        default_allowlist = defaults.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
-
         return self.async_show_form(
             step_id="init",
             data_schema=options_schema,
             errors=errors,
             description_placeholders={
-                "default_allowlist": ", ".join(default_allowlist[:5]) + "...",
+                "default_allowlist": ", ".join(DEFAULT_IMPORT_ALLOWLIST),
             },
         )
 

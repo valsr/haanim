@@ -28,6 +28,7 @@ from haanim.engine.ast_evaluator import AstEvaluator
 from haanim.engine.callables import accepted_kwargs, as_coroutine_function, is_coroutine_callable
 from haanim.engine.decorators import FunctionMetadata, get_metadata, has_metadata
 from haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
+from haanim.engine.logging_wrapper import create_logger_wrapper
 from haanim.engine.automation_status import AutomationStatusManager
 from haanim.interfaces import AutomationRegistry, Host
 
@@ -127,7 +128,7 @@ class AutomationContext:
         status_manager: AutomationStatusManager,
         storage_path: str,
         registry: AutomationRegistry,
-        import_allowlist: list[str] | None = None,
+        additional_imports: list[str] | None = None,
         allow_all_imports: bool = False,
     ) -> None:
         """Initialize an automation context.
@@ -138,7 +139,7 @@ class AutomationContext:
             status_manager: Where this automation's status is recorded.
             storage_path: Directory holding the persistent storage files of automations.
             registry: The loaded automations, used by ``haa`` to reach other automations.
-            import_allowlist: List of allowed import modules.
+            additional_imports: Modules automations may import in addition to the default allowlist.
             allow_all_imports: If True, allow all imports.
         """
         self.host = host
@@ -154,7 +155,7 @@ class AutomationContext:
 
         # Initialize components
         self._import_controller = ImportController(
-            allowlist=import_allowlist,
+            additional=additional_imports,
             allow_all=allow_all_imports,
         )
         self._safe_builtins = SafeBuiltins()
@@ -251,8 +252,16 @@ class AutomationContext:
         for error_class in PUBLIC_ERRORS:
             setattr(haanim_module, error_class.__name__, error_class)
 
-        # Register the virtual module with the import controller
+        # 'import logging' and 'from haanim import logging' give the automation's logger
+        logging_module = create_logger_wrapper(self._logger)
+        haanim_module.logging = logging_module
+        haanim_module.hass = self.host.hass
+
+        # Register what the engine supplies for these imports
         self._import_controller.register_virtual_module("haanim", haanim_module)
+        self._import_controller.register_virtual_module("logging", logging_module)
+        if self.host.hass is not None:
+            self._import_controller.register_virtual_module("hass", self.host.hass)
 
         # Add decorators to global scope (for direct use without import)
         self._global_symbols.set("action", decorators.action)
@@ -276,12 +285,7 @@ class AutomationContext:
         # Add set_status function to global scope
         self._global_symbols.set("set_status", set_status)
 
-        # Add logging module wrapper
-        from haanim.engine.logging_wrapper import (  # pylint: disable=import-outside-toplevel
-            create_logger_wrapper,
-        )
-
-        self._global_symbols.set("logging", create_logger_wrapper(self._logger))
+        self._global_symbols.set("logging", logging_module)
 
         # Add logging functions for convenience
         self._global_symbols.set("log_debug", self._logger.debug)
@@ -329,6 +333,8 @@ class AutomationContext:
             import_controller=self._import_controller,
             safe_builtins=self._safe_builtins,
             logger=self._logger,
+            files=self.host.files,
+            path=path,
         )
 
         # Parse the source

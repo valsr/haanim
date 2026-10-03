@@ -34,6 +34,11 @@ class SafeBuiltins:
         if additional_allowed:
             self._builtins.update(additional_allowed)
 
+    @property
+    def restricted(self) -> frozenset[str]:
+        """Names of the builtins that are not available."""
+        return frozenset(self._restricted)
+
     def get_builtins(self) -> dict[str, Any]:
         """Get the filtered builtins dictionary.
 

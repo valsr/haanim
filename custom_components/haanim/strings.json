@@ -29,16 +29,16 @@
         "step": {
             "init": {
                 "title": "HAAnim Options",
-                "description": "Configure HAAnim settings. Default import allowlist: {default_allowlist}",
+                "description": "Configure HAAnim settings. Automations can always import: {default_allowlist}",
                 "data": {
                     "automation_path": "Automation Path",
                     "allow_all_imports": "Allow All Imports",
-                    "import_allowlist_str": "Import Allowlist (comma-separated)"
+                    "import_allowlist_str": "Additional allowed imports (comma-separated)"
                 },
                 "data_description": {
                     "automation_path": "Absolute path for automations",
-                    "allow_all_imports": "Allow automations to import any module (security risk)",
-                    "import_allowlist_str": "Comma-separated list of allowed module names"
+                    "allow_all_imports": "Allow automations to import any module (not recommended)",
+                    "import_allowlist_str": "Modules automations may import in addition to the default list"
                 }
             }
         },

@@ -242,6 +242,9 @@ class Host:
         clock: Current time.
         sun: Sunrise and sunset times.
         files: File access.
+        hass: What an automation gets from ``import hass``: the running Home
+            Assistant instance. The engine never uses it itself. None if the
+            host has none to offer.
     """
 
     states: StateProvider
@@ -250,3 +253,4 @@ class Host:
     clock: Clock
     sun: SunProvider
     files: FileSystem
+    hass: Any = None

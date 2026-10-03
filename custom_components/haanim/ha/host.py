@@ -189,4 +189,5 @@ def build_host(hass: HomeAssistant, state_manager: StateManager, event_manager: 
         clock=HAClock(),
         sun=HASunProvider(hass),
         files=HAFileSystem(hass),
+        hass=hass,
     )
