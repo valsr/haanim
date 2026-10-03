@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 class EvalFunction:
-    """Wrapper for user-defined functions in scripts."""
+    """Wrapper for user-defined functions in automations."""
 
     def __init__(
         self,

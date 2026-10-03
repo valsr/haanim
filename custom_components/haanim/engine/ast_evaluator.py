@@ -12,10 +12,10 @@ from custom_components.haanim.engine.import_controller import ImportController
 from custom_components.haanim.engine.safe_builtins import SafeBuiltins
 from custom_components.haanim.engine.symbol_table import SymbolTable
 from custom_components.haanim.engine.errors import (
-    ScriptError,
-    ScriptRuntimeError,
-    ScriptSecurityError,
-    ScriptSyntaxError,
+    HAAnimError,
+    AutomationRuntimeError,
+    AutomationSecurityError,
+    AutomationSyntaxError,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,8 +43,8 @@ class AstEvaluator:
         """Initialize the AST evaluator.
 
         Args:
-            name: Name of the script being evaluated.
-            global_symbols: Global symbol table for the script.
+            name: Name of the automation being evaluated.
+            global_symbols: Global symbol table for the automation.
             import_controller: Controller for safe imports.
             safe_builtins: Provider of safe builtin functions.
             logger: Logger instance for this evaluator.
@@ -117,7 +117,7 @@ class AstEvaluator:
             ast.NamedExpr: self._eval_named_expression,
         }
 
-    def parse(self, source: str, filename: str = "<script>") -> None:
+    def parse(self, source: str, filename: str = "<automation>") -> None:
         """Parse Python source code into an AST.
 
         Args:
@@ -125,13 +125,13 @@ class AstEvaluator:
             filename: Filename for error messages.
 
         Raises:
-            ScriptSyntaxError: If the source has syntax errors.
+            AutomationSyntaxError: If the source has syntax errors.
         """
         self._source = source
         try:
             self._ast = ast.parse(source, filename=filename, mode="exec")
         except SyntaxError as err:
-            raise ScriptSyntaxError(
+            raise AutomationSyntaxError(
                 f"Syntax error: {err.msg}",
                 lineno=err.lineno,
                 col_offset=err.offset,
@@ -141,23 +141,23 @@ class AstEvaluator:
         """Execute the parsed AST.
 
         Returns:
-            Dictionary of names defined in the script (functions, variables, etc.)
+            Dictionary of names defined in the automation (functions, variables, etc.)
 
         Raises:
-            ScriptRuntimeError: If execution fails.
+            AutomationRuntimeError: If execution fails.
         """
         if self._ast is None:
-            raise ScriptRuntimeError("No AST to execute. Call parse() first.")
+            raise AutomationRuntimeError("No AST to execute. Call parse() first.")
 
         try:
             for node in self._ast.body:
                 await self.aeval(node, self._global_symbols)
         except Exception as err:
-            if isinstance(err, (ScriptError, ReturnValue, BreakLoop, ContinueLoop)):
-                self._logger.error("Script execution error: %s", err)
+            if isinstance(err, (HAAnimError, ReturnValue, BreakLoop, ContinueLoop)):
+                self._logger.error("Automation execution error: %s", err)
                 raise
-            self._logger.exception("Unexpected error during script execution")
-            raise ScriptRuntimeError(f"Runtime error: {err}") from err
+            self._logger.exception("Unexpected error during automation execution")
+            raise AutomationRuntimeError(f"Runtime error: {err}") from err
 
         return self._global_symbols.as_dict()
 
@@ -174,7 +174,7 @@ class AstEvaluator:
         method: Callable[[Any, SymbolTable], Any] | None = self._evaluators.get(type(node), None)
 
         if method is None:
-            raise ScriptRuntimeError(
+            raise AutomationRuntimeError(
                 f"Unsupported AST node type: {node.__class__.__name__}",
                 lineno=getattr(node, "lineno", None),
             )
@@ -207,7 +207,7 @@ class AstEvaluator:
         name = node.id
         if scope.exists(name):
             return scope.get(name)
-        raise ScriptRuntimeError(f"Name '{name}' is not defined", lineno=node.lineno)
+        raise AutomationRuntimeError(f"Name '{name}' is not defined", lineno=node.lineno)
 
     async def _eval_attribute(self, node: ast.Attribute, scope: SymbolTable) -> Any:
         """Evaluate an attribute access."""
@@ -277,7 +277,7 @@ class AstEvaluator:
 
         op_func = ops.get(type(node.op))
         if op_func is None:
-            raise ScriptRuntimeError(f"Unsupported binary operator: {type(node.op).__name__}")
+            raise AutomationRuntimeError(f"Unsupported binary operator: {type(node.op).__name__}")
         return op_func(left, right)
 
     async def _eval_unary_operator(self, node: ast.UnaryOp, scope: SymbolTable) -> Any:
@@ -293,7 +293,7 @@ class AstEvaluator:
 
         op_func = ops.get(type(node.op))
         if op_func is None:
-            raise ScriptRuntimeError(f"Unsupported unary operator: {type(node.op).__name__}")
+            raise AutomationRuntimeError(f"Unsupported unary operator: {type(node.op).__name__}")
         return op_func(operand)
 
     async def _eval_bool_operator(self, node: ast.BoolOp, scope: SymbolTable) -> Any:
@@ -332,7 +332,7 @@ class AstEvaluator:
             right = await self.aeval(comparator, scope)
             op_func = ops.get(type(op))
             if op_func is None:
-                raise ScriptRuntimeError(f"Unsupported comparison operator: {type(op).__name__}")
+                raise AutomationRuntimeError(f"Unsupported comparison operator: {type(op).__name__}")
             if not op_func(left, right):
                 return False
             left = right
@@ -514,7 +514,9 @@ class AstEvaluator:
 
         op_func = ops.get(type(node.op))
         if op_func is None:
-            raise ScriptRuntimeError(f"Unsupported augmented assignment operator: {type(node.op).__name__}")
+            raise AutomationRuntimeError(
+                f"Unsupported augmented assignment operator: {type(node.op).__name__}"
+            )
 
         result = op_func(current, value)
         await self._assign_target(node.target, result, scope)
@@ -525,10 +527,10 @@ class AstEvaluator:
             scope.set(target.id, value)
         elif isinstance(target, (ast.Tuple, ast.List)):
             if not hasattr(value, "__iter__"):
-                raise ScriptRuntimeError("Cannot unpack non-iterable")
+                raise AutomationRuntimeError("Cannot unpack non-iterable")
             values = list(value)
             if len(values) != len(target.elts):
-                raise ScriptRuntimeError(
+                raise AutomationRuntimeError(
                     f"Cannot unpack: expected {len(target.elts)} values, got {len(values)}"
                 )
             for t, v in zip(target.elts, values):
@@ -544,7 +546,7 @@ class AstEvaluator:
             # Handle starred targets in unpacking
             await self._assign_target(target.value, value, scope)
         else:
-            raise ScriptRuntimeError(f"Unsupported assignment target: {type(target).__name__}")
+            raise AutomationRuntimeError(f"Unsupported assignment target: {type(target).__name__}")
 
     async def _eval_if(self, node: ast.If, scope: SymbolTable) -> Any:
         """Evaluate an if statement."""
@@ -711,7 +713,7 @@ class AstEvaluator:
         module = self._import_controller.safe_import(node.module or "")
         for alias in node.names:
             if alias.name == "*":
-                raise ScriptSecurityError("Wildcard imports are not allowed")
+                raise AutomationSecurityError("Wildcard imports are not allowed")
             obj = getattr(module, alias.name)
             name = alias.asname or alias.name
             scope.set(name, obj)
@@ -727,7 +729,7 @@ class AstEvaluator:
             exc_info = sys.exc_info()
             if exc_info[1] is not None:
                 raise exc_info[1].with_traceback(exc_info[2])
-            raise ScriptRuntimeError("No active exception to re-raise")
+            raise AutomationRuntimeError("No active exception to re-raise")
         exc = await self.aeval(node.exc, scope)
         if node.cause:
             cause = await self.aeval(node.cause, scope)

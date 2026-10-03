@@ -26,7 +26,7 @@ from custom_components.haanim.ha.events import EventData, EventManager
 from custom_components.haanim.ha.state import StateManager
 
 if TYPE_CHECKING:
-    from custom_components.haanim.engine.script_context import TriggerDefinition
+    from custom_components.haanim.engine.automation_context import TriggerDefinition
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ def event_trigger(
             - "state_changed": Entity state changes (usually use @state_trigger instead)
             - "call_service": Service calls
             - "automation_triggered": Automation triggers
-            - Custom event types from integrations or scripts
+            - Custom event types from integrations or automations
         event_data: Optional dictionary to filter events by their data fields.
             Only events with matching data will trigger the function.
             Partial matches are supported - only specified fields are checked.
@@ -125,7 +125,7 @@ class EventTrigger(BaseTrigger):
 
         Args:
             hass: Home Assistant instance.
-            trigger_def: The trigger definition from the script.
+            trigger_def: The trigger definition from the automation.
             state_manager: State manager instance.
             event_manager: Event manager instance.
         """
@@ -144,7 +144,7 @@ class EventTrigger(BaseTrigger):
 
         self._task = self.hass.async_create_task(
             self._event_loop(),
-            name=f"haanim_event_trigger_{self.trigger_def.script_id}_{self.trigger_def.func_name}",
+            name=f"haanim_event_trigger_{self.trigger_def.automation_id}_{self.trigger_def.func_name}",
         )
 
         self._logger.debug("Event trigger started: %s", self._event_type)

@@ -18,20 +18,20 @@ class ActionEvent:
     """Base event class containing caller information.
 
     This class represents the context of an action call, including when it was called,
-    the current script ID, and information about what triggered the call.
+    the current automation ID, and information about what triggered the call.
     """
 
     call_time: datetime
     """Timestamp when the action was called."""
 
-    script_id: str
-    """ID of the current script."""
+    automation_id: str
+    """ID of the current automation."""
 
     source: str
-    """How the action was invoked ('trigger', 'manual', or 'script')."""
+    """How the action was invoked ('trigger', 'manual', or 'automation')."""
 
     caller: str | None = None
-    """ID of the calling script (only when source == 'script')."""
+    """ID of the calling automation (only when source == 'automation')."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -117,48 +117,48 @@ class ManualEvent(ActionEvent):
 
 
 @dataclass(frozen=True, kw_only=True)
-class ScriptEvent(ActionEvent):
-    """Event data for script-to-script calls.
+class AutomationEvent(ActionEvent):
+    """Event data for automation-to-automation calls.
 
-    Represents an action called by another script.
+    Represents an action called by another automation.
     This class has predefined source value.
     """
 
-    source: str = "script"  # type: ignore[assignment]
+    source: str = "automation"  # type: ignore[assignment]
 
 
-def create_manual_event(call_time: datetime, script_id: str) -> ManualEvent:
+def create_manual_event(call_time: datetime, automation_id: str) -> ManualEvent:
     """Create a manual event.
 
     Args:
         call_time: When the action was called.
-        script_id: ID of the current script.
+        automation_id: ID of the current automation.
 
     Returns:
         ManualEvent instance.
     """
     return ManualEvent(
         call_time=call_time,
-        script_id=script_id,
+        automation_id=automation_id,
         source="manual",
         caller=None,
     )
 
 
-def create_script_event(call_time: datetime, script_id: str, caller: str) -> ScriptEvent:
-    """Create a script-to-script call event.
+def create_automation_event(call_time: datetime, automation_id: str, caller: str) -> AutomationEvent:
+    """Create an automation-to-automation call event.
 
     Args:
         call_time: When the action was called.
-        script_id: ID of the current script.
-        caller: ID of the calling script.
+        automation_id: ID of the current automation.
+        caller: ID of the calling automation.
 
     Returns:
-        ScriptEvent instance.
+        AutomationEvent instance.
     """
-    return ScriptEvent(
+    return AutomationEvent(
         call_time=call_time,
-        script_id=script_id,
-        source="script",
+        automation_id=automation_id,
+        source="automation",
         caller=caller,
     )

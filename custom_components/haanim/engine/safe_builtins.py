@@ -9,7 +9,7 @@ from custom_components.haanim.const import RESTRICTED_BUILTINS
 
 
 class SafeBuiltins:
-    """Provides a filtered set of Python builtins for script execution."""
+    """Provides a filtered set of Python builtins for automation execution."""
 
     def __init__(
         self,

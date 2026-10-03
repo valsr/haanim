@@ -1,7 +1,7 @@
 """Home Assistant service integration for HAAnim.
 
 This module provides service calling capabilities and the ability to
-expose script functions as Home Assistant services.
+expose automation functions as Home Assistant services.
 """
 
 from __future__ import annotations
@@ -18,24 +18,24 @@ from homeassistant.helpers import config_validation as cv
 
 from custom_components.haanim.const import (
     ATTRIBUTE_ACTION_NAME,
-    ATTRIBUTE_SCRIPT_NAME,
+    ATTRIBUTE_AUTOMATION_ID,
     DOMAIN,
     SERVICE_GET_CONFIG,
     SERVICE_LIST_ACTIONS,
-    SERVICE_LIST_SCRIPTS,
-    SERVICE_RELOAD_SCRIPTS,
+    SERVICE_LIST_AUTOMATIONS,
+    SERVICE_RELOAD_AUTOMATIONS,
     SERVICE_RUN_ACTION,
     VERSION,
 )
-from custom_components.haanim.script_manager import async_get_manager, get_config_manager
+from custom_components.haanim.automation_manager import async_get_manager, get_config_manager
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class ServiceManager:
-    """Manages service calls and service registration for HAAnim scripts.
+    """Manages service calls and service registration for HAAnim automations.
 
-    Provides methods to call Home Assistant services and expose script
+    Provides methods to call Home Assistant services and expose automation
     functions as services.
     """
 
@@ -57,25 +57,25 @@ class ServiceManager:
             service_func=self._handle_run_action,
             schema=vol.Schema(
                 {
-                    vol.Required(ATTRIBUTE_SCRIPT_NAME): cv.string,
+                    vol.Required(ATTRIBUTE_AUTOMATION_ID): cv.string,
                     vol.Required(ATTRIBUTE_ACTION_NAME): cv.string,
                 }
             ),
         )
 
-        # Register the reload_scripts service
+        # Register the reload_automations service
         self.hass.services.async_register(
             DOMAIN,
-            SERVICE_RELOAD_SCRIPTS,
-            service_func=self._handle_reload_scripts,
+            SERVICE_RELOAD_AUTOMATIONS,
+            service_func=self._handle_reload_automations,
             schema=vol.Schema({}),
         )
 
-        # Register the list_scripts service
+        # Register the list_automations service
         self.hass.services.async_register(
             DOMAIN,
-            SERVICE_LIST_SCRIPTS,
-            self._handle_list_scripts,
+            SERVICE_LIST_AUTOMATIONS,
+            self._handle_list_automations,
             schema=vol.Schema({}),
         )
 
@@ -86,7 +86,7 @@ class ServiceManager:
             self._handle_list_actions,
             schema=vol.Schema(
                 {
-                    vol.Optional(ATTRIBUTE_SCRIPT_NAME): cv.string,
+                    vol.Optional(ATTRIBUTE_AUTOMATION_ID): cv.string,
                 }
             ),
         )
@@ -105,12 +105,12 @@ class ServiceManager:
         """Tear down the service manager."""
         # Unregister core services
         self.hass.services.async_remove(DOMAIN, SERVICE_RUN_ACTION)
-        self.hass.services.async_remove(DOMAIN, SERVICE_RELOAD_SCRIPTS)
-        self.hass.services.async_remove(DOMAIN, SERVICE_LIST_SCRIPTS)
+        self.hass.services.async_remove(DOMAIN, SERVICE_RELOAD_AUTOMATIONS)
+        self.hass.services.async_remove(DOMAIN, SERVICE_LIST_AUTOMATIONS)
         self.hass.services.async_remove(DOMAIN, SERVICE_LIST_ACTIONS)
         self.hass.services.async_remove(DOMAIN, SERVICE_GET_CONFIG)
 
-        # Unregister script services
+        # Unregister automation services
         for service_name in list(self._registered_services.keys()):
             await self.async_unregister_service(service_name)
 
@@ -121,49 +121,49 @@ class ServiceManager:
             call: The service call.
         """
 
-        script_name = call.data[ATTRIBUTE_SCRIPT_NAME]
+        automation_id = call.data[ATTRIBUTE_AUTOMATION_ID]
         action_name = call.data[ATTRIBUTE_ACTION_NAME]
 
         manager = await async_get_manager(self.hass)
         if not manager:
-            _LOGGER.error("Script manager not available")
+            _LOGGER.error("Automation manager not available")
             return
 
         try:
-            await manager.async_run_action(script_name, action_name, manual=True)
+            await manager.async_run_action(automation_id, action_name, manual=True)
         except Exception as err:
-            _LOGGER.error("Failed to run action %s.%s: %s", script_name, action_name, err)
+            _LOGGER.error("Failed to run action %s.%s: %s", automation_id, action_name, err)
             raise
 
-    async def _handle_reload_scripts(self, _: ServiceCall) -> None:
-        """Handle the reload_scripts service call.
+    async def _handle_reload_automations(self, _: ServiceCall) -> None:
+        """Handle the reload_automations service call.
 
         Args:
             call: The service call.
         """
         manager = await async_get_manager(self.hass)
         if not manager:
-            _LOGGER.error("Script manager not available")
+            _LOGGER.error("Automation manager not available")
             return
 
-        await manager.async_reload_all_scripts()
+        await manager.async_reload_all_automations()
 
-    async def _handle_list_scripts(self, _: ServiceCall) -> dict[str, Any]:
-        """Handle the list_scripts service call.
+    async def _handle_list_automations(self, _: ServiceCall) -> dict[str, Any]:
+        """Handle the list_automations service call.
 
         Args:
             call: The service call.
 
         Returns:
-            Dictionary with script information.
+            Dictionary with automation information.
         """
         manager = await async_get_manager(self.hass)
         if not manager:
-            return {"scripts": []}
+            return {"automations": []}
 
-        scripts: list[dict[str, Any]] = []
+        automations: list[dict[str, Any]] = []
         for metadata in manager.get_all_metadata():
-            scripts.append(
+            automations.append(
                 {
                     "name": metadata.id,
                     "path": metadata.path,
@@ -173,7 +173,7 @@ class ServiceManager:
                 }
             )
 
-        return {"scripts": scripts}
+        return {"automations": automations}
 
     async def _handle_list_actions(self, call: ServiceCall) -> dict[str, Any]:
         """Handle the list_actions service call.
@@ -188,18 +188,18 @@ class ServiceManager:
         if not manager:
             return {"actions": []}
 
-        script_name = call.data.get(ATTRIBUTE_SCRIPT_NAME)
+        automation_id = call.data.get(ATTRIBUTE_AUTOMATION_ID)
 
         actions: list[dict[str, Any]] = []
         for action in manager.get_all_actions():
-            if script_name and action.script_name != script_name:
+            if automation_id and action.automation_id != automation_id:
                 continue
 
             actions.append(
                 {
                     "name": action.name,
                     "func_name": action.func_name,
-                    "script_name": action.script_name,
+                    "automation_id": action.automation_id,
                     "description": action.description,
                 }
             )
@@ -266,7 +266,7 @@ class ServiceManager:
         schema: vol.Schema | None = None,
         description: str | None = None,
     ) -> None:
-        """Register a script function as a Home Assistant service.
+        """Register an automation function as a Home Assistant service.
 
         Args:
             service_name: The service name.
@@ -306,7 +306,7 @@ class ServiceManager:
         _LOGGER.info("Registered service: %s", full_name)
 
     async def async_unregister_service(self, service_name: str) -> bool:
-        """Unregister a script service.
+        """Unregister an automation service.
 
         Args:
             service_name: The service name.
@@ -324,7 +324,7 @@ class ServiceManager:
         return True
 
     def get_registered_services(self) -> list[str]:
-        """Get list of registered script services.
+        """Get list of registered automation services.
 
         Returns:
             List of service names.
@@ -332,7 +332,7 @@ class ServiceManager:
         return list(self._registered_services.keys())
 
 
-# Convenience functions for use in scripts
+# Convenience functions for use in automations
 
 
 async def service_call(

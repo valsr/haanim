@@ -21,13 +21,13 @@ __all__ = [
 ]
 
 
-def get_script_path() -> str:
-    """Get the full path to the script folder.
+def get_automation_path() -> str:
+    """Get the full path to the automation folder.
 
     Returns:
-        Absolute path to the script folder.
+        Absolute path to the automation folder.
     """
-    return get_config_manager().get_script_path()
+    return get_config_manager().get_automation_path()
 
 
 def get_import_allowlist() -> list[str]:
@@ -48,13 +48,13 @@ def get_allow_all_imports() -> bool:
     return get_config_manager().get_allow_all_imports()
 
 
-def get_script_refresh_interval() -> int:
-    """Get the script refresh interval in seconds.
+def get_automation_refresh_interval() -> int:
+    """Get the automation refresh interval in seconds.
 
     Returns:
         Refresh interval in seconds.
     """
-    return get_config_manager().get_script_refresh_interval()
+    return get_config_manager().get_automation_refresh_interval()
 
 
 def get_max_concurrent_actions():

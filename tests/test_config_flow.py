@@ -27,11 +27,11 @@ def mock_config_manager() -> Generator[MagicMock, None, None]:
     with patch("custom_components.haanim.config_flow.get_config_manager") as mock_get:
         mock_manager = MagicMock()
         mock_manager.setup = MagicMock()
-        mock_manager.validate_script_path = MagicMock(return_value=(True, None))
+        mock_manager.validate_automation_path = MagicMock(return_value=(True, None))
         mock_manager.get_defaults = MagicMock(
             return_value={
                 "name": "HAAnim",
-                "script_path": "/config/haanim",
+                "automation_path": "/config/haanim",
                 "allow_all_imports": False,
                 "import_allowlist": [],
             }
@@ -41,7 +41,7 @@ def mock_config_manager() -> Generator[MagicMock, None, None]:
             return_value=vol.Schema(
                 {
                     vol.Optional("name", default="HAAnim"): str,
-                    vol.Optional("script_path", default="/config/haanim"): str,
+                    vol.Optional("automation_path", default="/config/haanim"): str,
                     vol.Optional("allow_all_imports", default=False): bool,
                 }
             )
@@ -117,8 +117,8 @@ async def test_user_input_default_name(hass: HomeAssistant, mock_config_manager:
 
 
 @pytest.mark.asyncio
-async def test_invalid_script_path(hass: HomeAssistant) -> None:
-    """Test that invalid script path shows an error.
+async def test_invalid_automation_path(hass: HomeAssistant) -> None:
+    """Test that invalid automation path shows an error.
 
     Args:
         hass: Home Assistant instance.
@@ -126,7 +126,7 @@ async def test_invalid_script_path(hass: HomeAssistant) -> None:
     with patch("custom_components.haanim.config_flow.get_config_manager") as mock_get:
         mock_manager = MagicMock()
         mock_manager.setup = MagicMock()
-        mock_manager.validate_script_path = MagicMock(return_value=(False, "Path does not exist"))
+        mock_manager.validate_automation_path = MagicMock(return_value=(False, "Path does not exist"))
         mock_get.return_value = mock_manager
 
         # Start the flow
@@ -137,7 +137,7 @@ async def test_invalid_script_path(hass: HomeAssistant) -> None:
         # Submit user input with invalid path
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={"name": "Test", "script_path": "/invalid/path"},
+            user_input={"name": "Test", "automation_path": "/invalid/path"},
         )
 
         assert result.get("type") == FlowResultType.FORM
@@ -182,7 +182,7 @@ async def test_options_flow_init(hass: HomeAssistant) -> None:
         unique_id=DOMAIN,
         data={
             "name": "HAAnim",
-            "script_path": "/config/haanim",
+            "automation_path": "/config/haanim",
             "allow_all_imports": False,
             "import_allowlist": ["datetime", "math"],
         },
@@ -195,7 +195,7 @@ async def test_options_flow_init(hass: HomeAssistant) -> None:
         mock_manager.setup = MagicMock()
         mock_manager.load_from_dict = MagicMock()
         test_data = {
-            "script_path": "/config/haanim",
+            "automation_path": "/config/haanim",
             "allow_all_imports": False,
             "import_allowlist": ["datetime", "math"],
         }
@@ -226,14 +226,14 @@ async def test_options_flow_submit_valid(hass: HomeAssistant) -> None:
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=DOMAIN,
-        data={"name": "HAAnim", "script_path": "/config/haanim"},
+        data={"name": "HAAnim", "automation_path": "/config/haanim"},
     )
     entry.add_to_hass(hass)
 
     with patch("custom_components.haanim.config_flow.get_config_manager") as mock_get:
         mock_manager = MagicMock()
         mock_manager.setup = MagicMock()
-        mock_manager.validate_script_path = MagicMock(return_value=(True, None))
+        mock_manager.validate_automation_path = MagicMock(return_value=(True, None))
         mock_manager.get = MagicMock(return_value=[])
         mock_get.return_value = mock_manager
 
@@ -242,7 +242,7 @@ async def test_options_flow_submit_valid(hass: HomeAssistant) -> None:
 
         result = await handler.async_step_init(
             user_input={
-                "script_path": "/config/haanim",
+                "automation_path": "/config/haanim",
                 "allow_all_imports": True,
                 "import_allowlist_str": "datetime, json, math",
             }
@@ -264,16 +264,16 @@ async def test_options_flow_invalid_path(hass: HomeAssistant) -> None:
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=DOMAIN,
-        data={"name": "HAAnim", "script_path": "/config/haanim"},
+        data={"name": "HAAnim", "automation_path": "/config/haanim"},
     )
     entry.add_to_hass(hass)
 
     with patch("custom_components.haanim.config_flow.get_config_manager") as mock_get:
         mock_manager = MagicMock()
         mock_manager.setup = MagicMock()
-        mock_manager.validate_script_path = MagicMock(return_value=(False, "Invalid path"))
+        mock_manager.validate_automation_path = MagicMock(return_value=(False, "Invalid path"))
         test_data = {
-            "script_path": "/config/haanim",
+            "automation_path": "/config/haanim",
             "allow_all_imports": False,
             "import_allowlist": [],
         }
@@ -286,11 +286,11 @@ async def test_options_flow_invalid_path(hass: HomeAssistant) -> None:
 
         result = await handler.async_step_init(
             user_input={
-                "script_path": "/invalid/path",
+                "automation_path": "/invalid/path",
                 "allow_all_imports": False,
             }
         )
 
         assert result.get("type") == FlowResultType.FORM
         errors = result.get("errors") or {}
-        assert errors.get("script_path") == "invalid_path"
+        assert errors.get("automation_path") == "invalid_path"

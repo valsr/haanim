@@ -19,7 +19,7 @@ from custom_components.haanim.engine.triggers.base import BaseTrigger, TriggerIn
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-    from custom_components.haanim.engine.script_context import TriggerDefinition
+    from custom_components.haanim.engine.automation_context import TriggerDefinition
     from custom_components.haanim.ha.events import EventManager
     from custom_components.haanim.ha.state import StateManager
 

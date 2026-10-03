@@ -6,7 +6,7 @@ from typing import Any
 
 
 class SymbolTable:
-    """Manages variable scopes during script execution."""
+    """Manages variable scopes during automation execution."""
 
     def __init__(self, parent: SymbolTable | None = None) -> None:
         """Initialize a symbol table.

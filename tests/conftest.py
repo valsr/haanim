@@ -76,14 +76,14 @@ def mock_unload_entry() -> Generator[AsyncMock, None, None]:
 
 
 @pytest.fixture
-def mock_script_manager() -> Generator[MagicMock, None, None]:
-    """Create a mock ScriptManager for testing.
+def mock_automation_manager() -> Generator[MagicMock, None, None]:
+    """Create a mock AutomationManager for testing.
 
     Yields:
-        A MagicMock that replaces ScriptManager.
+        A MagicMock that replaces AutomationManager.
     """
     with (
-        patch("custom_components.haanim.ScriptManager") as mock_manager_class,
+        patch("custom_components.haanim.AutomationManager") as mock_manager_class,
         patch("custom_components.haanim.StateManager") as mock_state_class,
         patch("custom_components.haanim.EventManager") as mock_event_class,
         patch("custom_components.haanim.ServiceManager") as mock_service_class,
@@ -122,13 +122,13 @@ def mock_script_manager() -> Generator[MagicMock, None, None]:
         trigger_mock.async_teardown = AsyncMock(return_value=None)
         mock_trigger_class.return_value = trigger_mock
 
-        # Mock ScriptManager
+        # Mock AutomationManager
         mock_manager = MagicMock()
         mock_manager.async_setup = AsyncMock(return_value=None)
-        mock_manager.async_load_all_scripts = AsyncMock(return_value=None)
+        mock_manager.async_load_all_automations = AsyncMock(return_value=None)
         mock_manager.async_shutdown = AsyncMock(return_value=None)
         mock_manager.get_all_contexts = MagicMock(return_value=[])
-        mock_manager.get_failed_scripts = MagicMock(return_value={})
+        mock_manager.get_failed_automations = MagicMock(return_value={})
         mock_manager_class.return_value = mock_manager
         yield mock_manager
 

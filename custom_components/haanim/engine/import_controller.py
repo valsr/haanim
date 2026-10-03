@@ -7,13 +7,13 @@ import logging
 from typing import Any
 
 from custom_components.haanim.const import DEFAULT_IMPORT_ALLOWLIST
-from custom_components.haanim.engine.errors import ScriptRuntimeError, ScriptSecurityError
+from custom_components.haanim.engine.errors import AutomationRuntimeError, AutomationSecurityError
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class ImportController:
-    """Controls which modules can be imported in scripts."""
+    """Controls which modules can be imported in automations."""
 
     def __init__(
         self,
@@ -32,7 +32,7 @@ class ImportController:
         self._virtual_modules: dict[str, Any] = {}
 
     def register_virtual_module(self, name: str, module: Any) -> None:
-        """Register a virtual module that can be imported by scripts.
+        """Register a virtual module that can be imported by automations.
 
         Args:
             name: The module name (e.g., 'haanim').
@@ -68,7 +68,7 @@ class ImportController:
             The imported module.
 
         Raises:
-            ScriptSecurityError: If the module is not allowed.
+            AutomationSecurityError: If the module is not allowed.
         """
         # Check for virtual modules first
         if module_name in self._virtual_modules:
@@ -76,7 +76,7 @@ class ImportController:
 
         if not self.is_allowed(module_name):
             _LOGGER.error("Import blocked - module '%s' is not in allowlist", module_name)
-            raise ScriptSecurityError(f"Import of module '{module_name}' is not allowed")
+            raise AutomationSecurityError(f"Import of module '{module_name}' is not allowed")
 
         try:
             module = importlib.import_module(module_name)
@@ -84,4 +84,4 @@ class ImportController:
             return module
         except ImportError as err:
             _LOGGER.error("Failed to import module '%s': %s", module_name, err)
-            raise ScriptRuntimeError(f"Failed to import module '{module_name}': {err}") from err
+            raise AutomationRuntimeError(f"Failed to import module '{module_name}': {err}") from err

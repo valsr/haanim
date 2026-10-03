@@ -34,10 +34,10 @@ class ActionDispatcher:
         """
         self._pool = action_pool
 
-        # Track running actions by (script_id, action_name)
+        # Track running actions by (automation_id, action_name)
         self._running_actions: dict[tuple[str, str], asyncio.Task[Any]] = {}
 
-        # Action queues by (script_id, action_name)
+        # Action queues by (automation_id, action_name)
         self._action_queues: dict[tuple[str, str], asyncio.Queue[dict[str, Any]]] = defaultdict(asyncio.Queue)
 
         # Queue processing tasks
@@ -48,7 +48,7 @@ class ActionDispatcher:
 
     async def dispatch_action(
         self,
-        script_id: str,
+        automation_id: str,
         action_name: str,
         func: Any,
         execution_mode: ActionMode,
@@ -60,7 +60,7 @@ class ActionDispatcher:
         """Dispatch an action with execution mode handling.
 
         Args:
-            script_id: The script ID.
+            automation_id: The automation ID.
             action_name: The action name.
             func: The function to execute.
             execution_mode: How to handle concurrent calls.
@@ -77,7 +77,7 @@ class ActionDispatcher:
             ActionCancelledError: If action is cancelled.
             QueueFullError: If queue is full (QUEUE mode).
         """
-        action_key = (script_id, action_name)
+        action_key = (automation_id, action_name)
 
         async with self._lock:
             is_running = action_key in self._running_actions
@@ -86,7 +86,7 @@ class ActionDispatcher:
                 if is_running:
                     _LOGGER.debug(
                         "Action %s.%s already running, dropping new request (DROP mode)",
-                        script_id,
+                        automation_id,
                         action_name,
                     )
                     return None
@@ -95,7 +95,7 @@ class ActionDispatcher:
                 if is_running:
                     _LOGGER.debug(
                         "Action %s.%s already running, cancelling current (CANCEL mode)",
-                        script_id,
+                        automation_id,
                         action_name,
                     )
                     # Cancel the running action
@@ -111,12 +111,12 @@ class ActionDispatcher:
                     # Check queue size
                     queue = self._action_queues[action_key]
                     if queue.qsize() >= queue_size:
-                        raise QueueFullError(script_id, action_name, queue_size)
+                        raise QueueFullError(automation_id, action_name, queue_size)
 
                     # Add to queue
                     _LOGGER.debug(
                         "Action %s.%s already running, queueing request (QUEUE mode)",
-                        script_id,
+                        automation_id,
                         action_name,
                     )
                     await queue.put({"args": args, "kwargs": kwargs})
@@ -124,17 +124,17 @@ class ActionDispatcher:
                     # Start queue processor if not running
                     if action_key not in self._queue_processors:
                         self._queue_processors[action_key] = asyncio.create_task(
-                            self._process_queue(script_id, action_name, func, timeout)
+                            self._process_queue(automation_id, action_name, func, timeout)
                         )
 
                     return None
 
         # Execute the action
-        return await self._execute_with_timeout(script_id, action_name, func, timeout, *args, **kwargs)
+        return await self._execute_with_timeout(automation_id, action_name, func, timeout, *args, **kwargs)
 
     async def _execute_with_timeout(
         self,
-        script_id: str,
+        automation_id: str,
         action_name: str,
         func: Any,
         timeout: float,
@@ -144,7 +144,7 @@ class ActionDispatcher:
         """Execute an action with optional timeout.
 
         Args:
-            script_id: The script ID.
+            automation_id: The automation ID.
             action_name: The action name.
             func: The function to execute.
             timeout: Timeout in seconds (0 = no timeout).
@@ -157,10 +157,12 @@ class ActionDispatcher:
         Raises:
             ActionTimeOutError: If action times out.
         """
-        action_key = (script_id, action_name)
+        action_key = (automation_id, action_name)
 
         # Create the execution task
-        task = asyncio.create_task(self._pool.submit_action(script_id, action_name, func, *args, **kwargs))
+        task = asyncio.create_task(
+            self._pool.submit_action(automation_id, action_name, func, *args, **kwargs)
+        )
 
         async with self._lock:
             self._running_actions[action_key] = task
@@ -173,7 +175,7 @@ class ActionDispatcher:
                     return result
                 except asyncio.TimeoutError as err:
                     task.cancel()
-                    raise ActionTimeOutError(script_id, action_name, timeout) from err
+                    raise ActionTimeOutError(automation_id, action_name, timeout) from err
             else:
                 # Execute without timeout
                 return await task
@@ -185,7 +187,7 @@ class ActionDispatcher:
 
     async def _process_queue(
         self,
-        script_id: str,
+        automation_id: str,
         action_name: str,
         func: Any,
         timeout: float,
@@ -193,12 +195,12 @@ class ActionDispatcher:
         """Process queued action requests.
 
         Args:
-            script_id: The script ID.
+            automation_id: The automation ID.
             action_name: The action name.
             func: The function to execute.
             timeout: Timeout in seconds.
         """
-        action_key = (script_id, action_name)
+        action_key = (automation_id, action_name)
         queue = self._action_queues[action_key]
 
         try:
@@ -217,30 +219,34 @@ class ActionDispatcher:
                 kwargs = item["kwargs"]
 
                 try:
-                    await self._execute_with_timeout(script_id, action_name, func, timeout, *args, **kwargs)
+                    await self._execute_with_timeout(
+                        automation_id, action_name, func, timeout, *args, **kwargs
+                    )
                 except Exception as err:  # pylint: disable=broad-exception-caught
-                    _LOGGER.exception("Error executing queued action %s.%s: %s", script_id, action_name, err)
+                    _LOGGER.exception(
+                        "Error executing queued action %s.%s: %s", automation_id, action_name, err
+                    )
 
         finally:
             async with self._lock:
                 if action_key in self._queue_processors:
                     del self._queue_processors[action_key]
 
-    async def cancel_script_actions(self, script_id: str) -> None:
-        """Cancel all running and queued actions for a script.
+    async def cancel_automation_actions(self, automation_id: str) -> None:
+        """Cancel all running and queued actions for an automation.
 
         Args:
-            script_id: The script ID.
+            automation_id: The automation ID.
         """
         async with self._lock:
             # Cancel running actions
             for (sid, _), task in list(self._running_actions.items()):
-                if sid == script_id:
+                if sid == automation_id:
                     task.cancel()
 
             # Clear queues
             for sid, action_name in list(self._action_queues.keys()):
-                if sid == script_id:
+                if sid == automation_id:
                     queue = self._action_queues[(sid, action_name)]
                     while not queue.empty():
                         try:
@@ -251,8 +257,8 @@ class ActionDispatcher:
 
             # Cancel queue processors
             for (sid, _), task in list(self._queue_processors.items()):
-                if sid == script_id:
+                if sid == automation_id:
                     task.cancel()
 
         # Also cancel in the pool
-        await self._pool.cancel_script_actions(script_id, "script shutdown")
+        await self._pool.cancel_automation_actions(automation_id, "automation shutdown")

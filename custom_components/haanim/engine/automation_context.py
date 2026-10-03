@@ -1,6 +1,6 @@
-"""Script context management for HAAnim.
+"""Automation context management for HAAnim.
 
-This module provides the execution context for individual scripts, including
+This module provides the execution context for individual automations, including
 symbol tables, metadata, and lifecycle management.
 """
 
@@ -27,29 +27,29 @@ from custom_components.haanim.engine import (
 )
 from custom_components.haanim.engine.ast_evaluator import AstEvaluator
 from custom_components.haanim.engine.decorators import FunctionMetadata, get_metadata, has_metadata
-from custom_components.haanim.engine.errors import ScriptError
-from custom_components.haanim.engine.script_status import get_status_manager
+from custom_components.haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
+from custom_components.haanim.engine.automation_status import get_status_manager
 
 _LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
 class ActionDefinition:
-    """Definition of a manually executable action from a script.
+    """Definition of a manually executable action from an automation.
 
     Args:
         name: Display name for the action.
-        func_name: The function name in the script.
+        func_name: The function name in the automation.
         func: The callable function.
         description: Optional description.
-        script_name: Name of the parent script.
+        automation_id: Name of the parent automation.
     """
 
     name: str
     func_name: str
     func: Callable[..., Any]
     description: str | None = None
-    script_name: str | None = None
+    automation_id: str | None = None
 
 
 @dataclass
@@ -59,10 +59,10 @@ class TriggerDefinition:
     Args:
         trigger_type: Type of trigger (state_trigger, time_trigger, event_trigger).
         trigger_expr: The trigger expression or configuration.
-        func_name: The function name in the script.
+        func_name: The function name in the automation.
         func: The callable function.
         kwargs: Additional trigger configuration.
-        script_id: Id of the parent script.
+        automation_id: Id of the parent automation.
     """
 
     trigger_type: str
@@ -70,27 +70,27 @@ class TriggerDefinition:
     func_name: str
     func: Callable[..., Any]
     kwargs: dict[str, Any] = field(default_factory=dict[str, Any])
-    script_id: str | None = None
+    automation_id: str | None = None
 
 
 @dataclass
-class ScriptMetadata:
-    """Metadata about a loaded script.
+class AutomationMetadata:
+    """Metadata about a loaded automation.
 
     Args:
-        name: Display name of the script.
-        path: Filesystem path to the script.
+        name: Display name of the automation.
+        path: Filesystem path to the automation.
         filename: Just the filename without path.
-        loaded_at: When the script was loaded.
+        loaded_at: When the automation was loaded.
         modified_at: Last modification time of the file.
         actions: List of manually executable actions.
-        triggers: List of triggers defined in the script.
+        triggers: List of triggers defined in the automation.
         error: Any error that occurred during loading.
-        has_startup: Whether the script has a startup handler.
-        has_shutdown: Whether the script has a shutdown handler.
-        state: Current script state (running, stopped, etc.).
-        message: Current status message for the script.
-        run_time: Timestamp when the script was started.
+        has_startup: Whether the automation has a startup handler.
+        has_shutdown: Whether the automation has a shutdown handler.
+        state: Current automation state (running, stopped, etc.).
+        message: Current status message for the automation.
+        run_time: Timestamp when the automation was started.
         last_action_time: Timestamp of the last action execution.
     """
 
@@ -111,35 +111,35 @@ class ScriptMetadata:
     last_action_time: datetime | None = None
 
 
-class ScriptContext:
-    """Execution context for a single HAAnim script.
+class AutomationContext:
+    """Execution context for a single HAAnim automation.
 
-    Manages the script's symbol table, evaluator, and extracted metadata
+    Manages the automation's symbol table, evaluator, and extracted metadata
     including actions and triggers.
     """
 
     def __init__(
         self,
         hass: HomeAssistant,
-        script_path: str,
+        automation_path: str,
         import_allowlist: list[str] | None = None,
         allow_all_imports: bool = False,
     ) -> None:
-        """Initialize a script context.
+        """Initialize an automation context.
 
         Args:
             hass: Home Assistant instance.
-            script_path: Path to the script file.
+            automation_path: Path to the automation file.
             import_allowlist: List of allowed import modules.
             allow_all_imports: If True, allow all imports.
         """
         self.hass = hass
-        self.script_path = script_path
-        self.filename = os.path.basename(script_path)
-        self.script_id = os.path.splitext(self.filename)[0].replace(" ", "_")
+        self.automation_path = automation_path
+        self.filename = os.path.basename(automation_path)
+        self.automation_id = os.path.splitext(self.filename)[0].replace(" ", "_")
 
-        # Create logger for this script
-        self._logger = logging.getLogger(f"{__name__}.{self.script_id}")
+        # Create logger for this automation
+        self._logger = logging.getLogger(f"{__name__}.{self.automation_id}")
 
         # Initialize components
         self._import_controller = ImportController(
@@ -150,8 +150,8 @@ class ScriptContext:
         self._global_symbols = SymbolTable()
         self._evaluator: AstEvaluator | None = None
 
-        # Script metadata
-        self._metadata: ScriptMetadata | None = None
+        # Automation metadata
+        self._metadata: AutomationMetadata | None = None
         self._source: str | None = None
 
         # Extracted definitions
@@ -164,9 +164,9 @@ class ScriptContext:
         self._shutdown_func: Callable[..., Any] | None = None
 
     def _setup_builtin_functions(self) -> None:
-        """Set up built-in functions available to scripts.
+        """Set up built-in functions available to automations.
 
-        This injects HAAnim-specific functions into the script's namespace,
+        This injects HAAnim-specific functions into the automation's namespace,
         including decorators, logging, and Home Assistant access.
         """
         # Import here to avoid circular dependency
@@ -174,24 +174,24 @@ class ScriptContext:
             HAAnim,
         )  # pylint: disable=import-outside-toplevel
 
-        # Create the HAAnim API instance for this script
-        storage_path = self.hass.config.path(".storage", "haanim", "scripts")
-        haa = HAAnim(self.hass, self.script_id, self.hass.data.get("haanim_manager"), storage_path)
+        # Create the HAAnim API instance for this automation
+        storage_path = self.hass.config.path(".storage", "haanim", "automations")
+        haa = HAAnim(self.hass, self.automation_id, self.hass.data.get("haanim_manager"), storage_path)
 
-        # Create the set_status function bound to this script
+        # Create the set_status function bound to this automation
         def set_status(message: str | None) -> None:
-            """Set a status message for this script.
+            """Set a status message for this automation.
 
-            This message is displayed in the UI when the script is running.
+            This message is displayed in the UI when the automation is running.
             The status message is automatically cleared when the action completes.
 
             Args:
                 message: The status message to display, or None to clear.
             """
             status_manager = get_status_manager()
-            status_manager.set_status_message(self.script_id, message)
+            status_manager.set_status_message(self.automation_id, message)
 
-        # Create a virtual 'haanim' module that scripts can import from
+        # Create a virtual 'haanim' module that automations can import from
         haanim_module = SimpleNamespace(
             action=decorators.action,
             state=decorators.state,
@@ -238,6 +238,10 @@ class ScriptContext:
         except ImportError:
             pass
 
+        # Export the public error classes
+        for error_class in PUBLIC_ERRORS:
+            setattr(haanim_module, error_class.__name__, error_class)
+
         # Register the virtual module with the import controller
         self._import_controller.register_virtual_module("haanim", haanim_module)
 
@@ -276,7 +280,7 @@ class ScriptContext:
         self._global_symbols.set("log_warning", self._logger.warning)
         self._global_symbols.set("log_error", self._logger.error)
 
-        # Also expose the script's logger as 'log'
+        # Also expose the automation's logger as 'log'
         self._global_symbols.set("log", self._logger)
         self._global_symbols.set("sleep", asyncio.sleep)
 
@@ -288,28 +292,28 @@ class ScriptContext:
         """
         return path.read_text(encoding="utf-8")
 
-    async def load(self) -> ScriptMetadata:
-        """Load and parse the script file.
+    async def load(self) -> AutomationMetadata:
+        """Load and parse the automation file.
 
         Returns:
-            ScriptMetadata with information about the loaded script.
+            AutomationMetadata with information about the loaded automation.
 
         Raises:
-            ScriptError: If loading or parsing fails.
+            HAAnimError: If loading or parsing fails.
         """
-        path = Path(self.script_path)
+        path = Path(self.automation_path)
 
         if not path.exists():
-            raise ScriptError(f"Script file not found: {self.script_path}")
+            raise HAAnimError(f"Automation file not found: {self.automation_path}")
 
         # Read the source
         try:
             self._source = await self.hass.async_add_executor_job(self.read_file, path)
         except OSError as err:
-            raise ScriptError(f"Failed to read script file: {err}") from err
+            raise HAAnimError(f"Failed to read automation file: {err}") from err
 
         if not self._source:
-            raise ScriptError(f"Failed to read script file: {self.script_path}")
+            raise HAAnimError(f"Failed to read automation file: {self.automation_path}")
 
         # Get file modification time
         stat = path.stat()
@@ -320,7 +324,7 @@ class ScriptContext:
 
         # Create evaluator
         self._evaluator = AstEvaluator(
-            name=self.script_id,
+            name=self.automation_id,
             global_symbols=self._global_symbols,
             import_controller=self._import_controller,
             safe_builtins=self._safe_builtins,
@@ -330,26 +334,26 @@ class ScriptContext:
         # Parse the source
         try:
             self._evaluator.parse(self._source, filename=self.filename)
-        except ScriptError:
+        except HAAnimError:
             raise
         except Exception as err:
-            raise ScriptError(f"Failed to parse script: {err}") from err
+            raise HAAnimError(f"Failed to parse automation: {err}") from err
 
-        # Execute the script to define functions and variables
+        # Execute the automation to define functions and variables
         try:
             await self._evaluator.execute()
-        except ScriptError:
+        except HAAnimError:
             raise
         except Exception as err:
-            raise ScriptError(f"Failed to execute script: {err}") from err
+            raise HAAnimError(f"Failed to execute automation: {err}") from err
 
         # Extract definitions from the global scope
         self._extract_definitions()
 
         # Create metadata
-        self._metadata = ScriptMetadata(
-            id=self.script_id,
-            path=self.script_path,
+        self._metadata = AutomationMetadata(
+            id=self.automation_id,
+            path=self.automation_path,
             filename=self.filename,
             loaded_at=datetime.now(),
             modified_at=modified_at,
@@ -360,8 +364,8 @@ class ScriptContext:
         )
 
         self._logger.info(
-            "Script loaded: %s (%d actions, %d triggers, startup=%s, shutdown=%s)",
-            self.script_id,
+            "Automation loaded: %s (%d actions, %d triggers, startup=%s, shutdown=%s)",
+            self.automation_id,
             len(self._actions),
             len(self._triggers),
             self._startup_func is not None,
@@ -371,7 +375,7 @@ class ScriptContext:
         return self._metadata
 
     def _extract_definitions(self) -> None:
-        """Extract action, trigger definitions from loaded script."""
+        """Extract action, trigger definitions from loaded automation."""
         symbols = self._global_symbols.as_dict()
 
         for name, obj in symbols.items():
@@ -417,7 +421,7 @@ class ScriptContext:
                 func_name=func_name,
                 func=func,
                 description=action_info.description if action_info else None,
-                script_name=self.script_id,
+                automation_id=self.automation_id,
             )
 
         # Process triggers
@@ -429,7 +433,7 @@ class ScriptContext:
                     func_name=func_name,
                     func=func,
                     kwargs=trigger_info.kwargs,
-                    script_id=self.script_id,
+                    automation_id=self.automation_id,
                 )
             )
 
@@ -437,8 +441,8 @@ class ScriptContext:
         if metadata.is_startup:
             if self._startup_func is not None:
                 self._logger.warning(
-                    "Multiple @startup handlers found in script '%s'. Only the last one will be used.",
-                    self.script_id,
+                    "Multiple @startup handlers found in automation '%s'. Only the last one will be used.",
+                    self.automation_id,
                 )
             self._startup_func = func
             self._logger.debug("Registered startup handler: %s", func_name)
@@ -446,8 +450,8 @@ class ScriptContext:
         if metadata.is_shutdown:
             if self._shutdown_func is not None:
                 self._logger.warning(
-                    "Multiple @shutdown handlers found in script '%s'. Only the last one will be used.",
-                    self.script_id,
+                    "Multiple @shutdown handlers found in automation '%s'. Only the last one will be used.",
+                    self.automation_id,
                 )
             self._shutdown_func = func
             self._logger.debug("Registered shutdown handler: %s", func_name)
@@ -471,10 +475,10 @@ class ScriptContext:
             The return value of the action.
 
         Raises:
-            ScriptError: If the action is not found or execution fails.
+            HAAnimError: If the action is not found or execution fails.
         """
         if action_name not in self._actions:
-            raise ScriptError(f"Action '{action_name}' not found in script '{self.script_id}'")
+            raise HAAnimError(f"Action '{action_name}' not found in automation '{self.automation_id}'")
 
         action = self._actions[action_name]
 
@@ -495,7 +499,7 @@ class ScriptContext:
                 return await self.hass.async_add_executor_job(action.func, *args, **kwargs)
         except Exception as err:
             self._logger.error("Action '%s' failed: %s", action_name, err)
-            raise ScriptError(f"Action '{action_name}' failed: {err}") from err
+            raise HAAnimError(f"Action '{action_name}' failed: {err}") from err
 
     async def run_function(
         self,
@@ -503,7 +507,7 @@ class ScriptContext:
         *args: Any,
         **kwargs: Any,
     ) -> Any:
-        """Run any function defined in the script by name.
+        """Run any function defined in the automation by name.
 
         Args:
             func_name: The name of the function to run.
@@ -514,7 +518,7 @@ class ScriptContext:
             The return value of the function.
         """
         if func_name not in self._functions:
-            raise ScriptError(f"Function '{func_name}' not found in script '{self.script_id}'")
+            raise HAAnimError(f"Function '{func_name}' not found in automation '{self.automation_id}'")
 
         func = self._functions[func_name]
 
@@ -525,10 +529,10 @@ class ScriptContext:
             return await self.hass.async_add_executor_job(func, *args, **kwargs)
         except Exception as err:
             self._logger.error("Function '%s' failed: %s", func_name, err)
-            raise ScriptError(f"Function '{func_name}' failed: {err}") from err
+            raise HAAnimError(f"Function '{func_name}' failed: {err}") from err
 
     def get_actions(self) -> list[ActionDefinition]:
-        """Get all actions defined in this script.
+        """Get all actions defined in this automation.
 
         Returns:
             List of action definitions.
@@ -536,23 +540,23 @@ class ScriptContext:
         return list(self._actions.values())
 
     def get_triggers(self) -> list[TriggerDefinition]:
-        """Get all triggers defined in this script.
+        """Get all triggers defined in this automation.
 
         Returns:
             List of trigger definitions.
         """
         return self._triggers
 
-    def get_metadata(self) -> ScriptMetadata | None:
-        """Get the script metadata.
+    def get_metadata(self) -> AutomationMetadata | None:
+        """Get the automation metadata.
 
         Returns:
-            The script metadata, or None if not loaded.
+            The automation metadata, or None if not loaded.
         """
         return self._metadata
 
     def get_symbol(self, name: str) -> Any:
-        """Get a symbol from the script's global scope.
+        """Get a symbol from the automation's global scope.
 
         Args:
             name: The symbol name.
@@ -563,7 +567,7 @@ class ScriptContext:
         return self._global_symbols.get(name)
 
     def set_symbol(self, name: str, value: Any) -> None:
-        """Set a symbol in the script's global scope.
+        """Set a symbol in the automation's global scope.
 
         Args:
             name: The symbol name.
@@ -573,29 +577,29 @@ class ScriptContext:
 
     @property
     def id(self) -> str:
-        """Get the id of the script."""
+        """Get the id of the automation."""
         if self._metadata:
             return self._metadata.id
-        return self.script_id
+        return self.automation_id
 
     @property
     def is_loaded(self) -> bool:
-        """Check if the script is loaded."""
+        """Check if the automation is loaded."""
         return self._metadata is not None
 
     @property
     def source(self) -> str | None:
-        """Get the script source code."""
+        """Get the automation source code."""
         return self._source
 
     @property
     def has_startup(self) -> bool:
-        """Check if the script has a startup handler."""
+        """Check if the automation has a startup handler."""
         return self._startup_func is not None
 
     @property
     def has_shutdown(self) -> bool:
-        """Check if the script has a shutdown handler."""
+        """Check if the automation has a shutdown handler."""
         return self._shutdown_func is not None
 
     def get_startup_func(self) -> Callable[..., Any] | None:

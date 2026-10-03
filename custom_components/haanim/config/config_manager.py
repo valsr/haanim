@@ -75,12 +75,12 @@ class ConfigManager:
                     show_in_options=False,
                 ),
                 ConfigOption(
-                    key=const.CONFIG_SCRIPT_PATH,
+                    key=const.CONFIG_AUTOMATION_PATH,
                     config_type=ConfigType.STRING,
-                    default=const.DEFAULT_SCRIPT_PATH,
+                    default=const.DEFAULT_AUTOMATION_PATH,
                     required=True,
-                    label="Script Path",
-                    description="Path for automation scripts (absolute path)",
+                    label="Automation Path",
+                    description="Path for automations (absolute path)",
                 ),
             ],
         )
@@ -98,7 +98,7 @@ class ConfigManager:
                     default=const.DEFAULT_ALLOW_ALL_IMPORTS,
                     required=True,
                     label="Allow All Imports",
-                    description="If enabled, scripts can import any Python module. Use with caution!",
+                    description="If enabled, automations can import any Python module. Use with caution!",
                 ),
                 ConfigOption(
                     key=const.CONFIG_IMPORT_ALLOWLIST,
@@ -125,7 +125,7 @@ class ConfigManager:
                     default=const.DEFAULT_MAX_CONCURRENT_ACTIONS,
                     required=False,
                     label="Max Concurrent Actions",
-                    description="Maximum number of concurrent actions across all scripts. Minimum value 1.",
+                    description="Maximum concurrent actions across all automations. Minimum value 1.",
                 ),
                 ConfigOption(
                     key=const.CONFIG_WORKER_SHUTDOWN_TIMEOUT,
@@ -414,8 +414,8 @@ class ConfigManager:
 
         return {key: validator}
 
-    def validate_script_path(self, path: str) -> tuple[bool, str | None]:
-        """Validate a script path.
+    def validate_automation_path(self, path: str) -> tuple[bool, str | None]:
+        """Validate an automation path.
 
         Args:
             path: The path to validate.
@@ -423,7 +423,7 @@ class ConfigManager:
         Returns:
             Tuple of (is_valid, error_message).
         """
-        _LOGGER.debug("Validating script path: %s", path)
+        _LOGGER.debug("Validating automation path: %s", path)
         if not self._hass:
             _LOGGER.debug("No hass instance, skipping validation")
             return True, None
@@ -435,19 +435,21 @@ class ConfigManager:
 
         parent_dir = os.path.dirname(folder_path)
         if parent_dir and not os.path.exists(parent_dir):
-            _LOGGER.warning("Script path validation failed: parent directory does not exist: %s", parent_dir)
+            _LOGGER.warning(
+                "Automation path validation failed: parent directory does not exist: %s", parent_dir
+            )
             return False, f"Parent directory does not exist: {parent_dir}"
 
-        _LOGGER.debug("Script path validated successfully: %s", folder_path)
+        _LOGGER.debug("Automation path validated successfully: %s", folder_path)
         return True, None
 
-    def get_script_path(self) -> str:
-        """Get the full path to the script folder.
+    def get_automation_path(self) -> str:
+        """Get the full path to the automation folder.
 
         Returns:
-            Absolute path to the script folder.
+            Absolute path to the automation folder.
         """
-        path = self.get(const.CONFIG_SCRIPT_PATH, const.DEFAULT_SCRIPT_PATH)
+        path = self.get(const.CONFIG_AUTOMATION_PATH, const.DEFAULT_AUTOMATION_PATH)
 
         if not self._hass:
             return path
@@ -477,22 +479,24 @@ class ConfigManager:
         """
         return bool(self.get(const.CONFIG_ALLOW_ALL_IMPORTS, const.DEFAULT_ALLOW_ALL_IMPORTS))
 
-    def get_script_refresh_interval(self) -> int:
-        """Get the script refresh interval in seconds.
+    def get_automation_refresh_interval(self) -> int:
+        """Get the automation refresh interval in seconds.
 
         Returns:
             Refresh interval in seconds.
         """
-        interval: Any = self.get(const.CONFIG_SCRIPT_REFRESH_INTERVAL, const.DEFAULT_SCRIPT_REFRESH_INTERVAL)
+        interval: Any = self.get(
+            const.CONFIG_AUTOMATION_REFRESH_INTERVAL, const.DEFAULT_AUTOMATION_REFRESH_INTERVAL
+        )
         try:
             return int(interval)
         except (ValueError, TypeError):
             _LOGGER.warning(
-                "Invalid script refresh interval: %s, defaulting to %d seconds",
+                "Invalid automation refresh interval: %s, defaulting to %d seconds",
                 interval,
-                const.DEFAULT_SCRIPT_REFRESH_INTERVAL,
+                const.DEFAULT_AUTOMATION_REFRESH_INTERVAL,
             )
-            return const.DEFAULT_SCRIPT_REFRESH_INTERVAL
+            return const.DEFAULT_AUTOMATION_REFRESH_INTERVAL
 
     def get_max_concurrent_actions(self):
         """Get the maximum number of concurrent actions.

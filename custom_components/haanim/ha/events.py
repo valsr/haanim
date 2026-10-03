@@ -1,6 +1,6 @@
 """Home Assistant event integration for HAAnim.
 
-This module provides event listening and firing capabilities for use within HAAnim scripts.
+This module provides event listening and firing capabilities for use within HAAnim automations.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ class EventData:
 
 
 class EventManager:
-    """Manages event listening and firing for HAAnim scripts.
+    """Manages event listening and firing for HAAnim automations.
 
     Provides methods to listen for Home Assistant events and fire custom events,
     with notification queues for trigger evaluation.
@@ -214,7 +214,7 @@ class EventManager:
         return self.hass.bus.async_listen_once(event_type, callback_func)
 
 
-# Convenience functions for use in scripts
+# Convenience functions for use in automations
 
 
 def event_fire(

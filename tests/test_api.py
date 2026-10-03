@@ -8,9 +8,9 @@ from custom_components.haanim.api import (
     ActionsListView,
     ConfigView,
     HAAnimAPIView,
-    ReloadScriptsView,
+    ReloadAutomationsView,
     RunActionView,
-    ScriptsListView,
+    AutomationsListView,
     async_register_api,
 )
 from custom_components.haanim.const import DOMAIN
@@ -25,14 +25,14 @@ class TestHAAnimAPIView:
         assert view.requires_auth is True
 
 
-class TestScriptsListView:
-    """Tests for ScriptsListView."""
+class TestAutomationsListView:
+    """Tests for AutomationsListView."""
 
     def test_url_and_name(self) -> None:
         """Test the URL and name are set correctly."""
-        view = ScriptsListView()
+        view = AutomationsListView()
         assert view.url is not None
-        assert f"/api/{DOMAIN}/scripts" in view.url
+        assert f"/api/{DOMAIN}/automations" in view.url
         assert DOMAIN in view.name
 
     @patch("custom_components.haanim.api.async_get_manager")
@@ -40,7 +40,7 @@ class TestScriptsListView:
         """Test GET returns error when manager not available."""
         mock_get_manager.return_value = None
 
-        view = ScriptsListView()
+        view = AutomationsListView()
         request = MagicMock()
         request.app = {"hass": MagicMock()}
 
@@ -49,31 +49,31 @@ class TestScriptsListView:
             await view.get(request)
             mock_json.assert_called_once()
             call_args = mock_json.call_args[0][0]
-            assert call_args["scripts"] == []
+            assert call_args["automations"] == []
             assert "error" in call_args
 
     @patch("custom_components.haanim.api.async_get_manager")
-    async def test_get_returns_scripts(self, mock_get_manager: MagicMock) -> None:
-        """Test GET returns script list."""
+    async def test_get_returns_automations(self, mock_get_manager: MagicMock) -> None:
+        """Test GET returns automation list."""
         mock_manager = MagicMock()
         mock_metadata = MagicMock()
-        mock_metadata.id = "test_script"
-        mock_metadata.path = "/path/to/script.py"
+        mock_metadata.id = "test_automation"
+        mock_metadata.path = "/path/to/automation.py"
         mock_metadata.actions = []
         mock_metadata.triggers = []
         mock_metadata.enabled = True
         mock_manager.get_all_metadata.return_value = [mock_metadata]
         mock_get_manager.return_value = mock_manager
 
-        view = ScriptsListView()
+        view = AutomationsListView()
         request = MagicMock()
         request.app = {"hass": MagicMock()}
 
         with patch.object(view, "json", return_value=MagicMock()) as mock_json:
             await view.get(request)
             call_args = mock_json.call_args[0][0]
-            assert len(call_args["scripts"]) == 1
-            assert call_args["scripts"][0]["name"] == "test_script"
+            assert len(call_args["automations"]) == 1
+            assert call_args["automations"][0]["name"] == "test_automation"
 
 
 class TestActionsListView:
@@ -109,7 +109,7 @@ class TestActionsListView:
         mock_action = MagicMock()
         mock_action.name = "my_action"
         mock_action.func_name = "my_func"
-        mock_action.script_name = "test_script"
+        mock_action.automation_id = "test_automation"
         mock_action.description = "A test action"
         mock_manager.get_all_actions.return_value = [mock_action]
         mock_get_manager.return_value = mock_manager
@@ -126,18 +126,18 @@ class TestActionsListView:
             assert call_args["actions"][0]["name"] == "my_action"
 
     @patch("custom_components.haanim.api.async_get_manager")
-    async def test_get_filters_by_script(self, mock_get_manager: MagicMock) -> None:
-        """Test GET filters actions by script name."""
+    async def test_get_filters_by_automation(self, mock_get_manager: MagicMock) -> None:
+        """Test GET filters actions by automation name."""
         mock_manager = MagicMock()
         mock_action1 = MagicMock()
         mock_action1.name = "action1"
         mock_action1.func_name = "func1"
-        mock_action1.script_name = "script1"
+        mock_action1.automation_id = "automation1"
         mock_action1.description = ""
         mock_action2 = MagicMock()
         mock_action2.name = "action2"
         mock_action2.func_name = "func2"
-        mock_action2.script_name = "script2"
+        mock_action2.automation_id = "automation2"
         mock_action2.description = ""
         mock_manager.get_all_actions.return_value = [mock_action1, mock_action2]
         mock_get_manager.return_value = mock_manager
@@ -145,13 +145,13 @@ class TestActionsListView:
         view = ActionsListView()
         request = MagicMock()
         request.app = {"hass": MagicMock()}
-        request.query = {"script_name": "script1"}
+        request.query = {"automation_id": "automation1"}
 
         with patch.object(view, "json", return_value=MagicMock()) as mock_json:
             await view.get(request)
             call_args = mock_json.call_args[0][0]
             assert len(call_args["actions"]) == 1
-            assert call_args["actions"][0]["script_name"] == "script1"
+            assert call_args["actions"][0]["automation_id"] == "automation1"
 
 
 class TestConfigView:
@@ -230,7 +230,7 @@ class TestRunActionView:
         view = RunActionView()
         request = MagicMock()
         request.app = {"hass": MagicMock()}
-        request.json = AsyncMock(return_value={"script_name": "test", "action_name": "action"})
+        request.json = AsyncMock(return_value={"automation_id": "test", "action_name": "action"})
 
         with patch.object(view, "json", return_value=MagicMock()) as mock_json:
             await view.post(request)
@@ -248,7 +248,7 @@ class TestRunActionView:
         view = RunActionView()
         request = MagicMock()
         request.app = {"hass": MagicMock()}
-        request.json = AsyncMock(return_value={"script_name": "test", "action_name": "action"})
+        request.json = AsyncMock(return_value={"automation_id": "test", "action_name": "action"})
 
         with patch.object(view, "json", return_value=MagicMock()) as mock_json:
             await view.post(request)
@@ -257,12 +257,12 @@ class TestRunActionView:
             mock_manager.async_run_action.assert_called_once_with("test", "action", manual=True)
 
 
-class TestReloadScriptsView:
-    """Tests for ReloadScriptsView."""
+class TestReloadAutomationsView:
+    """Tests for ReloadAutomationsView."""
 
     def test_url_and_name(self) -> None:
         """Test the URL and name are set correctly."""
-        view = ReloadScriptsView()
+        view = ReloadAutomationsView()
         assert view.url is not None
         assert f"/api/{DOMAIN}/reload" in view.url
         assert DOMAIN in view.name
@@ -272,7 +272,7 @@ class TestReloadScriptsView:
         """Test POST returns error when manager not available."""
         mock_get_manager.return_value = None
 
-        view = ReloadScriptsView()
+        view = ReloadAutomationsView()
         request = MagicMock()
         request.app = {"hass": MagicMock()}
 
@@ -283,12 +283,12 @@ class TestReloadScriptsView:
 
     @patch("custom_components.haanim.api.async_get_manager")
     async def test_post_success(self, mock_get_manager: MagicMock) -> None:
-        """Test POST successfully reloads scripts."""
+        """Test POST successfully reloads automations."""
         mock_manager = MagicMock()
-        mock_manager.async_reload_all_scripts = AsyncMock()
+        mock_manager.async_reload_all_automations = AsyncMock()
         mock_get_manager.return_value = mock_manager
 
-        view = ReloadScriptsView()
+        view = ReloadAutomationsView()
         request = MagicMock()
         request.app = {"hass": MagicMock()}
 
@@ -296,7 +296,7 @@ class TestReloadScriptsView:
             await view.post(request)
             call_args = mock_json.call_args[0][0]
             assert call_args["success"] is True
-            mock_manager.async_reload_all_scripts.assert_called_once()
+            mock_manager.async_reload_all_automations.assert_called_once()
 
 
 class TestAsyncRegisterAPI:
@@ -328,7 +328,7 @@ class TestRunActionViewErrors:
         request.app = {"hass": MagicMock()}
         request.json = AsyncMock(
             return_value={
-                "script_name": "test_script",
+                "automation_id": "test_automation",
                 "action_name": "test_action",
             }
         )
@@ -340,17 +340,17 @@ class TestRunActionViewErrors:
             assert "error" in call_args
 
 
-class TestReloadScriptsViewErrors:
-    """Tests for error handling in ReloadScriptsView."""
+class TestReloadAutomationsViewErrors:
+    """Tests for error handling in ReloadAutomationsView."""
 
     @patch("custom_components.haanim.api.async_get_manager")
     async def test_post_reload_fails(self, mock_get_manager: MagicMock) -> None:
         """Test POST returns error when reload fails."""
         mock_manager = MagicMock()
-        mock_manager.async_reload_all_scripts = AsyncMock(side_effect=RuntimeError("Reload failed"))
+        mock_manager.async_reload_all_automations = AsyncMock(side_effect=RuntimeError("Reload failed"))
         mock_get_manager.return_value = mock_manager
 
-        view = ReloadScriptsView()
+        view = ReloadAutomationsView()
         request = MagicMock()
         request.app = {"hass": MagicMock()}
 

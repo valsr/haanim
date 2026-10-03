@@ -19,7 +19,7 @@ from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.ha.state import StateManager
 
 if TYPE_CHECKING:
-    from custom_components.haanim.engine.script_context import TriggerDefinition
+    from custom_components.haanim.engine.automation_context import TriggerDefinition
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class BaseTrigger(ABC):
 
         Args:
             hass: Home Assistant instance.
-            trigger_def: The trigger definition from the script.
+            trigger_def: The trigger definition from the automation.
             state_manager: State manager instance.
             event_manager: Event manager instance.
         """
@@ -74,7 +74,7 @@ class BaseTrigger(ABC):
         self._task: asyncio.Task[None] | None = None
         self._enabled = True
         self._constraints: list[dict[str, Any]] = []
-        self._logger = logging.getLogger(f"{__name__}.{trigger_def.script_id}.{trigger_def.func_name}")
+        self._logger = logging.getLogger(f"{__name__}.{trigger_def.automation_id}.{trigger_def.func_name}")
 
     @abstractmethod
     async def async_start(self) -> None:
@@ -287,7 +287,7 @@ class BaseTrigger(ABC):
         except Exception as err:
             self._logger.error(
                 "Trigger function %s.%s failed: %s",
-                self.trigger_def.script_id,
+                self.trigger_def.automation_id,
                 self.trigger_def.func_name,
                 err,
             )

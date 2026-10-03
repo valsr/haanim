@@ -11,12 +11,12 @@ import voluptuous as vol
 
 from custom_components.haanim.const import (
     ATTRIBUTE_ACTION_NAME,
-    ATTRIBUTE_SCRIPT_NAME,
+    ATTRIBUTE_AUTOMATION_ID,
     DOMAIN,
     SERVICE_GET_CONFIG,
     SERVICE_LIST_ACTIONS,
-    SERVICE_LIST_SCRIPTS,
-    SERVICE_RELOAD_SCRIPTS,
+    SERVICE_LIST_AUTOMATIONS,
+    SERVICE_RELOAD_AUTOMATIONS,
     SERVICE_RUN_ACTION,
 )
 from custom_components.haanim.ha.services import (
@@ -57,8 +57,8 @@ class TestServiceManager:
         # Get all registered service names
         registered = [call[0][1] for call in mock_hass.services.async_register.call_args_list]
         assert SERVICE_RUN_ACTION in registered
-        assert SERVICE_RELOAD_SCRIPTS in registered
-        assert SERVICE_LIST_SCRIPTS in registered
+        assert SERVICE_RELOAD_AUTOMATIONS in registered
+        assert SERVICE_LIST_AUTOMATIONS in registered
         assert SERVICE_LIST_ACTIONS in registered
         assert SERVICE_GET_CONFIG in registered
 
@@ -191,19 +191,19 @@ class TestServiceHandlers:
         service_manager: ServiceManager,
         mock_service_call: MagicMock,
     ) -> None:
-        """Test _handle_run_action calls script manager."""
+        """Test _handle_run_action calls automation manager."""
         mock_manager = MagicMock()
         mock_manager.async_run_action = AsyncMock()
         mock_get_manager.return_value = mock_manager
 
         mock_service_call.data = {
-            ATTRIBUTE_SCRIPT_NAME: "test_script",
+            ATTRIBUTE_AUTOMATION_ID: "test_automation",
             ATTRIBUTE_ACTION_NAME: "test_action",
         }
 
         await service_manager._handle_run_action(mock_service_call)
 
-        mock_manager.async_run_action.assert_called_once_with("test_script", "test_action", manual=True)
+        mock_manager.async_run_action.assert_called_once_with("test_automation", "test_action", manual=True)
 
     @patch("custom_components.haanim.ha.services.async_get_manager")
     async def test_handle_run_action_no_manager(
@@ -215,7 +215,7 @@ class TestServiceHandlers:
         """Test _handle_run_action when manager not available."""
         mock_get_manager.return_value = None
         mock_service_call.data = {
-            ATTRIBUTE_SCRIPT_NAME: "test_script",
+            ATTRIBUTE_AUTOMATION_ID: "test_automation",
             ATTRIBUTE_ACTION_NAME: "test_action",
         }
 
@@ -223,58 +223,58 @@ class TestServiceHandlers:
         await service_manager._handle_run_action(mock_service_call)
 
     @patch("custom_components.haanim.ha.services.async_get_manager")
-    async def test_handle_reload_scripts(
+    async def test_handle_reload_automations(
         self,
         mock_get_manager: MagicMock,
         service_manager: ServiceManager,
         mock_service_call: MagicMock,
     ) -> None:
-        """Test _handle_reload_scripts calls script manager."""
+        """Test _handle_reload_automations calls automation manager."""
         mock_manager = MagicMock()
-        mock_manager.async_reload_all_scripts = AsyncMock()
+        mock_manager.async_reload_all_automations = AsyncMock()
         mock_get_manager.return_value = mock_manager
 
-        await service_manager._handle_reload_scripts(mock_service_call)
+        await service_manager._handle_reload_automations(mock_service_call)
 
-        mock_manager.async_reload_all_scripts.assert_called_once()
+        mock_manager.async_reload_all_automations.assert_called_once()
 
     @patch("custom_components.haanim.ha.services.async_get_manager")
-    async def test_handle_list_scripts(
+    async def test_handle_list_automations(
         self,
         mock_get_manager: MagicMock,
         service_manager: ServiceManager,
         mock_service_call: MagicMock,
     ) -> None:
-        """Test _handle_list_scripts returns script info."""
+        """Test _handle_list_automations returns automation info."""
         mock_manager = MagicMock()
         mock_metadata = MagicMock()
-        mock_metadata.id = "test_script"
-        mock_metadata.path = "/path/to/script.py"
+        mock_metadata.id = "test_automation"
+        mock_metadata.path = "/path/to/automation.py"
         mock_metadata.actions = []
         mock_metadata.triggers = []
         mock_metadata.enabled = True
         mock_manager.get_all_metadata.return_value = [mock_metadata]
         mock_get_manager.return_value = mock_manager
 
-        result = await service_manager._handle_list_scripts(mock_service_call)
+        result = await service_manager._handle_list_automations(mock_service_call)
 
-        assert "scripts" in result
-        assert len(result["scripts"]) == 1
-        assert result["scripts"][0]["name"] == "test_script"
+        assert "automations" in result
+        assert len(result["automations"]) == 1
+        assert result["automations"][0]["name"] == "test_automation"
 
     @patch("custom_components.haanim.ha.services.async_get_manager")
-    async def test_handle_list_scripts_no_manager(
+    async def test_handle_list_automations_no_manager(
         self,
         mock_get_manager: MagicMock,
         service_manager: ServiceManager,
         mock_service_call: MagicMock,
     ) -> None:
-        """Test _handle_list_scripts when manager not available."""
+        """Test _handle_list_automations when manager not available."""
         mock_get_manager.return_value = None
 
-        result = await service_manager._handle_list_scripts(mock_service_call)
+        result = await service_manager._handle_list_automations(mock_service_call)
 
-        assert result == {"scripts": []}
+        assert result == {"automations": []}
 
     @patch("custom_components.haanim.ha.services.async_get_manager")
     async def test_handle_list_actions(
@@ -288,7 +288,7 @@ class TestServiceHandlers:
         mock_action = MagicMock()
         mock_action.name = "my_action"
         mock_action.func_name = "my_func"
-        mock_action.script_name = "test_script"
+        mock_action.automation_id = "test_automation"
         mock_action.description = "An action"
         mock_manager.get_all_actions.return_value = [mock_action]
         mock_get_manager.return_value = mock_manager
@@ -300,33 +300,33 @@ class TestServiceHandlers:
         assert result["actions"][0]["name"] == "my_action"
 
     @patch("custom_components.haanim.ha.services.async_get_manager")
-    async def test_handle_list_actions_filtered_by_script(
+    async def test_handle_list_actions_filtered_by_automation(
         self,
         mock_get_manager: MagicMock,
         service_manager: ServiceManager,
         mock_service_call: MagicMock,
     ) -> None:
-        """Test _handle_list_actions filters by script name."""
+        """Test _handle_list_actions filters by automation name."""
         mock_manager = MagicMock()
         mock_action1 = MagicMock()
         mock_action1.name = "action1"
         mock_action1.func_name = "func1"
-        mock_action1.script_name = "script1"
+        mock_action1.automation_id = "automation1"
         mock_action1.description = ""
         mock_action2 = MagicMock()
         mock_action2.name = "action2"
         mock_action2.func_name = "func2"
-        mock_action2.script_name = "script2"
+        mock_action2.automation_id = "automation2"
         mock_action2.description = ""
         mock_manager.get_all_actions.return_value = [mock_action1, mock_action2]
         mock_get_manager.return_value = mock_manager
 
-        mock_service_call.data = {ATTRIBUTE_SCRIPT_NAME: "script1"}
+        mock_service_call.data = {ATTRIBUTE_AUTOMATION_ID: "automation1"}
 
         result = await service_manager._handle_list_actions(mock_service_call)
 
         assert len(result["actions"]) == 1
-        assert result["actions"][0]["script_name"] == "script1"
+        assert result["actions"][0]["automation_id"] == "automation1"
 
 
 class TestConvenienceFunctions:

@@ -32,7 +32,7 @@ from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.engine.triggers.base import BaseTrigger, TriggerInfo
 
 if TYPE_CHECKING:
-    from custom_components.haanim.engine.script_context import TriggerDefinition
+    from custom_components.haanim.engine.automation_context import TriggerDefinition
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ class TimeTrigger(BaseTrigger):
 
         Args:
             hass: Home Assistant instance.
-            trigger_def: The trigger definition from the script.
+            trigger_def: The trigger definition from the automation.
             state_manager: State manager instance.
             event_manager: Event manager instance.
         """
@@ -144,7 +144,7 @@ class TimeTrigger(BaseTrigger):
         """Start the time trigger."""
         self._task = self.hass.async_create_task(
             self._time_loop(),
-            name=f"haanim_time_trigger_{self.trigger_def.script_id}_{self.trigger_def.func_name}",
+            name=f"haanim_time_trigger_{self.trigger_def.automation_id}_{self.trigger_def.func_name}",
         )
 
         self._logger.debug("Time trigger started: %s", self.trigger_def.trigger_expr)

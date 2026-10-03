@@ -1,6 +1,6 @@
 """Trigger manager for HAAnim.
 
-This module provides the TriggerManager class that manages all triggers for HAAnim scripts, including
+This module provides the TriggerManager class that manages all triggers for HAAnim automations, including
 registration, lifecycle, and execution. The TriggerManager centrally listens to all Home Assistant events
 and routes them to the appropriate triggers.
 """
@@ -23,13 +23,13 @@ from custom_components.haanim.engine.action_pool import ActionWorkerPool
 from custom_components.haanim.engine.constraints import ConstraintChecker
 
 if TYPE_CHECKING:
-    from custom_components.haanim.engine.script_context import TriggerDefinition
+    from custom_components.haanim.engine.automation_context import TriggerDefinition
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class TriggerManager:
-    """Manages all triggers for HAAnim scripts.
+    """Manages all triggers for HAAnim automations.
 
     The TriggerManager is responsible for:
     - Registering triggers from decorated functions
@@ -277,7 +277,7 @@ class TriggerManager:
         Returns:
             Unique trigger ID.
         """
-        prefix = f"{trigger_def.script_id}.{trigger_def.func_name}."
+        prefix = f"{trigger_def.automation_id}.{trigger_def.func_name}."
         ids = [int(key.split(".")[-1]) for key in self._triggers if key.startswith(prefix)]
         if not ids:
             return prefix + "0"
@@ -325,16 +325,16 @@ class TriggerManager:
         _LOGGER.debug("Unregistered trigger: %s", trigger_id)
         return True
 
-    async def unregister_script_triggers(self, script_id: str) -> int:
-        """Unregister all triggers for a script.
+    async def unregister_automation_triggers(self, automation_id: str) -> int:
+        """Unregister all triggers for an automation.
 
         Args:
-            script_id: ID of the script.
+            automation_id: ID of the automation.
 
         Returns:
             Number of triggers unregistered.
         """
-        to_remove = [tid for tid in self._triggers if tid.startswith(f"{script_id}.")]
+        to_remove = [tid for tid in self._triggers if tid.startswith(f"{automation_id}.")]
 
         for trigger_id in to_remove:
             await self.unregister_trigger(trigger_id)
@@ -615,7 +615,7 @@ class TriggerManager:
 
             # Execute through action pool
             await self.action_pool.submit_action(
-                script_name=trigger_def.script_id or "",
+                automation_id=trigger_def.automation_id or "",
                 action_name=trigger_def.func_name,
                 func=trigger_def.func,
                 **kwargs,

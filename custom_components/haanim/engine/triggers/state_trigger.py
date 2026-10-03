@@ -29,7 +29,7 @@ from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.engine.triggers.base import BaseTrigger, TriggerInfo
 
 if TYPE_CHECKING:
-    from custom_components.haanim.engine.script_context import TriggerDefinition
+    from custom_components.haanim.engine.automation_context import TriggerDefinition
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ def state_trigger(
         state_hold: Optional seconds the condition must remain true before triggering.
             Useful for debouncing rapid state changes. If the condition becomes false
             before the hold period expires, the trigger is cancelled.
-        state_check_now: If True, check the condition immediately on script load
+        state_check_now: If True, check the condition immediately on automation load
             and trigger if it's already satisfied. Default is False.
         watch: Optional list of entity IDs to watch for changes. If not provided,
             entities are automatically extracted from the trigger expressions.
@@ -98,7 +98,7 @@ def state_trigger(
 
         @state_trigger("sensor.power > 1000", state_check_now=True)
         def high_power_usage():
-            '''Also checks at script load time.'''
+            '''Also checks at automation load time.'''
             pass
     """
 
@@ -139,7 +139,7 @@ class StateTrigger(BaseTrigger):
 
         Args:
             hass: Home Assistant instance.
-            trigger_def: The trigger definition from the script.
+            trigger_def: The trigger definition from the automation.
             state_manager: State manager instance.
             event_manager: Event manager instance.
         """
@@ -194,7 +194,7 @@ class StateTrigger(BaseTrigger):
         # Start watch task
         self._task = self.hass.async_create_task(
             self._watch_loop(),
-            name=f"haanim_state_trigger_{self.trigger_def.script_id}_{self.trigger_def.func_name}",
+            name=f"haanim_state_trigger_{self.trigger_def.automation_id}_{self.trigger_def.func_name}",
         )
 
         # Check now if requested

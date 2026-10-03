@@ -1,7 +1,7 @@
 """Action worker pool for managing concurrent action execution.
 
-This module provides a pool-based execution model for running script actions
-concurrently while respecting per-script and global concurrency limits.
+This module provides a pool-based execution model for running automation actions
+concurrently while respecting per-automation and global concurrency limits.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from custom_components.haanim.engine.errors import (
     PoolExhaustedError,
     ShutdownTimeoutError,
 )
-from custom_components.haanim.engine.script_status import get_status_manager
+from custom_components.haanim.engine.automation_status import get_status_manager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class ActionExecution:
     """Represents a single action execution.
 
     Args:
-        script_name: Name of the script executing the action.
+        automation_id: Name of the automation executing the action.
         action_name: Name of the action being executed.
         func: The async callable to execute.
         args: Positional arguments for the function.
@@ -55,7 +55,7 @@ class ActionExecution:
         is_lifecycle: Whether this is a lifecycle action (startup/shutdown).
     """
 
-    script_name: str
+    automation_id: str
     action_name: str
     func: Callable[..., Coroutine[Any, Any, Any]]
     args: tuple[Any, ...] = field(default_factory=tuple)
@@ -71,11 +71,11 @@ class ActionExecution:
 
 
 class ActionWorkerPool:
-    """Pool for managing concurrent action execution across scripts.
+    """Pool for managing concurrent action execution across automations.
 
     Manages a pool of workers that can execute actions concurrently. Enforces:
     - Global maximum concurrent actions limit
-    - Script shutdown handling with timeout
+    - Automation shutdown handling with timeout
     """
 
     def __init__(
@@ -104,8 +104,8 @@ class ActionWorkerPool:
         # Flag indicating pool is shutting down
         self._shutting_down = False
 
-        # Scripts that are in shutdown mode (no new actions allowed)
-        self._scripts_shutting_down: set[str] = set()
+        # Automations that are in shutdown mode (no new actions allowed)
+        self._automations_shutting_down: set[str] = set()
 
         _LOGGER.debug(
             "ActionWorkerPool initialized with max_workers=%d, shutdown_timeout=%.3fs",
@@ -133,30 +133,30 @@ class ActionWorkerPool:
         """Check if the pool is shutting down."""
         return self._shutting_down
 
-    def is_script_shutting_down(self, script_name: str) -> bool:
-        """Check if a script is in shutdown mode.
+    def is_automation_shutting_down(self, automation_id: str) -> bool:
+        """Check if an automation is in shutdown mode.
 
         Args:
-            script_name: Name of the script to check.
+            automation_id: Name of the automation to check.
 
         Returns:
-            True if the script is shutting down.
+            True if the automation is shutting down.
         """
-        return script_name in self._scripts_shutting_down
+        return automation_id in self._automations_shutting_down
 
-    def get_active_actions(self, script_name: str) -> list[ActionExecution]:
-        """Get all currently active actions for a script.
+    def get_active_actions(self, automation_id: str) -> list[ActionExecution]:
+        """Get all currently active actions for an automation.
 
         Args:
-            script_name: Name of the script.
+            automation_id: Name of the automation.
 
         Returns:
-            List of active ActionExecution instances for the script.
+            List of active ActionExecution instances for the automation.
         """
         return [
             exec_info
             for exec_info in self._active_executions.values()
-            if exec_info.script_name == script_name
+            if exec_info.automation_id == automation_id
         ]
 
     def get_all_active_actions(self) -> list[ActionExecution]:
@@ -169,7 +169,7 @@ class ActionWorkerPool:
 
     async def submit_action(
         self,
-        script_name: str,
+        automation_id: str,
         action_name: str,
         func: Callable[..., Any],
         *args: Any,
@@ -179,7 +179,7 @@ class ActionWorkerPool:
         """Submit an action for execution.
 
         Args:
-            script_name: Name of the script requesting the action.
+            automation_id: Name of the automation requesting the action.
             action_name: Name of the action to execute.
             func: The function to execute (sync or async).
             *args: Positional arguments for the function.
@@ -198,17 +198,17 @@ class ActionWorkerPool:
             if self._shutting_down and not is_lifecycle:
                 raise ActionCancelledError(action_name, "pool is shutting down")
 
-            # Check if script is in shutdown mode
-            if script_name in self._scripts_shutting_down and not is_lifecycle:
-                raise ActionCancelledError(action_name, "script is shutting down")
+            # Check if automation is in shutdown mode
+            if automation_id in self._automations_shutting_down and not is_lifecycle:
+                raise ActionCancelledError(action_name, "automation is shutting down")
 
             # Check if pool has available workers (non-blocking check)
             if self._semaphore.locked() and self.available_workers <= 0:
                 _LOGGER.error(
-                    "Action worker pool exhausted (max=%d), cannot run action '%s' for " "script '%s'",
+                    "Action worker pool exhausted (max=%d), cannot run action '%s' for " "automation '%s'",
                     self._max_workers,
                     action_name,
-                    script_name,
+                    automation_id,
                 )
                 raise PoolExhaustedError(self._max_workers)
 
@@ -217,7 +217,7 @@ class ActionWorkerPool:
 
             # Create execution record
             execution = ActionExecution(
-                script_name=script_name,
+                automation_id=automation_id,
                 action_name=action_name,
                 func=async_func,
                 args=args,
@@ -274,9 +274,9 @@ class ActionWorkerPool:
             execution.state = ActionState.RUNNING
             execution.started_at = datetime.now()
 
-            # Update script status to running
+            # Update automation status to running
             status_manager.add_running_action(
-                script_name=execution.script_name,
+                automation_id=execution.automation_id,
                 action_name=execution.action_name,
                 execution_id=execution.execution_id,
                 is_startup=execution.action_name == "__startup__",
@@ -284,9 +284,9 @@ class ActionWorkerPool:
             )
 
             _LOGGER.debug(
-                "Starting action '%s' for script '%s' (active: %d/%d)",
+                "Starting action '%s' for automation '%s' (active: %d/%d)",
                 execution.action_name,
-                execution.script_name,
+                execution.automation_id,
                 self.active_count,
                 self._max_workers,
             )
@@ -303,13 +303,13 @@ class ActionWorkerPool:
                 execution.completed_at = datetime.now()
 
                 _LOGGER.debug(
-                    "Completed action '%s' for script '%s'",
+                    "Completed action '%s' for automation '%s'",
                     execution.action_name,
-                    execution.script_name,
+                    execution.automation_id,
                 )
 
                 # Update status - remove this action
-                status_manager.remove_running_action(execution.script_name, execution.execution_id)
+                status_manager.remove_running_action(execution.automation_id, execution.execution_id)
 
                 return result
 
@@ -317,12 +317,12 @@ class ActionWorkerPool:
                 execution.state = ActionState.CANCELLED
                 execution.completed_at = datetime.now()
                 _LOGGER.warning(
-                    "Action '%s' for script '%s' was cancelled",
+                    "Action '%s' for automation '%s' was cancelled",
                     execution.action_name,
-                    execution.script_name,
+                    execution.automation_id,
                 )
                 # Update status - remove this action
-                status_manager.remove_running_action(execution.script_name, execution.execution_id)
+                status_manager.remove_running_action(execution.automation_id, execution.execution_id)
                 raise ActionCancelledError(execution.action_name) from exc
 
             except Exception as err:
@@ -330,22 +330,22 @@ class ActionWorkerPool:
                 execution.error = err
                 execution.completed_at = datetime.now()
                 _LOGGER.error(
-                    "Action '%s' for script '%s' failed: %s",
+                    "Action '%s' for automation '%s' failed: %s",
                     execution.action_name,
-                    execution.script_name,
+                    execution.automation_id,
                     err,
                 )
                 # Update status - remove this action with error
                 status_manager.remove_running_action(
-                    execution.script_name, execution.execution_id, error=str(err)
+                    execution.automation_id, execution.execution_id, error=str(err)
                 )
                 raise
 
-    async def cancel_script_actions(self, script_name: str, reason: str = "cancelled") -> int:
-        """Cancel all running actions for a script.
+    async def cancel_automation_actions(self, automation_id: str, reason: str = "cancelled") -> int:
+        """Cancel all running actions for an automation.
 
         Args:
-            script_name: Name of the script whose actions should be cancelled.
+            automation_id: Name of the automation whose actions should be cancelled.
             reason: Reason for cancellation.
 
         Returns:
@@ -355,16 +355,16 @@ class ActionWorkerPool:
             executions = [
                 exec_info
                 for exec_info in self._active_executions.values()
-                if exec_info.script_name == script_name and exec_info.task
+                if exec_info.automation_id == automation_id and exec_info.task
             ]
 
         if not executions:
             return 0
 
         _LOGGER.info(
-            "Cancelling %d action(s) for script '%s': %s",
+            "Cancelling %d action(s) for automation '%s': %s",
             len(executions),
-            script_name,
+            automation_id,
             reason,
         )
 
@@ -376,7 +376,7 @@ class ActionWorkerPool:
 
     async def run_shutdown_action(
         self,
-        script_name: str,
+        automation_id: str,
         shutdown_func: Callable[..., Any],
         *args: Any,
         **kwargs: Any,
@@ -384,13 +384,13 @@ class ActionWorkerPool:
         """Run a shutdown action with timeout and proper handling.
 
         This method:
-        1. Marks the script as shutting down (prevents new actions)
-        2. Cancels any currently running actions for the script
+        1. Marks the automation as shutting down (prevents new actions)
+        2. Cancels any currently running actions for the automation
         3. Runs the shutdown function with a timeout
-        4. Cleans up script state
+        4. Cleans up automation state
 
         Args:
-            script_name: Name of the script shutting down.
+            automation_id: Name of the automation shutting down.
             shutdown_func: The shutdown function to execute.
             *args: Positional arguments for the shutdown function.
             **kwargs: Keyword arguments for the shutdown function.
@@ -401,22 +401,22 @@ class ActionWorkerPool:
         Raises:
             ShutdownTimeoutError: If the shutdown action exceeds the timeout.
         """
-        # Mark script as shutting down
-        self._scripts_shutting_down.add(script_name)
+        # Mark automation as shutting down
+        self._automations_shutting_down.add(automation_id)
 
         try:
             # Cancel any currently running actions
-            await self.cancel_script_actions(script_name, "script shutdown")
+            await self.cancel_automation_actions(automation_id, "automation shutdown")
 
             # Wait briefly for cancelled actions to clean up
             await asyncio.sleep(0.05)
 
             # Execute shutdown with timeout
-            _LOGGER.debug("Running shutdown action for script '%s'", script_name)
+            _LOGGER.debug("Running shutdown action for automation '%s'", automation_id)
             try:
                 return await asyncio.wait_for(
                     self.submit_action(
-                        script_name,
+                        automation_id,
                         "__shutdown__",
                         shutdown_func,
                         *args,
@@ -427,35 +427,35 @@ class ActionWorkerPool:
                 )
             except asyncio.TimeoutError as exc:
                 _LOGGER.error(
-                    "Shutdown action for script '%s' timed out after %.0fs",
-                    script_name,
+                    "Shutdown action for automation '%s' timed out after %.0fs",
+                    automation_id,
                     self._shutdown_timeout,
                 )
-                raise ShutdownTimeoutError(script_name, self._shutdown_timeout) from exc
+                raise ShutdownTimeoutError(automation_id, self._shutdown_timeout) from exc
             except ActionCancelledError as exc:
                 # This can happen if the action was cancelled due to timeout
                 _LOGGER.error(
-                    "Shutdown action for script '%s' exceeded timeout of %.0fms",
-                    script_name,
+                    "Shutdown action for automation '%s' exceeded timeout of %.0fms",
+                    automation_id,
                     self._shutdown_timeout * 1000,
                 )
-                raise ShutdownTimeoutError(script_name, self._shutdown_timeout) from exc
+                raise ShutdownTimeoutError(automation_id, self._shutdown_timeout) from exc
 
         finally:
             # Clean up shutdown state
-            self._scripts_shutting_down.discard(script_name)
+            self._automations_shutting_down.discard(automation_id)
 
     async def run_startup_action(
         self,
-        script_name: str,
+        automation_id: str,
         startup_func: Callable[..., Any],
         *args: Any,
         **kwargs: Any,
     ) -> Any:
-        """Run a startup action for a script.
+        """Run a startup action for an automation.
 
         Args:
-            script_name: Name of the script starting up.
+            automation_id: Name of the automation starting up.
             startup_func: The startup function to execute.
             *args: Positional arguments for the startup function.
             **kwargs: Keyword arguments for the startup function.
@@ -466,9 +466,9 @@ class ActionWorkerPool:
         Raises:
             PoolExhaustedError: If no workers are available.
         """
-        _LOGGER.debug("Running startup action for script '%s'", script_name)
+        _LOGGER.debug("Running startup action for automation '%s'", automation_id)
         return await self.submit_action(
-            script_name,
+            automation_id,
             "__startup__",
             startup_func,
             *args,
@@ -518,7 +518,7 @@ class ActionWorkerPool:
         Should only be used for testing or reinitialization.
         """
         self._active_executions.clear()
-        self._scripts_shutting_down.clear()
+        self._automations_shutting_down.clear()
         self._shutting_down = False
         self._semaphore = asyncio.Semaphore(self._max_workers)
         _LOGGER.debug("Action worker pool reset")

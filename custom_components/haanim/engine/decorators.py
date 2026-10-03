@@ -1,7 +1,7 @@
-"""Decorator definitions for HAAnim scripts.
+"""Decorator definitions for HAAnim automations.
 
 This module provides decorators for defining actions, lifecycle hooks, and triggers
-in HAAnim automation scripts.
+in HAAnim automations.
 
 Decorator Types:
 - Actions: @action (from this module)
@@ -210,14 +210,14 @@ def action(
 def startup(func: F) -> F:
     """Decorator to mark a function as a startup handler.
 
-    Functions decorated with @startup are called once when the script is loaded
-    and Home Assistant has started. Only one startup handler per script is allowed.
+    Functions decorated with @startup are called once when the automation is loaded
+    and Home Assistant has started. Only one startup handler per automation is allowed.
     If multiple are defined, only the last one will be executed.
 
     Startup handlers:
-    - Run after the script is fully loaded and parsed
+    - Run after the automation is fully loaded and parsed
     - Are executed through the action worker pool (count toward concurrency limits)
-    - Should complete quickly to not delay loading of other scripts
+    - Should complete quickly to not delay loading of other automations
     - Cannot be triggered manually from the UI
 
     Args:
@@ -229,7 +229,7 @@ def startup(func: F) -> F:
     Example:
         @startup
         async def on_startup():
-            log_info("Script initialized!")
+            log_info("Automation initialized!")
             # Perform one-time setup tasks
 
         @startup
@@ -245,12 +245,12 @@ def startup(func: F) -> F:
 def shutdown(func: F) -> F:
     """Decorator to mark a function as a shutdown handler.
 
-    Functions decorated with @shutdown are called when the script is being unloaded,
+    Functions decorated with @shutdown are called when the automation is being unloaded,
     reloaded, or when Home Assistant is stopping. Only one shutdown handler per
-    script is allowed.
+    automation is allowed.
 
     Shutdown handlers:
-    - Run when the script is unloaded, reloaded, or HA stops
+    - Run when the automation is unloaded, reloaded, or HA stops
     - Have a strict timeout (200ms by default) - must complete quickly
     - Will be forcefully terminated if they exceed the timeout
     - If an action is running when shutdown is requested, it will be cancelled first
@@ -266,7 +266,7 @@ def shutdown(func: F) -> F:
     Example:
         @shutdown
         async def on_shutdown():
-            log_info("Script shutting down...")
+            log_info("Automation shutting down...")
             # Clean up resources, save state, etc.
             # Keep it fast! Max 200ms allowed
 
@@ -285,7 +285,7 @@ def shutdown(func: F) -> F:
 # =============================================================================
 
 # Import trigger decorators from their respective modules
-# These are the primary interface for user scripts
+# These are the primary interface for user automations
 from custom_components.haanim.engine.triggers.base import TriggerInfo  # pylint: disable=wrong-import-order
 from custom_components.haanim.engine.triggers.state_trigger import (
     state_trigger,
@@ -309,12 +309,12 @@ from custom_components.haanim.engine.constraints import (
     time_active,
 )  # pylint: disable=wrong-import-order
 
-# Create aliases for more intuitive naming in scripts
+# Create aliases for more intuitive naming in automations
 time = time_trigger
 state = state_trigger
 event = event_trigger
 
-# Export all decorators for use in scripts
+# Export all decorators for use in automations
 __all__ = [
     # Action decorators
     "action",

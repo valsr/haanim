@@ -1,14 +1,14 @@
 # HAAnim Type Stubs
 
-This directory contains type stub files (`.pyi`) for the HAAnim virtual module that provides type hints for user automation scripts.
+This directory contains type stub files (`.pyi`) for the HAAnim virtual module that provides type hints for user automations.
 
 ## Usage
 
-To get proper IDE support (autocompletion, type checking, documentation) in your HAAnim scripts:
+To get proper IDE support (autocompletion, type checking, documentation) in your HAAnim automations:
 
-### Option 1: Copy to your scripts folder
+### Option 1: Copy to your automations folder
 
-Copy `haanim.pyi` to your HAAnim scripts folder (e.g., `config/haanim/`).
+Copy `haanim.pyi` to your HAAnim automations folder (e.g., `config/haanim/`).
 
 ### Option 2: Configure your IDE
 
@@ -51,9 +51,9 @@ The `haanim` module provides the following decorators:
 
 ## Built-in Globals
 
-The following are available as global variables in your scripts (not from import):
+The following are available as global variables in your automations (not from import):
 
-- `log` - Logger instance for your script
+- `log` - Logger instance for your automation
 - `log_debug`, `log_info`, `log_warning`, `log_error` - Logging shortcuts
 - `sleep` - Async sleep function for delays
 - `hass` - Home Assistant instance (when available)

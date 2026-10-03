@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.http import HomeAssistantView
 
 from custom_components.haanim.const import DOMAIN, VERSION
-from custom_components.haanim.script_manager import async_get_manager, get_config_manager
+from custom_components.haanim.automation_manager import async_get_manager, get_config_manager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,30 +30,30 @@ class HAAnimAPIView(HomeAssistantView):
     requires_auth = True
 
 
-class ScriptsListView(HAAnimAPIView):
-    """API view to list all scripts."""
+class AutomationsListView(HAAnimAPIView):
+    """API view to list all automations."""
 
-    url = f"/api/{DOMAIN}/scripts"
-    name = f"api:{DOMAIN}:scripts"
+    url = f"/api/{DOMAIN}/automations"
+    name = f"api:{DOMAIN}:automations"
 
     async def get(self, request: web.Request) -> web.Response:
-        """Handle GET request for scripts list.
+        """Handle GET request for automations list.
 
         Args:
             request: The HTTP request.
 
         Returns:
-            JSON response with scripts list.
+            JSON response with automations list.
         """
         hass: HomeAssistant = request.app["hass"]
 
         manager = await async_get_manager(hass)
         if not manager:
-            return self.json({"scripts": [], "error": "Script manager not available"})
+            return self.json({"automations": [], "error": "Automation manager not available"})
 
-        scripts: list[dict[str, Any]] = []
+        automations: list[dict[str, Any]] = []
         for metadata in manager.get_all_metadata():
-            scripts.append(
+            automations.append(
                 {
                     "name": metadata.id,
                     "path": metadata.path,
@@ -63,7 +63,7 @@ class ScriptsListView(HAAnimAPIView):
                 }
             )
 
-        return self.json({"scripts": scripts})
+        return self.json({"automations": automations})
 
 
 class ActionsListView(HAAnimAPIView):
@@ -85,20 +85,20 @@ class ActionsListView(HAAnimAPIView):
 
         manager = await async_get_manager(hass)
         if not manager:
-            return self.json({"actions": [], "error": "Script manager not available"})
+            return self.json({"actions": [], "error": "Automation manager not available"})
 
-        script_name = request.query.get("script_name")
+        automation_id = request.query.get("automation_id")
 
         actions: list[dict[str, Any]] = []
         for action in manager.get_all_actions():
-            if script_name and action.script_name != script_name:
+            if automation_id and action.automation_id != automation_id:
                 continue
 
             actions.append(
                 {
                     "name": action.name,
                     "func_name": action.func_name,
-                    "script_name": action.script_name,
+                    "automation_id": action.automation_id,
                     "description": action.description,
                 }
             )
@@ -160,35 +160,35 @@ class RunActionView(HAAnimAPIView):
         except ValueError:
             return self.json({"success": False, "error": "Invalid JSON"}, status_code=400)
 
-        script_name = data.get("script_name")
+        automation_id = data.get("automation_id")
         action_name = data.get("action_name")
 
-        if not script_name or not action_name:
+        if not automation_id or not action_name:
             return self.json(
-                {"success": False, "error": "Missing script_name or action_name"},
+                {"success": False, "error": "Missing automation_id or action_name"},
                 status_code=400,
             )
 
         manager = await async_get_manager(hass)
         if not manager:
-            return self.json({"success": False, "error": "Script manager not available"})
+            return self.json({"success": False, "error": "Automation manager not available"})
 
         try:
-            await manager.async_run_action(script_name, action_name, manual=True)
+            await manager.async_run_action(automation_id, action_name, manual=True)
             return self.json({"success": True})
         except Exception as err:  # pylint: disable=broad-except
-            _LOGGER.error("Failed to run action %s.%s: %s", script_name, action_name, err)
+            _LOGGER.error("Failed to run action %s.%s: %s", automation_id, action_name, err)
             return self.json({"success": False, "error": str(err)})
 
 
-class ReloadScriptsView(HAAnimAPIView):
-    """API view to reload scripts."""
+class ReloadAutomationsView(HAAnimAPIView):
+    """API view to reload automations."""
 
     url = f"/api/{DOMAIN}/reload"
     name = f"api:{DOMAIN}:reload"
 
     async def post(self, request: web.Request) -> web.Response:
-        """Handle POST request to reload scripts.
+        """Handle POST request to reload automations.
 
         Args:
             request: The HTTP request.
@@ -200,13 +200,13 @@ class ReloadScriptsView(HAAnimAPIView):
 
         manager = await async_get_manager(hass)
         if not manager:
-            return self.json({"success": False, "error": "Script manager not available"})
+            return self.json({"success": False, "error": "Automation manager not available"})
 
         try:
-            await manager.async_reload_all_scripts()
+            await manager.async_reload_all_automations()
             return self.json({"success": True})
         except Exception as err:  # pylint: disable=broad-except
-            _LOGGER.error("Failed to reload scripts: %s", err)
+            _LOGGER.error("Failed to reload automations: %s", err)
             return self.json({"success": False, "error": str(err)})
 
 
@@ -216,10 +216,10 @@ def async_register_api(hass: HomeAssistant) -> None:
     Args:
         hass: Home Assistant instance.
     """
-    hass.http.register_view(ScriptsListView())
+    hass.http.register_view(AutomationsListView())
     hass.http.register_view(ActionsListView())
     hass.http.register_view(ConfigView())
     hass.http.register_view(RunActionView())
-    hass.http.register_view(ReloadScriptsView())
+    hass.http.register_view(ReloadAutomationsView())
 
     _LOGGER.debug("HAAnim API views registered")

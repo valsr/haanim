@@ -12,7 +12,7 @@ class HAAnimPanel extends HTMLElement {
         this._hass = null;
         this._narrow = false;
         this._panel = null;
-        this._scriptsData = [];
+        this._automationsData = [];
         this._config = null;
     }
 
@@ -50,12 +50,12 @@ class HAAnimPanel extends HTMLElement {
                 <div class="header">
                     <div class="title-section">
                         <h1 class="title">HAAnim</h1>
-                        <span class="subtitle">Python Automation Scripts</span>
+                        <span class="subtitle">Python Automations</span>
                     </div>
                     <div class="button-section">
                         <mwc-button raised id="reload-btn">
                             <ha-icon icon="mdi:refresh"></ha-icon>
-                            Reload Scripts
+                            Reload Automations
                         </mwc-button>
                     </div>
                 </div>
@@ -63,24 +63,24 @@ class HAAnimPanel extends HTMLElement {
                 <div class="content">
                     <div id="loading" class="loading">
                         <ha-circular-progress indeterminate></ha-circular-progress>
-                        <div>Loading scripts...</div>
+                        <div>Loading automations...</div>
                     </div>
 
                     <div id="empty-state" class="empty-state" style="display: none;">
                         <ha-icon icon="mdi:file-document-outline" class="empty-icon"></ha-icon>
-                        <div class="empty-text">No automation scripts yet</div>
+                        <div class="empty-text">No automations yet</div>
                         <div class="empty-subtext">
-                            Add Python scripts to your <code id="script-folder-path">/config/haanim/</code> folder to get started.
-                            <br>Scripts are automatically loaded and watched for changes.
+                            Add Python automations to your <code id="automation-folder-path">/config/haanim/</code> folder to get started.
+                            <br>Automations are automatically loaded and watched for changes.
                         </div>
                     </div>
 
-                    <div id="scripts-container" class="scripts-container" style="display: none;">
+                    <div id="automations-container" class="automations-container" style="display: none;">
                     </div>
 
                     <div id="error-state" class="error-state" style="display: none;">
                         <ha-icon icon="mdi:alert-circle" class="error-icon"></ha-icon>
-                        <div class="error-text">Failed to load scripts</div>
+                        <div class="error-text">Failed to load automations</div>
                         <div class="error-subtext" id="error-message"></div>
                         <mwc-button raised id="retry-btn">Retry</mwc-button>
                     </div>
@@ -89,7 +89,7 @@ class HAAnimPanel extends HTMLElement {
         `;
 
         // Attach event listeners
-        this.shadowRoot.getElementById('reload-btn').addEventListener('click', () => this._reloadScripts());
+        this.shadowRoot.getElementById('reload-btn').addEventListener('click', () => this._reloadAutomations());
         this.shadowRoot.getElementById('retry-btn')?.addEventListener('click', () => this._loadData());
     }
 
@@ -219,45 +219,45 @@ class HAAnimPanel extends HTMLElement {
                 margin-bottom: 24px;
             }
 
-            /* Scripts container */
-            .scripts-container {
+            /* Automations container */
+            .automations-container {
                 display: grid;
                 gap: 16px;
             }
 
-            /* Script card */
-            .script-card {
+            /* Automation card */
+            .automation-card {
                 background-color: var(--card-background-color);
                 border-radius: 8px;
                 box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.1));
                 overflow: hidden;
             }
 
-            .script-header {
+            .automation-header {
                 padding: 16px 20px;
                 border-bottom: 1px solid var(--divider-color);
             }
 
-            .script-info {
+            .automation-info {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
             }
 
-            .script-name {
+            .automation-name {
                 font-size: 18px;
                 font-weight: 500;
                 color: var(--primary-text-color);
             }
 
-            .script-meta {
+            .automation-meta {
                 display: flex;
                 gap: 16px;
                 font-size: 13px;
                 color: var(--secondary-text-color);
             }
 
-            .script-status {
+            .automation-status {
                 padding: 2px 8px;
                 border-radius: 12px;
                 font-size: 12px;
@@ -273,7 +273,7 @@ class HAAnimPanel extends HTMLElement {
                 color: white;
             }
 
-            .script-actions {
+            .automation-actions {
                 padding: 16px 20px;
                 background-color: var(--secondary-background-color, rgba(0,0,0,0.03));
             }
@@ -330,26 +330,26 @@ class HAAnimPanel extends HTMLElement {
             this._config = await this._fetchConfig();
             this._updateConfigDisplay();
 
-            // Fetch scripts
-            this._scriptsData = await this._fetchScripts();
-            this._renderScripts();
+            // Fetch automations
+            this._automationsData = await this._fetchAutomations();
+            this._renderAutomations();
         } catch (e) {
             console.error('Failed to load data:', e);
-            this._showError('Could not load scripts. Make sure HAAnim is properly configured.');
+            this._showError('Could not load automations. Make sure HAAnim is properly configured.');
         } finally {
             this._showLoading(false);
         }
     }
 
-    async _fetchScripts() {
+    async _fetchAutomations() {
         try {
             // Use hass.callApi for authenticated requests
             if (this._hass) {
-                const data = await this._hass.callApi('GET', 'haanim/scripts');
-                return data.scripts || [];
+                const data = await this._hass.callApi('GET', 'haanim/automations');
+                return data.automations || [];
             }
         } catch (e) {
-            console.error('Failed to fetch scripts:', e);
+            console.error('Failed to fetch automations:', e);
         }
         return [];
     }
@@ -368,18 +368,18 @@ class HAAnimPanel extends HTMLElement {
 
     _updateConfigDisplay() {
         if (this._config) {
-            const pathEl = this.shadowRoot.getElementById('script-folder-path');
+            const pathEl = this.shadowRoot.getElementById('automation-folder-path');
             if (pathEl) {
-                pathEl.textContent = this._config.script_path + '/';
+                pathEl.textContent = this._config.automation_path + '/';
             }
         }
     }
 
-    _renderScripts() {
-        const container = this.shadowRoot.getElementById('scripts-container');
+    _renderAutomations() {
+        const container = this.shadowRoot.getElementById('automations-container');
         const emptyState = this.shadowRoot.getElementById('empty-state');
 
-        if (!this._scriptsData || this._scriptsData.length === 0) {
+        if (!this._automationsData || this._automationsData.length === 0) {
             container.style.display = 'none';
             emptyState.style.display = 'block';
             return;
@@ -389,49 +389,49 @@ class HAAnimPanel extends HTMLElement {
         container.style.display = 'block';
 
         let html = '';
-        for (const script of this._scriptsData) {
-            html += this._renderScriptCard(script);
+        for (const automation of this._automationsData) {
+            html += this._renderAutomationCard(automation);
         }
         container.innerHTML = html;
 
         // Attach action button listeners
         container.querySelectorAll('.action-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const scriptName = e.target.dataset.script;
+                const automationId = e.target.dataset.automation;
                 const actionName = e.target.dataset.action;
-                this._runAction(scriptName, actionName);
+                this._runAction(automationId, actionName);
             });
         });
     }
 
-    _renderScriptCard(script) {
-        const actionsHtml = script.actions && script.actions.length > 0
-            ? script.actions.map(action => `
-                <button class="action-btn" data-script="${this._escapeHtml(script.name)}" data-action="${this._escapeHtml(action.func_name)}">
+    _renderAutomationCard(automation) {
+        const actionsHtml = automation.actions && automation.actions.length > 0
+            ? automation.actions.map(action => `
+                <button class="action-btn" data-automation="${this._escapeHtml(automation.name)}" data-action="${this._escapeHtml(action.func_name)}">
                     ▶ ${this._escapeHtml(action.name)}
                 </button>
             `).join('')
             : '<span class="no-actions">No actions defined</span>';
 
-        const triggersText = script.triggers > 0
-            ? `${script.triggers} trigger${script.triggers > 1 ? 's' : ''}`
+        const triggersText = automation.triggers > 0
+            ? `${automation.triggers} trigger${automation.triggers > 1 ? 's' : ''}`
             : 'No triggers';
 
-        const statusClass = script.enabled ? 'status-enabled' : 'status-disabled';
-        const statusText = script.enabled ? 'Enabled' : 'Disabled';
+        const statusClass = automation.enabled ? 'status-enabled' : 'status-disabled';
+        const statusText = automation.enabled ? 'Enabled' : 'Disabled';
 
         return `
-            <div class="script-card">
-                <div class="script-header">
-                    <div class="script-info">
-                        <div class="script-name">${this._escapeHtml(script.name)}</div>
-                        <div class="script-meta">
-                            <span class="script-triggers">${triggersText}</span>
-                            <span class="script-status ${statusClass}">${statusText}</span>
+            <div class="automation-card">
+                <div class="automation-header">
+                    <div class="automation-info">
+                        <div class="automation-name">${this._escapeHtml(automation.name)}</div>
+                        <div class="automation-meta">
+                            <span class="automation-triggers">${triggersText}</span>
+                            <span class="automation-status ${statusClass}">${statusText}</span>
                         </div>
                     </div>
                 </div>
-                <div class="script-actions">
+                <div class="automation-actions">
                     <div class="actions-label">Actions:</div>
                     <div class="actions-list">
                         ${actionsHtml}
@@ -441,14 +441,14 @@ class HAAnimPanel extends HTMLElement {
         `;
     }
 
-    async _runAction(scriptName, actionName) {
+    async _runAction(automationId, actionName) {
         this._showToast(`Running ${actionName}...`, 'info');
 
         try {
             // Use hass.callService if available
             if (this._hass) {
                 await this._hass.callService('haanim', 'run_action', {
-                    script_name: scriptName,
+                    automation_id: automationId,
                     action_name: actionName
                 });
                 this._showToast(`Action "${actionName}" executed successfully`, 'success');
@@ -457,7 +457,7 @@ class HAAnimPanel extends HTMLElement {
 
             // Fallback to REST API with hass.callApi
             const data = await this._hass.callApi('POST', 'haanim/run_action', {
-                script_name: scriptName,
+                automation_id: automationId,
                 action_name: actionName
             });
 
@@ -472,14 +472,14 @@ class HAAnimPanel extends HTMLElement {
         }
     }
 
-    async _reloadScripts() {
-        this._showToast('Reloading scripts...', 'info');
+    async _reloadAutomations() {
+        this._showToast('Reloading automations...', 'info');
 
         try {
             // Use hass.callService if available
             if (this._hass) {
-                await this._hass.callService('haanim', 'reload_scripts', {});
-                this._showToast('Scripts reloaded', 'success');
+                await this._hass.callService('haanim', 'reload_automations', {});
+                this._showToast('Automations reloaded', 'success');
                 setTimeout(() => this._loadData(), 1000);
                 return;
             }
@@ -488,7 +488,7 @@ class HAAnimPanel extends HTMLElement {
             const data = await this._hass.callApi('POST', 'haanim/reload', {});
 
             if (data.success) {
-                this._showToast('Scripts reloaded', 'success');
+                this._showToast('Automations reloaded', 'success');
                 setTimeout(() => this._loadData(), 1000);
             } else {
                 this._showToast(`Failed to reload: ${data.error}`, 'error');
@@ -509,12 +509,12 @@ class HAAnimPanel extends HTMLElement {
     _showError(message) {
         const errorState = this.shadowRoot.getElementById('error-state');
         const errorMessage = this.shadowRoot.getElementById('error-message');
-        const scriptsContainer = this.shadowRoot.getElementById('scripts-container');
+        const automationsContainer = this.shadowRoot.getElementById('automations-container');
         const emptyState = this.shadowRoot.getElementById('empty-state');
 
         if (errorState) errorState.style.display = 'block';
         if (errorMessage) errorMessage.textContent = message;
-        if (scriptsContainer) scriptsContainer.style.display = 'none';
+        if (automationsContainer) automationsContainer.style.display = 'none';
         if (emptyState) emptyState.style.display = 'none';
     }
 

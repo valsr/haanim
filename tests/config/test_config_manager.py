@@ -57,7 +57,7 @@ class TestConfigManagerDefaults:
         options = manager.get_all_options()
 
         assert "name" in options
-        assert "script_path" in options
+        assert "automation_path" in options
         assert "allow_all_imports" in options
         assert "import_allowlist" in options
 
@@ -67,7 +67,7 @@ class TestConfigManagerDefaults:
         defaults = manager.get_defaults()
 
         assert defaults["name"] == "HAAnim"
-        assert defaults["script_path"] == "/config/haanim/scripts"
+        assert defaults["automation_path"] == "/config/haanim/automations"
         assert defaults["allow_all_imports"] is False
         assert isinstance(defaults["import_allowlist"], list)
 
@@ -101,20 +101,20 @@ class TestConfigManagerGetSet:
     def test_set_value(self, reset_config_manager: None) -> None:
         """Test setting a value."""
         manager = ConfigManager()
-        manager.set("script_path", "/custom/path")
+        manager.set("automation_path", "/custom/path")
 
-        assert manager.get("script_path") == "/custom/path"
+        assert manager.get("automation_path") == "/custom/path"
 
     def test_get_all(self, reset_config_manager: None) -> None:
         """Test getting all values."""
         manager = ConfigManager()
         manager.set("name", "Test")
-        manager.set("script_path", "/test")
+        manager.set("automation_path", "/test")
 
         all_values = manager.get_all()
 
         assert all_values["name"] == "Test"
-        assert all_values["script_path"] == "/test"
+        assert all_values["automation_path"] == "/test"
         assert "allow_all_imports" in all_values
 
 
@@ -171,12 +171,12 @@ class TestConfigManagerLoadFromDict:
 
         data = {
             "name": "From Dict",
-            "script_path": "/dict/path",
+            "automation_path": "/dict/path",
         }
         manager.load_from_dict(data)
 
         assert manager.get("name") == "From Dict"
-        assert manager.get("script_path") == "/dict/path"
+        assert manager.get("automation_path") == "/dict/path"
 
     def test_load_from_options_takes_precedence(self, reset_config_manager: None) -> None:
         """Test that options take precedence over data."""
@@ -213,13 +213,13 @@ class TestConfigManagerSchema:
 
         assert schema is not None
         # Schema should be callable
-        result = schema({"name": "Test", "script_path": "/path"})
+        result = schema({"name": "Test", "automation_path": "/path"})
         assert result["name"] == "Test"
 
     def test_generate_options_schema(self, reset_config_manager: None) -> None:
         """Test generating options schema."""
         manager = ConfigManager()
-        manager.set("script_path", "/current/path")
+        manager.set("automation_path", "/current/path")
 
         schema = manager.generate_options_schema()
         assert schema is not None
@@ -293,35 +293,35 @@ class TestConfigManagerHelpers:
         manager.set("allow_all_imports", True)
         assert manager.get_allow_all_imports() is True
 
-    def test_get_script_refresh_interval(self, reset_config_manager: None) -> None:
-        """Test getting script refresh interval."""
+    def test_get_automation_refresh_interval(self, reset_config_manager: None) -> None:
+        """Test getting automation refresh interval."""
         manager = ConfigManager()
-        interval = manager.get_script_refresh_interval()
+        interval = manager.get_automation_refresh_interval()
 
         assert isinstance(interval, int)
         assert interval > 0
 
-    def test_get_script_path_absolute(self, reset_config_manager: None) -> None:
-        """Test getting absolute script path."""
+    def test_get_automation_path_absolute(self, reset_config_manager: None) -> None:
+        """Test getting absolute automation path."""
         manager = ConfigManager()
-        manager.set("script_path", "/absolute/path")
+        manager.set("automation_path", "/absolute/path")
 
-        path = manager.get_script_path()
+        path = manager.get_automation_path()
         assert path == "/absolute/path"
 
 
 class TestConfigManagerValidation:
     """Tests for validation methods."""
 
-    def test_validate_script_path_no_hass(self, reset_config_manager: None) -> None:
+    def test_validate_automation_path_no_hass(self, reset_config_manager: None) -> None:
         """Test validation without hass returns True."""
         manager = ConfigManager()
-        is_valid, error = manager.validate_script_path("/any/path")
+        is_valid, error = manager.validate_automation_path("/any/path")
 
         assert is_valid is True
         assert error is None
 
-    def test_validate_script_path_with_hass(self, reset_config_manager: None) -> None:
+    def test_validate_automation_path_with_hass(self, reset_config_manager: None) -> None:
         """Test validation with hass and existing parent."""
         manager = ConfigManager()
 
@@ -331,7 +331,7 @@ class TestConfigManagerValidation:
         manager._hass = mock_hass
 
         # Path with existing parent (/tmp always exists)
-        is_valid, error = manager.validate_script_path("/tmp/haanim")
+        is_valid, error = manager.validate_automation_path("/tmp/haanim")
 
         assert is_valid is True
         assert error is None

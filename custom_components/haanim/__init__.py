@@ -17,7 +17,7 @@ from custom_components.haanim.const import DOMAIN, NAME, VERSION
 from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.ha.services import ServiceManager
 from custom_components.haanim.ha.state import StateManager
-from custom_components.haanim.script_manager import ScriptManager
+from custom_components.haanim.automation_manager import AutomationManager
 from custom_components.haanim.engine.triggers import TriggerManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,28 +61,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     state_manager = StateManager(hass)
     event_manager = EventManager(hass)
     service_manager = ServiceManager(hass)
-    script_manager = ScriptManager(hass, entry)
-    trigger_manager = TriggerManager(hass, state_manager, event_manager, script_manager.action_pool)
+    automation_manager = AutomationManager(hass, entry)
+    trigger_manager = TriggerManager(hass, state_manager, event_manager, automation_manager.action_pool)
 
     # Set up managers
     await state_manager.async_setup()
     await event_manager.async_setup()
     await service_manager.async_setup()
     await trigger_manager.async_setup()
-    await script_manager.async_setup()
+    await automation_manager.async_setup()
 
     # Store managers in hass.data
     hass.data[DOMAIN][entry.entry_id] = {
         "entry": entry,
-        "manager": script_manager,
+        "manager": automation_manager,
         "state_manager": state_manager,
         "event_manager": event_manager,
         "service_manager": service_manager,
         "trigger_manager": trigger_manager,
     }
 
-    # Store script manager for global access (used by HAAnim API)
-    hass.data["haanim_manager"] = script_manager
+    # Store automation manager for global access (used by HAAnim API)
+    hass.data["haanim_manager"] = automation_manager
 
     # Register API views for the frontend
     async_register_api(hass)

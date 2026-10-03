@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from custom_components.haanim.const import (
     ATTRIBUTE_MANUAL,
-    ATTRIBUTE_SCRIPT_PATH,
+    ATTRIBUTE_AUTOMATION_PATH,
     ATTRIBUTE_ACTION_NAME,
-    ATTRIBUTE_SCRIPT_NAME,
+    ATTRIBUTE_AUTOMATION_ID,
     CONFIG_ALLOW_ALL_IMPORTS,
     CONFIG_IMPORT_ALLOWLIST,
-    CONFIG_SCRIPT_PATH,
-    CONFIG_SCRIPT_REFRESH_INTERVAL,
+    CONFIG_AUTOMATION_PATH,
+    CONFIG_AUTOMATION_REFRESH_INTERVAL,
     DECORATOR_ACTION,
     DECORATOR_EVENT_TRIGGER,
     DECORATOR_SERVICE,
@@ -23,23 +23,23 @@ from custom_components.haanim.const import (
     DEFAULT_ALLOW_ALL_IMPORTS,
     DEFAULT_IMPORT_ALLOWLIST,
     DEFAULT_MAX_CONCURRENT_ACTIONS,
-    DEFAULT_SCRIPT_PATH,
-    DEFAULT_SCRIPT_REFRESH_INTERVAL,
+    DEFAULT_AUTOMATION_PATH,
+    DEFAULT_AUTOMATION_REFRESH_INTERVAL,
     DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
     DOMAIN,
     NAME,
-    EVENT_SCRIPT_ERROR,
-    EVENT_SCRIPT_EXECUTED,
-    EVENT_SCRIPT_LOADED,
-    EVENT_SCRIPT_UNLOADED,
+    EVENT_AUTOMATION_ERROR,
+    EVENT_AUTOMATION_EXECUTED,
+    EVENT_AUTOMATION_LOADED,
+    EVENT_AUTOMATION_UNLOADED,
     EXEC_MODE_MANUAL,
     EXEC_MODE_TRIGGER,
     NAME,
     RESTRICTED_BUILTINS,
     SERVICE_GET_CONFIG,
     SERVICE_LIST_ACTIONS,
-    SERVICE_LIST_SCRIPTS,
-    SERVICE_RELOAD_SCRIPTS,
+    SERVICE_LIST_AUTOMATIONS,
+    SERVICE_RELOAD_AUTOMATIONS,
     SERVICE_RUN_ACTION,
     VERSION,
 )
@@ -91,10 +91,10 @@ class TestEventConstants:
 
     def test_events_have_domain_prefix(self) -> None:
         """Test events include domain prefix."""
-        assert EVENT_SCRIPT_LOADED.startswith(DOMAIN)
-        assert EVENT_SCRIPT_UNLOADED.startswith(DOMAIN)
-        assert EVENT_SCRIPT_ERROR.startswith(DOMAIN)
-        assert EVENT_SCRIPT_EXECUTED.startswith(DOMAIN)
+        assert EVENT_AUTOMATION_LOADED.startswith(DOMAIN)
+        assert EVENT_AUTOMATION_UNLOADED.startswith(DOMAIN)
+        assert EVENT_AUTOMATION_ERROR.startswith(DOMAIN)
+        assert EVENT_AUTOMATION_EXECUTED.startswith(DOMAIN)
 
 
 class TestServiceConstants:
@@ -102,9 +102,9 @@ class TestServiceConstants:
 
     def test_service_names(self) -> None:
         """Test all service name constants."""
-        assert SERVICE_RELOAD_SCRIPTS == "reload_scripts"
+        assert SERVICE_RELOAD_AUTOMATIONS == "reload_automations"
         assert SERVICE_RUN_ACTION == "run_action"
-        assert SERVICE_LIST_SCRIPTS == "list_scripts"
+        assert SERVICE_LIST_AUTOMATIONS == "list_automations"
         assert SERVICE_LIST_ACTIONS == "list_actions"
         assert SERVICE_GET_CONFIG == "get_config"
 
@@ -114,8 +114,8 @@ class TestAttributeConstants:
 
     def test_attribute_names(self) -> None:
         """Test all attribute name constants."""
-        assert ATTRIBUTE_SCRIPT_NAME == "script_name"
-        assert ATTRIBUTE_SCRIPT_PATH == "script_path"
+        assert ATTRIBUTE_AUTOMATION_ID == "automation_id"
+        assert ATTRIBUTE_AUTOMATION_PATH == "automation_path"
         assert ATTRIBUTE_ACTION_NAME == "action_name"
         assert ATTRIBUTE_MANUAL == "manual"
 
@@ -125,10 +125,10 @@ class TestConfigConstants:
 
     def test_config_keys(self) -> None:
         """Test configuration key constants."""
-        assert CONFIG_SCRIPT_PATH == "script_path"
+        assert CONFIG_AUTOMATION_PATH == "automation_path"
         assert CONFIG_IMPORT_ALLOWLIST == "import_allowlist"
         assert CONFIG_ALLOW_ALL_IMPORTS == "allow_all_imports"
-        assert CONFIG_SCRIPT_REFRESH_INTERVAL == "script_refresh_interval"
+        assert CONFIG_AUTOMATION_REFRESH_INTERVAL == "automation_refresh_interval"
 
 
 class TestDefaultValues:
@@ -137,9 +137,9 @@ class TestDefaultValues:
     def test_default_values(self) -> None:
         """Test all default value constants."""
         assert NAME == "HAAnim"
-        assert DEFAULT_SCRIPT_PATH == "/config/haanim/scripts"
+        assert DEFAULT_AUTOMATION_PATH == "/config/haanim/automations"
         assert DEFAULT_ALLOW_ALL_IMPORTS is False
-        assert DEFAULT_SCRIPT_REFRESH_INTERVAL == 10
+        assert DEFAULT_AUTOMATION_REFRESH_INTERVAL == 10
         assert isinstance(DEFAULT_IMPORT_ALLOWLIST, list)
         assert len(DEFAULT_IMPORT_ALLOWLIST) > 0
         assert DEFAULT_MAX_CONCURRENT_ACTIONS == 20

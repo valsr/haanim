@@ -2,7 +2,7 @@
 """Generate type stub file for the HAAnim virtual module.
 
 This script generates the haanim.pyi stub file that provides type hints
-for user automation scripts. The stub file enables IDE features like
+for user automations. The stub file enables IDE features like
 autocompletion and type checking.
 
 Usage:
@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 # Add the custom_components directory to the path
-SCRIPT_DIR = Path(__file__).parent.parent
-sys.path.insert(0, str(SCRIPT_DIR))
+AUTOMATION_DIR = Path(__file__).parent.parent
+sys.path.insert(0, str(AUTOMATION_DIR))
 
 from custom_components.haanim.engine import decorators
 
@@ -30,7 +30,7 @@ from custom_components.haanim.engine import decorators
 STUB_HEADER = '''"""Type stubs for the HAAnim virtual module.
 
 This file provides type hints for the 'haanim' module that is available
-to user automation scripts. It allows IDE features like autocompletion,
+to user automations. It allows IDE features like autocompletion,
 type checking, and documentation to work properly.
 
 Note: This module is virtual and provided by the HAAnim integration at runtime.
@@ -52,14 +52,14 @@ F = TypeVar("F", bound=Callable[..., Any])
 STUB_FOOTER = """
 
 # =============================================================================
-# Built-in globals available in HAAnim scripts
-# These are injected into the script's namespace at runtime.
+# Built-in globals available in HAAnim automations
+# These are injected into the automation's namespace at runtime.
 # =============================================================================
 
 # Note: The following are NOT part of the 'haanim' module but are available
-# as global variables in your scripts. They are documented here for reference.
+# as global variables in your automations. They are documented here for reference.
 #
-# log: logging.Logger           - Logger instance for your script
+# log: logging.Logger           - Logger instance for your automation
 # log_debug: Callable           - Shortcut for log.debug()
 # log_info: Callable            - Shortcut for log.info()
 # log_warning: Callable         - Shortcut for log.warning()
@@ -301,8 +301,8 @@ def main() -> int:
     else:
         # Default: generate to multiple locations
         outputs = [
-            SCRIPT_DIR / "stubs" / "haanim.pyi",
-            SCRIPT_DIR / "podman" / "container-config" / "haanim" / "haanim.pyi",
+            AUTOMATION_DIR / "stubs" / "haanim.pyi",
+            AUTOMATION_DIR / "podman" / "container-config" / "haanim" / "haanim.pyi",
         ]
         for output_path in outputs:
             output_path.parent.mkdir(parents=True, exist_ok=True)

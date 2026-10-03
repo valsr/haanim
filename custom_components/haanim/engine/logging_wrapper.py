@@ -1,6 +1,6 @@
-"""Logging wrapper for HAAnim scripts.
+"""Logging wrapper for HAAnim automations.
 
-Provides a safe logging interface for scripts that redirects to the script's logger.
+Provides a safe logging interface for automations that redirects to the automation's logger.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from typing import Any
 
 
 class LoggerWrapper:
-    """Wrapper around Python logger for safe use in scripts."""
+    """Wrapper around Python logger for safe use in automations."""
 
     def __init__(self, logger: logging.Logger) -> None:
         """Initialize the logger wrapper.
@@ -74,7 +74,7 @@ class LoggerWrapper:
 
 
 def create_logger_wrapper(logger: logging.Logger) -> LoggerWrapper:
-    """Create a logger wrapper for a script.
+    """Create a logger wrapper for an automation.
 
     Args:
         logger: The underlying logger instance.

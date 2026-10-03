@@ -1,7 +1,7 @@
-"""HAAnim API providing access to Home Assistant entities, services, and scripts.
+"""HAAnim API providing access to Home Assistant entities, services, and automations.
 
-This module implements the `haa` instance that is injected into script namespaces,
-providing a clean API for interacting with Home Assistant and other scripts.
+This module implements the `haa` instance that is injected into automation namespaces,
+providing a clean API for interacting with Home Assistant and other automations.
 """
 
 from __future__ import annotations
@@ -18,12 +18,12 @@ from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.haanim.engine.errors import (
     NonExistingEntityError,
-    NonExistingScriptError,
+    NonExistingAutomationError,
     NonExistingServiceError,
 )
 
 if TYPE_CHECKING:
-    from custom_components.haanim.script_manager import ScriptManager
+    from custom_components.haanim.automation_manager import AutomationManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -165,26 +165,26 @@ class HAAnimServiceProxy:
         return await self.call(**params)
 
 
-class HAAnimScriptProxy:
-    """Proxy object for interacting with another script."""
+class HAAnimAutomationProxy:
+    """Proxy object for interacting with another automation."""
 
     def __init__(
         self,
-        script_id: str,
-        script_manager: ScriptManager,
+        automation_id: str,
+        automation_manager: AutomationManager,
     ) -> None:
-        """Initialize script proxy.
+        """Initialize automation proxy.
 
         Args:
-            script_id: The script ID.
-            script_manager: The script manager instance.
+            automation_id: The automation ID.
+            automation_manager: The automation manager instance.
         """
-        self.id = script_id
-        self._manager = script_manager
+        self.id = automation_id
+        self._manager = automation_manager
 
     @property
     def state(self) -> str:
-        """Get the current state of the script."""
+        """Get the current state of the automation."""
         context = self._manager._contexts.get(self.id)
         if not context:
             return "unavailable"
@@ -192,7 +192,7 @@ class HAAnimScriptProxy:
 
     @property
     def message(self) -> str:
-        """Get the script's status message."""
+        """Get the automation's status message."""
         context = self._manager._contexts.get(self.id)
         if not context:
             return ""
@@ -200,15 +200,15 @@ class HAAnimScriptProxy:
 
     @property
     def file_path(self) -> str:
-        """Get the script's file path."""
+        """Get the automation's file path."""
         context = self._manager._contexts.get(self.id)
         if not context:
             return ""
-        return context.script_path
+        return context.automation_path
 
     @property
     def load_time(self) -> datetime | None:
-        """Get when the script was loaded."""
+        """Get when the automation was loaded."""
         context = self._manager._contexts.get(self.id)
         if not context or not context._metadata:
             return None
@@ -216,7 +216,7 @@ class HAAnimScriptProxy:
 
     @property
     def run_time(self) -> datetime | None:
-        """Get when the script was last started."""
+        """Get when the automation was last started."""
         context = self._manager._contexts.get(self.id)
         if not context or not context._metadata:
             return None
@@ -240,25 +240,25 @@ class HAAnimScriptProxy:
 
     @property
     def error_message(self) -> str | None:
-        """Get error message if script is in error state."""
+        """Get error message if automation is in error state."""
         context = self._manager._contexts.get(self.id)
         if not context or not context._metadata:
             return None
         return context._metadata.error
 
     def is_running(self) -> bool:
-        """Check if the script is running."""
+        """Check if the automation is running."""
         return self.state == "on"
 
     def is_enabled(self) -> bool:
-        """Check if the script is enabled."""
+        """Check if the automation is enabled."""
         context = self._manager._contexts.get(self.id)
         if not context or not context._metadata:
             return False
         return context._metadata.enabled
 
     async def call(self, action_name: str, **kwargs: Any) -> Any:
-        """Call an action in this script.
+        """Call an action in this automation.
 
         Args:
             action_name: Name of the action to call.
@@ -268,31 +268,31 @@ class HAAnimScriptProxy:
             The result of the action call.
 
         Raises:
-            NonExistingScriptError: If the script doesn't exist.
-            ScriptNotLoadedError: If the script is not loaded.
+            NonExistingAutomationError: If the automation doesn't exist.
+            AutomationNotLoadedError: If the automation is not loaded.
             ActionNotFoundError: If the action doesn't exist.
         """
         return await self._manager.async_call_action(self.id, action_name, **kwargs)
 
     async def enable(self) -> None:
-        """Enable and start the script."""
-        await self._manager.async_enable_script(self.id)
+        """Enable and start the automation."""
+        await self._manager.async_enable_automation(self.id)
 
     async def disable(self) -> None:
-        """Disable and stop the script."""
-        await self._manager.async_disable_script(self.id)
+        """Disable and stop the automation."""
+        await self._manager.async_disable_automation(self.id)
 
     async def start(self) -> None:
-        """Start the script if enabled."""
-        await self._manager.async_start_script(self.id)
+        """Start the automation if enabled."""
+        await self._manager.async_start_automation(self.id)
 
     async def stop(self) -> None:
-        """Stop the script if running."""
-        await self._manager.async_stop_script(self.id)
+        """Stop the automation if running."""
+        await self._manager.async_stop_automation(self.id)
 
     async def restart(self) -> None:
-        """Restart the script."""
-        await self._manager.async_restart_script(self.id)
+        """Restart the automation."""
+        await self._manager.async_restart_automation(self.id)
 
 
 class EntityProxy:
@@ -366,37 +366,37 @@ class ServiceDomainProxy:
 
 
 class HAAnim:
-    """Main HAAnim API object providing access to Home Assistant and scripts.
+    """Main HAAnim API object providing access to Home Assistant and automations.
 
-    This object is injected into script namespaces as `haa` and provides
+    This object is injected into automation namespaces as `haa` and provides
     a clean interface for:
     - Accessing entity states and attributes
     - Calling Home Assistant services
-    - Interacting with other scripts
+    - Interacting with other automations
     - Persistent storage
-    - Script control
+    - Automation control
     """
 
     def __init__(
         self,
         hass: HomeAssistant,
-        script_id: str,
-        script_manager: ScriptManager,
+        automation_id: str,
+        automation_manager: AutomationManager,
         storage_path: str,
     ) -> None:
         """Initialize HAAnim API.
 
         Args:
             hass: Home Assistant instance.
-            script_id: The current script's ID.
-            script_manager: The script manager instance.
+            automation_id: The current automation's ID.
+            automation_manager: The automation manager instance.
             storage_path: Path to storage directory.
         """
         self._hass = hass
-        self._script_id = script_id
-        self._manager = script_manager
+        self._automation_id = automation_id
+        self._manager = automation_manager
         self._storage_path = Path(storage_path)
-        self._storage_file = self._storage_path / f"{script_id}.json"
+        self._storage_file = self._storage_path / f"{automation_id}.json"
         self._storage_lock = asyncio.Lock()
         self._storage_cache: dict[str, str] = {}
 
@@ -408,8 +408,8 @@ class HAAnim:
 
     @property
     def id(self) -> str:
-        """Get the current script's ID."""
-        return self._script_id
+        """Get the current automation's ID."""
+        return self._automation_id
 
     def __getattr__(self, domain: str) -> EntityProxy | _ServiceAccessor:
         """Get entity proxy for a domain.
@@ -464,32 +464,34 @@ class HAAnim:
                 result.append(HAAnimServiceProxy(self._hass, domain, service_name))
         return result
 
-    def script(self, script_id: str) -> HAAnimScriptProxy:
-        """Get a proxy for another script.
+    def automation(self, automation_id: str) -> HAAnimAutomationProxy:
+        """Get a proxy for another automation.
 
         Args:
-            script_id: The script ID.
+            automation_id: The automation ID.
 
         Returns:
-            HAAnimScriptProxy for the script.
+            HAAnimAutomationProxy for the automation.
 
         Raises:
-            NonExistingScriptError: If script doesn't exist.
+            NonExistingAutomationError: If automation doesn't exist.
         """
-        if script_id not in self._manager._contexts:
-            raise NonExistingScriptError(script_id)
-        return HAAnimScriptProxy(script_id, self._manager)
+        if automation_id not in self._manager._contexts:
+            raise NonExistingAutomationError(automation_id)
+        return HAAnimAutomationProxy(automation_id, self._manager)
 
-    def scripts(self) -> list[HAAnimScriptProxy]:
-        """Get list of all script proxies.
+    def automations(self) -> list[HAAnimAutomationProxy]:
+        """Get list of all automation proxies.
 
         Returns:
-            List of HAAnimScriptProxy objects for all loaded scripts.
+            List of HAAnimAutomationProxy objects for all loaded automations.
         """
-        return [HAAnimScriptProxy(script_id, self._manager) for script_id in self._manager._contexts]
+        return [
+            HAAnimAutomationProxy(automation_id, self._manager) for automation_id in self._manager._contexts
+        ]
 
     async def call(self, action_name: str, **kwargs: Any) -> Any:
-        """Call an action in the current script.
+        """Call an action in the current automation.
 
         Args:
             action_name: Name of the action.
@@ -498,31 +500,31 @@ class HAAnim:
         Returns:
             The result of the action call.
         """
-        return await self._manager.async_call_action(self._script_id, action_name, **kwargs)
+        return await self._manager.async_call_action(self._automation_id, action_name, **kwargs)
 
     async def enable(self) -> None:
-        """Enable the current script."""
-        await self._manager.async_enable_script(self._script_id)
+        """Enable the current automation."""
+        await self._manager.async_enable_automation(self._automation_id)
 
     async def disable(self) -> None:
-        """Disable the current script."""
-        await self._manager.async_disable_script(self._script_id)
+        """Disable the current automation."""
+        await self._manager.async_disable_automation(self._automation_id)
 
     async def stop(self) -> None:
-        """Stop the current script."""
-        await self._manager.async_stop_script(self._script_id)
+        """Stop the current automation."""
+        await self._manager.async_stop_automation(self._automation_id)
 
     async def restart(self) -> None:
-        """Restart the current script."""
-        await self._manager.async_restart_script(self._script_id)
+        """Restart the current automation."""
+        await self._manager.async_restart_automation(self._automation_id)
 
     def set_message(self, message: str) -> None:
-        """Set the script's status message.
+        """Set the automation's status message.
 
         Args:
             message: The status message to set.
         """
-        context = self._manager._contexts.get(self._script_id)
+        context = self._manager._contexts.get(self._automation_id)
         if context and context._metadata:
             context._metadata.message = message
 
@@ -535,7 +537,7 @@ class HAAnim:
                 with open(self._storage_file, "r", encoding="utf-8") as f:
                     self._storage_cache = json.load(f)
             except Exception as err:  # pylint: disable=broad-exception-caught
-                _LOGGER.error("Failed to load storage for %s: %s", self._script_id, err)
+                _LOGGER.error("Failed to load storage for %s: %s", self._automation_id, err)
                 self._storage_cache = {}
         else:
             self._storage_cache = {}
@@ -546,7 +548,7 @@ class HAAnim:
             with open(self._storage_file, "w", encoding="utf-8") as f:
                 json.dump(self._storage_cache, f, indent=2)
         except Exception as err:  # pylint: disable=broad-exception-caught
-            _LOGGER.error("Failed to save storage for %s: %s", self._script_id, err)
+            _LOGGER.error("Failed to save storage for %s: %s", self._automation_id, err)
 
     async def set_variable(self, key: str, value: str) -> None:
         """Store a persistent value.

@@ -6,19 +6,19 @@
                 "description": "Configure your HAAnim Python automation integration",
                 "data": {
                     "name": "Name",
-                    "script_path": "Script Path",
+                    "automation_path": "Automation Path",
                     "allow_all_imports": "Allow All Imports (Security Warning)"
                 },
                 "data_description": {
-                    "script_path": "Absolute path for automation scripts (e.g., /config/haanim)",
-                    "allow_all_imports": "If enabled, scripts can import any Python module. Use with caution!"
+                    "automation_path": "Absolute path for automations (e.g., /config/haanim)",
+                    "allow_all_imports": "If enabled, automations can import any Python module. Use with caution!"
                 }
             }
         },
         "error": {
             "cannot_connect": "Failed to connect",
             "invalid_auth": "Invalid authentication",
-            "invalid_path": "Invalid script path",
+            "invalid_path": "Invalid automation path",
             "unknown": "Unexpected error occurred"
         },
         "abort": {
@@ -31,29 +31,29 @@
                 "title": "HAAnim Options",
                 "description": "Configure HAAnim settings. Default import allowlist: {default_allowlist}",
                 "data": {
-                    "script_path": "Script Path",
+                    "automation_path": "Automation Path",
                     "allow_all_imports": "Allow All Imports",
                     "import_allowlist_str": "Import Allowlist (comma-separated)"
                 },
                 "data_description": {
-                    "script_path": "Absolute path for automation scripts",
-                    "allow_all_imports": "Allow scripts to import any module (security risk)",
+                    "automation_path": "Absolute path for automations",
+                    "allow_all_imports": "Allow automations to import any module (security risk)",
                     "import_allowlist_str": "Comma-separated list of allowed module names"
                 }
             }
         },
         "error": {
-            "invalid_path": "Invalid script path"
+            "invalid_path": "Invalid automation path"
         }
     },
     "services": {
         "run_action": {
             "name": "Run Action",
-            "description": "Manually run an action defined in a HAAnim script",
+            "description": "Manually run an action defined in a HAAnim automation",
             "fields": {
-                "script_name": {
-                    "name": "Script Name",
-                    "description": "Name of the script containing the action"
+                "automation_id": {
+                    "name": "Automation Name",
+                    "description": "Name of the automation containing the action"
                 },
                 "action_name": {
                     "name": "Action Name",
@@ -61,21 +61,21 @@
                 }
             }
         },
-        "reload_scripts": {
-            "name": "Reload Scripts",
-            "description": "Reload all HAAnim scripts from the script folder"
+        "reload_automations": {
+            "name": "Reload Automations",
+            "description": "Reload all HAAnim automations from the automation folder"
         },
-        "list_scripts": {
-            "name": "List Scripts",
-            "description": "Get a list of all loaded scripts"
+        "list_automations": {
+            "name": "List Automations",
+            "description": "Get a list of all loaded automations"
         },
         "list_actions": {
             "name": "List Actions",
             "description": "Get a list of all available actions",
             "fields": {
-                "script_name": {
-                    "name": "Script Name",
-                    "description": "Optional: filter actions by script name"
+                "automation_id": {
+                    "name": "Automation Name",
+                    "description": "Optional: filter actions by automation name"
                 }
             }
         },

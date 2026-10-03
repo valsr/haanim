@@ -1,7 +1,7 @@
 """Type stubs for the HAAnim virtual module.
 
 This file provides type hints for the 'haanim' module that is available
-to user automation scripts. It allows IDE features like autocompletion,
+to user automations. It allows IDE features like autocompletion,
 type checking, and documentation to work properly.
 
 Note: This module is virtual and provided by the HAAnim integration at runtime.
@@ -35,6 +35,96 @@ class ActionMode(Enum):
     CANCEL: str  # Cancel current execution and start new one
 
 # =============================================================================
+# Errors
+# =============================================================================
+
+class HAAnimError(Exception):
+    """Base class of all HAAnim errors."""
+
+    lineno: int | None
+    col_offset: int | None
+
+class AutomationSyntaxError(HAAnimError):
+    """Code or an expression cannot be parsed, or uses an unsupported construct."""
+
+class AutomationSecurityError(HAAnimError):
+    """A disallowed import, builtin or module member is used."""
+
+class NonExistingAutomationError(HAAnimError):
+    """The named automation does not exist."""
+
+    automation_id: str
+
+class AutomationNotLoadedError(HAAnimError):
+    """The automation exists but is not loaded."""
+
+    automation_id: str
+
+class AutomationNotRunningError(HAAnimError):
+    """The automation is not running."""
+
+    automation_id: str
+
+class AutomationAlreadyRunningError(HAAnimError):
+    """The automation is already running."""
+
+    automation_id: str
+
+class AutomationDisabledError(HAAnimError):
+    """The automation is disabled."""
+
+    automation_id: str
+
+class ActionNotFoundError(HAAnimError):
+    """The action name is unknown, or the action is disabled."""
+
+    automation_id: str
+    action_name: str
+
+class ActionDroppedError(HAAnimError):
+    """The request was dropped (DROP mode, or a re-entrant call)."""
+
+    automation_id: str
+    action_name: str
+    reason: str
+
+class QueueFullError(HAAnimError):
+    """The action's queue is full (QUEUE mode)."""
+
+    automation_id: str
+    action_name: str
+    queue_size: int
+
+class PoolExhaustedError(HAAnimError):
+    """The concurrency limit is reached."""
+
+    max_workers: int
+
+class ActionTimeOutError(HAAnimError):
+    """The action exceeded its timeout."""
+
+    automation_id: str
+    action_name: str
+    timeout: float
+
+class ActionCancelledError(HAAnimError):
+    """The action was cancelled."""
+
+    action_name: str
+    reason: str
+
+class NonExistingEntityError(HAAnimError):
+    """A conversion was applied to an entity that does not exist."""
+
+    entity_id: str
+
+class NonExistingServiceError(HAAnimError):
+    """A service that does not exist was called."""
+
+    domain: str
+    service: str
+
+# =============================================================================
 # Event Classes
 # =============================================================================
 
@@ -42,9 +132,9 @@ class ActionEvent:
     """Base event class for action invocations."""
 
     call_time: datetime
-    script_id: str
-    source: str  # 'trigger', 'manual', or 'script'
-    caller: str | None  # Script ID if source == 'script'
+    automation_id: str
+    source: str  # 'trigger', 'manual', or 'automation'
+    caller: str | None  # Automation ID if source == 'automation'
 
 class TimeEvent(ActionEvent):
     """Event for time-based triggers."""
@@ -81,8 +171,8 @@ class ManualEvent(ActionEvent):
 
     ...
 
-class ScriptEvent(ActionEvent):
-    """Event for script-to-script action calls."""
+class AutomationEvent(ActionEvent):
+    """Event for automation-to-automation action calls."""
 
     ...
 
@@ -116,8 +206,8 @@ class HAAnimServiceProxy:
         """Call the service with parameters."""
         ...
 
-class HAAnimScriptProxy:
-    """Proxy for accessing another script."""
+class HAAnimAutomationProxy:
+    """Proxy for accessing another automation."""
 
     id: str
 
@@ -163,12 +253,12 @@ class ServiceDomainProxy:
 class HAAnim:
     """Main HAAnim API object (haa instance).
 
-    Provides access to entities, services, scripts, and storage.
+    Provides access to entities, services, automations, and storage.
     """
 
     @property
     def id(self) -> str:
-        """Get current script ID."""
+        """Get current automation ID."""
         ...
 
     def __getattr__(self, domain: str) -> EntityProxy:
@@ -190,36 +280,36 @@ class HAAnim:
         """
         ...
 
-    def script(self, script_id: str) -> HAAnimScriptProxy:
-        """Get proxy for another script."""
+    def automation(self, automation_id: str) -> HAAnimAutomationProxy:
+        """Get proxy for another automation."""
         ...
 
-    def scripts(self) -> list[HAAnimScriptProxy]:
-        """Get list of all script proxies."""
+    def automations(self) -> list[HAAnimAutomationProxy]:
+        """Get list of all automation proxies."""
         ...
 
     async def call(self, action_name: str, *args: Any, **kwargs: Any) -> Any:
-        """Call an action in this script."""
+        """Call an action in this automation."""
         ...
 
     async def enable(self) -> None:
-        """Enable this script."""
+        """Enable this automation."""
         ...
 
     async def disable(self) -> None:
-        """Disable this script."""
+        """Disable this automation."""
         ...
 
     async def stop(self) -> None:
-        """Stop this script (run shutdown if present)."""
+        """Stop this automation (run shutdown if present)."""
         ...
 
     async def restart(self) -> None:
-        """Restart this script."""
+        """Restart this automation."""
         ...
 
     def set_message(self, message: str) -> None:
-        """Set status message for this script."""
+        """Set status message for this automation."""
         ...
 
     async def set_variable(self, key: str, value: str) -> None:
@@ -460,7 +550,7 @@ def state_active(
     ...
 
 def startup() -> Callable[[F], F]:
-    """Mark function to run when script is loaded.
+    """Mark function to run when automation is loaded.
 
     Returns:
         Decorator function.
@@ -473,7 +563,7 @@ def startup() -> Callable[[F], F]:
     ...
 
 def shutdown() -> Callable[[F], F]:
-    """Mark function to run when script is unloaded.
+    """Mark function to run when automation is unloaded.
 
     Returns:
         Decorator function.
@@ -490,7 +580,7 @@ def shutdown() -> Callable[[F], F]:
 # =============================================================================
 
 def set_status(message: str | None) -> None:
-    """Set a status message for the current script.
+    """Set a status message for the current automation.
 
     Args:
         message: Status message to display, or None to clear.
@@ -510,7 +600,7 @@ async def sleep(seconds: float) -> None:
 # =============================================================================
 
 class Logger:
-    """Logger interface for scripts."""
+    """Logger interface for automations."""
 
     def debug(self, msg: str, *args: Any) -> None: ...
     def info(self, msg: str, *args: Any) -> None: ...
@@ -521,7 +611,7 @@ class Logger:
 
 # Logging interface
 logging: Logger
-log: Logger  # Alias for the script's logger
+log: Logger  # Alias for the automation's logger
 
 # Convenience logging functions
 def log_debug(msg: str, *args: Any) -> None: ...

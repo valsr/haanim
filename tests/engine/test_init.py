@@ -9,12 +9,12 @@ import pytest
 from custom_components.haanim.engine import (
     ImportController,
     SafeBuiltins,
-    ScriptSecurityError,
-    ScriptSyntaxError,
+    AutomationSecurityError,
+    AutomationSyntaxError,
     SymbolTable,
 )
 from custom_components.haanim.engine.ast_evaluator import AstEvaluator
-from custom_components.haanim.engine.errors import ScriptRuntimeError
+from custom_components.haanim.engine.errors import AutomationRuntimeError
 
 
 class TestSafeBuiltins:
@@ -126,7 +126,7 @@ class TestImportController:
         """Test importing a blocked module raises SecurityError."""
         controller = ImportController(allowlist=["json"])
 
-        with pytest.raises(ScriptSecurityError) as exc_info:
+        with pytest.raises(AutomationSecurityError) as exc_info:
             controller.safe_import("os")
 
         assert "not allowed" in str(exc_info.value)
@@ -135,7 +135,7 @@ class TestImportController:
         """Test importing a non-existent module raises RuntimeError."""
         controller = ImportController(allowlist=["nonexistent_module_xyz"])
 
-        with pytest.raises(ScriptRuntimeError) as exc_info:
+        with pytest.raises(AutomationRuntimeError) as exc_info:
             controller.safe_import("nonexistent_module_xyz")
 
         assert "Failed to import" in str(exc_info.value)
@@ -368,7 +368,7 @@ class TestImportControllerAdvanced:
         """Test importing a not-allowed module raises error."""
         controller = ImportController(allowlist=["safe"])
 
-        with pytest.raises(ScriptSecurityError, match="not allowed"):
+        with pytest.raises(AutomationSecurityError, match="not allowed"):
             controller.safe_import("dangerous")
 
     def test_safe_import_allowed(self) -> None:
@@ -429,7 +429,7 @@ class TestAstEvaluator:
 
     def test_parse_syntax_error(self, evaluator: AstEvaluator) -> None:
         """Test parsing code with syntax error."""
-        with pytest.raises(ScriptSyntaxError, match="Syntax error"):
+        with pytest.raises(AutomationSyntaxError, match="Syntax error"):
             evaluator.parse("def broken(:")
 
     async def test_execute_simple_assignment(self, evaluator: AstEvaluator) -> None:
@@ -818,7 +818,7 @@ result = pi > 3
     async def test_import_blocked_module(self, evaluator: AstEvaluator) -> None:
         """Test importing a blocked module raises error."""
         evaluator.parse("import os")
-        with pytest.raises(ScriptSecurityError, match="not allowed"):
+        with pytest.raises(AutomationSecurityError, match="not allowed"):
             await evaluator.execute()
 
 
@@ -875,7 +875,7 @@ class TestAstEvaluatorAdvanced:
     async def test_execute_assert_fail(self, evaluator: AstEvaluator) -> None:
         """Test assert statement that fails."""
         evaluator.parse('assert False, "custom message"')
-        with pytest.raises(ScriptRuntimeError, match="custom message"):
+        with pytest.raises(AutomationRuntimeError, match="custom message"):
             await evaluator.execute()
 
     async def test_execute_delete_name(self, evaluator: AstEvaluator) -> None:
@@ -905,7 +905,7 @@ del d['a']
     async def test_execute_raise(self, evaluator: AstEvaluator) -> None:
         """Test raise statement."""
         evaluator.parse('raise ValueError("test error")')
-        with pytest.raises(ScriptRuntimeError, match="test error"):
+        with pytest.raises(AutomationRuntimeError, match="test error"):
             await evaluator.execute()
 
     async def test_execute_global_statement(self, evaluator: AstEvaluator) -> None:

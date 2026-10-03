@@ -1,7 +1,7 @@
 """Home Assistant state integration for HAAnim.
 
 This module provides state access, manipulation, and change notifications
-for use within HAAnim scripts.
+for use within HAAnim automations.
 """
 
 from __future__ import annotations
@@ -238,7 +238,7 @@ class StateVal:
 
 
 class StateManager:
-    """Manages state access and change notifications for HAAnim scripts.
+    """Manages state access and change notifications for HAAnim automations.
 
     Provides methods to get, set, and watch entity states, with notification
     queues for trigger evaluation.
@@ -447,7 +447,7 @@ class StateManager:
         }
 
 
-# Convenience functions for use in scripts
+# Convenience functions for use in automations
 
 
 def state_get(hass: HomeAssistant, entity_id: str) -> StateVal:

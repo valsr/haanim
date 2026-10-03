@@ -29,16 +29,16 @@ async def test_async_setup(hass: HomeAssistant) -> None:
 async def test_async_setup_entry(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
-    mock_script_manager: MagicMock,
+    mock_automation_manager: MagicMock,
 ) -> None:
     """Test config entry setup.
 
     Args:
         hass: Home Assistant instance.
         mock_config_entry: Mock configuration entry.
-        mock_script_manager: Mock ScriptManager.
+        mock_automation_manager: Mock AutomationManager.
     """
-    _ = mock_script_manager  # Fixture provides mocking
+    _ = mock_automation_manager  # Fixture provides mocking
     # Initialize domain data
     hass.data[DOMAIN] = {}
 
@@ -57,16 +57,16 @@ async def test_async_setup_entry(
 async def test_async_unload_entry(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
-    mock_script_manager: MagicMock,
+    mock_automation_manager: MagicMock,
 ) -> None:
     """Test config entry unload.
 
     Args:
         hass: Home Assistant instance.
         mock_config_entry: Mock configuration entry.
-        mock_script_manager: Mock ScriptManager.
+        mock_automation_manager: Mock AutomationManager.
     """
-    _ = mock_script_manager  # Fixture provides mocking
+    _ = mock_automation_manager  # Fixture provides mocking
     # Initialize domain data
     hass.data[DOMAIN] = {}
 
@@ -87,16 +87,16 @@ async def test_async_unload_entry(
 async def test_async_reload_entry(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
-    mock_script_manager: MagicMock,
+    mock_automation_manager: MagicMock,
 ) -> None:
     """Test config entry reload.
 
     Args:
         hass: Home Assistant instance.
         mock_config_entry: Mock configuration entry.
-        mock_script_manager: Mock ScriptManager.
+        mock_automation_manager: Mock AutomationManager.
     """
-    _ = mock_script_manager  # Fixture provides mocking
+    _ = mock_automation_manager  # Fixture provides mocking
     # Initialize domain data
     hass.data[DOMAIN] = {}
 
