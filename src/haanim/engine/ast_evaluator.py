@@ -1,4 +1,4 @@
-""" """
+"""Interpreter that executes automation source by walking its AST."""
 
 import ast
 import asyncio
@@ -15,8 +15,8 @@ from haanim.engine.errors import (
     HAAnimError,
     AutomationRuntimeError,
     AutomationSecurityError,
-    AutomationSyntaxError,
 )
+from haanim.engine.validation import validate_source
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -125,17 +125,11 @@ class AstEvaluator:
             filename: Filename for error messages.
 
         Raises:
-            AutomationSyntaxError: If the source has syntax errors.
+            AutomationSyntaxError: If the source has syntax errors or uses
+                Python the interpreter does not support.
         """
         self._source = source
-        try:
-            self._ast = ast.parse(source, filename=filename, mode="exec")
-        except SyntaxError as err:
-            raise AutomationSyntaxError(
-                f"Syntax error: {err.msg}",
-                lineno=err.lineno,
-                col_offset=err.offset,
-            ) from err
+        self._ast = validate_source(source, filename=filename)
 
     async def execute(self) -> dict[str, Any]:
         """Execute the parsed AST.

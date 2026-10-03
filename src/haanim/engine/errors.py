@@ -4,6 +4,9 @@ All exceptions derive from HAAnimError. PUBLIC_ERRORS lists the ones automations
 can import from the ``haanim`` module.
 """
 
+from collections.abc import Sequence
+from typing import Any
+
 
 class HAAnimError(Exception):
     """Base exception for all HAAnim errors."""
@@ -26,7 +29,33 @@ class AutomationSecurityError(HAAnimError):
 
 
 class AutomationSyntaxError(HAAnimError):
-    """Exception raised for syntax errors in automations."""
+    """Exception raised when an automation's source cannot be loaded.
+
+    Raised for invalid Python and for Python the interpreter does not support.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        lineno: int | None = None,
+        col_offset: int | None = None,
+        *,
+        filename: str | None = None,
+        problems: Sequence[Any] = (),
+    ) -> None:
+        """Initialize the syntax error.
+
+        Args:
+            message: Error message.
+            lineno: Line number of the first problem.
+            col_offset: Column offset of the first problem.
+            filename: File the first problem is in.
+            problems: Every problem found, each with ``filename``, ``lineno``,
+                ``col_offset`` and ``message``.
+        """
+        super().__init__(message, lineno=lineno, col_offset=col_offset)
+        self.filename = filename
+        self.problems = tuple(problems)
 
 
 class AutomationRuntimeError(HAAnimError):

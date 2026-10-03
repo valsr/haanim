@@ -429,7 +429,7 @@ class TestAstEvaluator:
 
     def test_parse_syntax_error(self, evaluator: AstEvaluator) -> None:
         """Test parsing code with syntax error."""
-        with pytest.raises(AutomationSyntaxError, match="Syntax error"):
+        with pytest.raises(AutomationSyntaxError, match="invalid syntax"):
             evaluator.parse("def broken(:")
 
     async def test_execute_simple_assignment(self, evaluator: AstEvaluator) -> None:

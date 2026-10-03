@@ -370,7 +370,7 @@ def broken(:
             automation_path=str(automation_path),
         )
 
-        with pytest.raises(HAAnimError, match="Syntax error"):
+        with pytest.raises(HAAnimError, match=r"^bad_automation.py:2: invalid syntax"):
             await context.load()
 
 
