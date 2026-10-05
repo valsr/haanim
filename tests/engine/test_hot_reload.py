@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from haanim.engine.action_dispatcher import ActionDispatcher
 from haanim.engine.action_pool import ActionWorkerPool
 from haanim.engine.automation_ids import REASON_COLLISION, RejectedFolder
 from haanim.engine.automation_status import AutomationStatusManager
@@ -483,6 +484,7 @@ class Automations:
         self.files = FakeFileSystem(self.clock)
         self.host = make_host(files=self.files, clock=self.clock)
         self.pool = ActionWorkerPool(status_manager=AutomationStatusManager(), clock=self.clock)
+        self.dispatcher = ActionDispatcher(self.pool)
         self.flags = EnabledFlags(FakeStorage())
         self.storage_path = str(tmp_path)
         self.automations: dict[Path, Automation] = {}
@@ -503,7 +505,7 @@ class Automations:
             automation_id=found.automation_id,
             storage_path=self.storage_path,
         )
-        automation = Automation(context, pool=self.pool, triggers=NoTriggers())
+        automation = Automation(context, dispatcher=self.dispatcher, triggers=NoTriggers())
         self.automations[found.folder] = automation
         if await automation.load() and self.flags.is_enabled(found.automation_id):
             await automation.start()

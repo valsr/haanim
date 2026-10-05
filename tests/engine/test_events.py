@@ -12,6 +12,7 @@ import pytest
 
 from haanim import events
 from haanim.const import TRIGGER_CRON, TRIGGER_EVENT, TRIGGER_INTERVAL, TRIGGER_STATE, TRIGGER_TIME
+from haanim.engine.action_dispatcher import ActionDispatcher
 from haanim.engine.action_pool import ActionWorkerPool
 from haanim.engine.automation_context import AutomationContext, TriggerDefinition
 from haanim.engine.automation_status import AutomationStatusManager
@@ -266,6 +267,7 @@ class World:
         self.clock = FakeClock()
         self.host = make_host(files=LocalFileSystem(), clock=self.clock)
         self.pool = ActionWorkerPool(status_manager=AutomationStatusManager(), clock=self.clock)
+        self.dispatcher = ActionDispatcher(self.pool)
         self.automations: dict[str, Automation] = {}
 
     def get_all_contexts(self) -> list[AutomationContext]:
@@ -295,7 +297,7 @@ class World:
         context = make_context(
             str(path), host=self.host, registry=self, storage_path=str(self.root / ".storage")
         )
-        automation = Automation(context, pool=self.pool, triggers=NoTriggers())
+        automation = Automation(context, dispatcher=self.dispatcher, triggers=NoTriggers())
         self.automations[automation.automation_id] = automation
         await automation.load()
         await automation.start()
@@ -703,7 +705,7 @@ class TestTriggerFiredEvents:
         states = FakeStateProvider(clock)
         host = make_host(clock=clock, states=states)
         manager = TriggerManager(
-            host, ActionWorkerPool(status_manager=AutomationStatusManager(), clock=clock)
+            host, ActionDispatcher(ActionWorkerPool(status_manager=AutomationStatusManager(), clock=clock))
         )
         states.set_state("sensor.temperature", "20")
         old = states.get("sensor.temperature")

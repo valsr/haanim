@@ -7,7 +7,6 @@ states.
 
 from __future__ import annotations
 
-import asyncio
 import contextvars
 import logging
 from collections.abc import Callable, Iterable
@@ -27,7 +26,7 @@ from haanim.engine.errors import (
 from haanim.events import SOURCE_TRIGGER
 
 if TYPE_CHECKING:
-    from haanim.engine.action_pool import ActionWorkerPool
+    from haanim.engine.action_dispatcher import ActionDispatcher
     from haanim.engine.automation_context import AutomationContext, TriggerDefinition
 
 _LOGGER = logging.getLogger(__name__)
@@ -40,6 +39,9 @@ _HANDLER_OF: contextvars.ContextVar[Automation | None] = contextvars.ContextVar(
 
 STARTUP_ACTION = "__startup__"
 SHUTDOWN_ACTION = "__shutdown__"
+
+REASON_STOPPED = "automation stopped"
+REASON_START_FAILED = "automation failed to start"
 
 
 class AutomationState(Enum):
@@ -122,7 +124,7 @@ class Automation:
         self,
         context: AutomationContext,
         *,
-        pool: ActionWorkerPool,
+        dispatcher: ActionDispatcher,
         triggers: TriggerRegistrar,
         settings: LifecycleSettings | None = None,
     ) -> None:
@@ -130,12 +132,12 @@ class Automation:
 
         Args:
             context: The automation's context.
-            pool: Where the automation's actions and lifecycle handlers run.
+            dispatcher: Where the automation's actions and lifecycle handlers run.
             triggers: Where the automation's triggers are registered.
             settings: The time limits. The design's defaults if omitted.
         """
         self.context = context
-        self._pool = pool
+        self._dispatcher = dispatcher
         self._triggers = triggers
         self._settings = settings or LifecycleSettings()
         self._clock = context.host.clock
@@ -260,12 +262,8 @@ class Automation:
         token = _HANDLER_OF.set(self)
         try:
             await self._clock.wait_for(
-                self._pool.submit_action(
-                    self.automation_id,
-                    STARTUP_ACTION,
-                    startup,
-                    *self._handler_arguments(startup),
-                    is_lifecycle=True,
+                self._dispatcher.run_handler(
+                    self.automation_id, STARTUP_ACTION, startup, *self._handler_arguments(startup)
                 ),
                 timeout,
             )
@@ -284,7 +282,8 @@ class Automation:
     async def _abandon_start(self) -> None:
         """Undo a start that failed part-way."""
         await self._triggers.unregister_automation_triggers(self.automation_id)
-        await self._pool.cancel_automation_actions(self.automation_id, "automation failed to start")
+        self._dispatcher.remove_queued(self.automation_id, REASON_START_FAILED)
+        self._dispatcher.cancel_running(self.automation_id, REASON_START_FAILED)
         self.context.discard()
 
     # --- Stop ---------------------------------------------------------------------
@@ -304,6 +303,7 @@ class Automation:
         self._stopping = True
         try:
             await self._triggers.unregister_automation_triggers(self.automation_id)
+            self._dispatcher.remove_queued(self.automation_id, REASON_STOPPED)
             await self._finish_running_actions()
             await self._run_shutdown()
         finally:
@@ -315,14 +315,14 @@ class Automation:
         """Give running actions the grace period, then cancel the ones still running."""
         grace = self._settings.stop_grace_period
         try:
-            await self._clock.wait_for(self._pool.wait_idle(self.automation_id), grace)
+            await self._clock.wait_for(self._dispatcher.wait_idle(self.automation_id), grace)
             return
         except TimeoutError:
             pass
 
-        await self._pool.cancel_automation_actions(self.automation_id, "automation stopped")
+        self._dispatcher.cancel_running(self.automation_id, REASON_STOPPED)
         try:
-            await self._clock.wait_for(self._pool.wait_idle(self.automation_id), grace)
+            await self._clock.wait_for(self._dispatcher.wait_idle(self.automation_id), grace)
         except TimeoutError:
             _LOGGER.warning(
                 "Automation '%s': actions were still running %s after being cancelled",
@@ -341,12 +341,8 @@ class Automation:
         token = _HANDLER_OF.set(self)
         try:
             await self._clock.wait_for(
-                self._pool.submit_action(
-                    self.automation_id,
-                    SHUTDOWN_ACTION,
-                    shutdown,
-                    *self._handler_arguments(shutdown),
-                    is_lifecycle=True,
+                self._dispatcher.run_handler(
+                    self.automation_id, SHUTDOWN_ACTION, shutdown, *self._handler_arguments(shutdown)
                 ),
                 timeout,
             )
@@ -409,6 +405,9 @@ class Automation:
         Raises:
             AutomationNotRunningError: If the automation is not running.
             ActionNotFoundError: If the automation has no such action, or it is disabled.
+            ActionDroppedError: If the request is dropped (``DROP`` mode, or a re-entrant call).
+            QueueFullError: If the action's queue is full (``QUEUE`` mode).
+            ActionCancelledError: If the execution is cancelled.
             Exception: Whatever the action raises.
         """
         if not self.accepts_calls():
@@ -421,21 +420,15 @@ class Automation:
 
         event = self.context.make_event(caller=caller, data=data)
 
-        # The action runs in a task of its own: if the caller is cancelled (its
-        # automation is stopped, say), the call it already made runs to completion here.
-        running = asyncio.ensure_future(
-            self._pool.submit_action(
-                self.automation_id, action_name, action.func, *event_arguments(action.func, event)
-            )
+        # The dispatcher runs the action in a task of its own: if the caller is cancelled
+        # (its automation is stopped, say), the call it already made runs to completion.
+        return await self._dispatcher.dispatch(
+            self.automation_id,
+            action.name,
+            action.func,
+            *event_arguments(action.func, event),
+            mode=action.execution_mode,
         )
-        running.add_done_callback(_retrieve_exception)
-        return await asyncio.shield(running)
-
-
-def _retrieve_exception(task: asyncio.Future[Any]) -> None:
-    """Mark the exception of an action as seen, for when its caller is no longer waiting for it."""
-    if not task.cancelled():
-        task.exception()
 
 
 class _StartupFailure(Exception):

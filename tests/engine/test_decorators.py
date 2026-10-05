@@ -11,6 +11,7 @@ import pytest
 from haanim import ActionMode
 from haanim.const import TRIGGER_CRON, TRIGGER_EVENT, TRIGGER_INTERVAL, TRIGGER_STATE, TRIGGER_TIME
 from haanim.engine import decorators
+from haanim.engine.action_dispatcher import ActionDispatcher
 from haanim.engine.action_pool import ActionWorkerPool
 from haanim.engine.automation_context import AutomationContext
 from haanim.engine.automation_status import AutomationStatusManager
@@ -747,7 +748,7 @@ async def started(tmp_path: Path, source: str, name: str = "lights") -> tuple[Au
     pool = ActionWorkerPool(status_manager=AutomationStatusManager(), clock=clock)
     automation = Automation(
         make_context(str(path), host=host, storage_path=str(tmp_path / ".storage")),
-        pool=pool,
+        dispatcher=ActionDispatcher(pool),
         triggers=triggers,
     )
     await automation.load()
@@ -849,7 +850,7 @@ class TestAtStart:
         triggers = RecordingTriggers()
         pool = ActionWorkerPool(status_manager=AutomationStatusManager(), clock=clock)
         context = make_context(str(tmp_path / "demo"), host=host, storage_path=str(tmp_path / ".storage"))
-        automation = Automation(context, pool=pool, triggers=triggers)
+        automation = Automation(context, dispatcher=ActionDispatcher(pool), triggers=triggers)
 
         assert await automation.load(), automation.message
         await automation.context.execute()

@@ -15,14 +15,9 @@ from typing import Any
 import pytest
 
 from haanim.const import TRIGGER_CRON, TRIGGER_INTERVAL, TRIGGER_STATE
-from haanim.engine.action_pool import (
-    CANCEL_CLEANUP_SECONDS,
-    POOL_SHUTDOWN_WAIT_SECONDS,
-    ActionWorkerPool,
-)
+from haanim.engine.action_pool import ActionWorkerPool
 from haanim.engine.automation_context import TriggerDefinition
 from haanim.engine.automation_status import AutomationStatusManager
-from haanim.engine.errors import ActionCancelledError, ShutdownTimeoutError
 from haanim.engine.haanim_api import HAAnim
 from haanim.engine.triggers import CronTrigger, IntervalTrigger, StateTrigger
 from haanim.interfaces import Host
@@ -41,8 +36,8 @@ def clock() -> FakeClock:
 
 @pytest.fixture
 def pool(clock: FakeClock) -> ActionWorkerPool:
-    """An action pool on the fake clock with a 5 second shutdown timeout."""
-    return ActionWorkerPool(status_manager=AutomationStatusManager(), clock=clock, shutdown_timeout=5.0)
+    """An action pool on the fake clock."""
+    return ActionWorkerPool(status_manager=AutomationStatusManager(), clock=clock)
 
 
 def trigger_definition(trigger_type: str, expr: str, func: Any, **kwargs: Any) -> TriggerDefinition:
@@ -79,215 +74,6 @@ class TestPoolTimestamps:
         (execution,) = executions
         assert execution.started_at == DEFAULT_NOW
         assert execution.completed_at == DEFAULT_NOW + timedelta(seconds=30)
-
-
-class TestPoolWaitIdle:
-    """wait_idle completes when nothing is executing."""
-
-    async def test_idle_pool_returns_at_once(self, pool: ActionWorkerPool) -> None:
-        """Test wait_idle on an idle pool returns without waiting."""
-        await pool.wait_idle()
-        await pool.wait_idle("auto")
-
-    async def test_waits_for_running_action(self, pool: ActionWorkerPool, clock: FakeClock) -> None:
-        """Test wait_idle completes only once the running action has finished."""
-        release = asyncio.Event()
-
-        async def action() -> None:
-            await release.wait()
-
-        task = asyncio.create_task(pool.submit_action("auto", "work", action))
-        waiter = asyncio.create_task(pool.wait_idle())
-        await clock.settle()
-        assert not waiter.done()
-
-        release.set()
-        await clock.settle()
-        assert waiter.done()
-        await task
-
-    async def test_waits_for_all_actions(self, pool: ActionWorkerPool, clock: FakeClock) -> None:
-        """Test wait_idle keeps waiting while any action is still executing."""
-        first, second = asyncio.Event(), asyncio.Event()
-        tasks = [
-            asyncio.create_task(pool.submit_action("auto", "first", first.wait)),
-            asyncio.create_task(pool.submit_action("auto", "second", second.wait)),
-        ]
-        waiter = asyncio.create_task(pool.wait_idle())
-        await clock.settle()
-
-        first.set()
-        await clock.settle()
-        assert not waiter.done()
-
-        second.set()
-        await clock.settle()
-        assert waiter.done()
-        await asyncio.gather(*tasks)
-
-    async def test_per_automation(self, pool: ActionWorkerPool, clock: FakeClock) -> None:
-        """Test wait_idle for one automation ignores actions of another."""
-        release = asyncio.Event()
-        task = asyncio.create_task(pool.submit_action("other", "work", release.wait))
-        await clock.settle()
-
-        await pool.wait_idle("auto")
-        other_waiter = asyncio.create_task(pool.wait_idle("other"))
-        await clock.settle()
-        assert not other_waiter.done()
-
-        release.set()
-        await clock.settle()
-        assert other_waiter.done()
-        await task
-
-    async def test_idle_after_failed_action(self, pool: ActionWorkerPool) -> None:
-        """Test an action that raises still leaves the pool idle."""
-
-        async def action() -> None:
-            raise ValueError("boom")
-
-        with pytest.raises(ValueError):
-            await pool.submit_action("auto", "work", action)
-        await pool.wait_idle()
-
-
-class TestPoolShutdownTiming:
-    """The pool's shutdown waits and timeouts run on the clock."""
-
-    async def test_shutdown_action_within_timeout(self, pool: ActionWorkerPool, clock: FakeClock) -> None:
-        """Test a shutdown handler that finishes inside the timeout returns its result."""
-
-        async def on_shutdown() -> str:
-            await clock.sleep(4)
-            return "saved"
-
-        task = asyncio.create_task(pool.run_shutdown_action("auto", on_shutdown))
-        await clock.advance(seconds=4)
-        assert await task == "saved"
-
-    async def test_shutdown_action_times_out(self, pool: ActionWorkerPool, clock: FakeClock) -> None:
-        """Test a shutdown handler that runs past the timeout raises ShutdownTimeoutError."""
-
-        async def on_shutdown() -> None:
-            await clock.sleep(60)
-
-        task = asyncio.create_task(pool.run_shutdown_action("auto", on_shutdown))
-        await clock.advance(seconds=4.9)
-        assert not task.done()
-
-        await clock.advance(seconds=0.1)
-        with pytest.raises(ShutdownTimeoutError) as exc_info:
-            await task
-        assert exc_info.value.timeout == 5.0
-        assert clock.pending_timers == 0
-
-    async def test_running_actions_cancelled_before_shutdown_action(
-        self, pool: ActionWorkerPool, clock: FakeClock
-    ) -> None:
-        """Test running actions are cancelled first and the handler runs without any time passing."""
-        order: list[str] = []
-        started = asyncio.Event()
-
-        async def action() -> None:
-            started.set()
-            try:
-                await asyncio.Event().wait()
-            finally:
-                order.append("action cancelled")
-
-        async def on_shutdown() -> None:
-            order.append("shutdown ran")
-
-        running = asyncio.create_task(pool.submit_action("auto", "work", action))
-        await started.wait()
-
-        await pool.run_shutdown_action("auto", on_shutdown)
-
-        assert order == ["action cancelled", "shutdown ran"]
-        assert clock.now() == DEFAULT_NOW
-        with pytest.raises((asyncio.CancelledError, ActionCancelledError)):
-            await running
-
-    async def test_shutdown_action_proceeds_after_cleanup_wait(
-        self, pool: ActionWorkerPool, clock: FakeClock
-    ) -> None:
-        """Test the handler runs after the cleanup wait even if a cancelled action refuses to stop."""
-        order: list[str] = []
-        started = asyncio.Event()
-        release = asyncio.Event()
-
-        async def stubborn() -> None:
-            started.set()
-            try:
-                await asyncio.Event().wait()
-            except asyncio.CancelledError:
-                await release.wait()
-                raise
-
-        async def on_shutdown() -> None:
-            order.append("shutdown ran")
-
-        running = asyncio.create_task(pool.submit_action("auto", "work", stubborn))
-        await started.wait()
-
-        shutdown = asyncio.create_task(pool.run_shutdown_action("auto", on_shutdown))
-        await clock.settle()
-        assert order == []
-
-        await clock.advance(seconds=CANCEL_CLEANUP_SECONDS)
-        await shutdown
-        assert order == ["shutdown ran"]
-
-        release.set()
-        with pytest.raises((asyncio.CancelledError, ActionCancelledError)):
-            await running
-
-    async def test_pool_shutdown_returns_when_idle(self, pool: ActionWorkerPool, clock: FakeClock) -> None:
-        """Test pool shutdown returns as soon as cancelled actions have finished, with no time passing."""
-        started = asyncio.Event()
-
-        async def action() -> None:
-            started.set()
-            await asyncio.Event().wait()
-
-        running = asyncio.create_task(pool.submit_action("auto", "work", action))
-        await started.wait()
-
-        await pool.shutdown()
-
-        assert clock.now() == DEFAULT_NOW
-        assert pool.active_count == 0
-        with pytest.raises((asyncio.CancelledError, ActionCancelledError)):
-            await running
-
-    async def test_pool_shutdown_gives_up_after_wait(self, pool: ActionWorkerPool, clock: FakeClock) -> None:
-        """Test pool shutdown stops waiting after its limit when an action refuses to stop."""
-        started = asyncio.Event()
-        release = asyncio.Event()
-
-        async def stubborn() -> None:
-            started.set()
-            try:
-                await asyncio.Event().wait()
-            except asyncio.CancelledError:
-                await release.wait()
-                raise
-
-        running = asyncio.create_task(pool.submit_action("auto", "work", stubborn))
-        await started.wait()
-
-        shutdown = asyncio.create_task(pool.shutdown())
-        await clock.advance(seconds=POOL_SHUTDOWN_WAIT_SECONDS - 0.1)
-        assert not shutdown.done()
-
-        await clock.advance(seconds=0.1)
-        await shutdown
-        assert pool.active_count == 1
-
-        release.set()
-        with pytest.raises((asyncio.CancelledError, ActionCancelledError)):
-            await running
 
 
 class TestIntervalTriggerOnClock:

@@ -18,7 +18,7 @@ from haanim.engine.lifecycle import Automation, AutomationState
 from haanim.interfaces import StorageBackend
 
 if TYPE_CHECKING:
-    from haanim.engine.action_pool import ActionWorkerPool
+    from haanim.engine.action_dispatcher import ActionDispatcher
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ class AutomationControl:
     call, so the statements after it do not run and its ``finally`` blocks do.
     """
 
-    def __init__(self, flags: EnabledFlags, pool: ActionWorkerPool) -> None:
+    def __init__(self, flags: EnabledFlags, dispatcher: ActionDispatcher) -> None:
         """Initialize the control operations.
 
         Args:
@@ -95,7 +95,7 @@ class AutomationControl:
                 a call that comes from an action of the automation itself.
         """
         self._flags = flags
-        self._pool = pool
+        self._dispatcher = dispatcher
         self._scheduled: set[asyncio.Future[Any]] = set()
 
     def is_enabled(self, automation_id: str) -> bool:
@@ -190,10 +190,7 @@ class AutomationControl:
 
     def _called_from_inside(self, automation: Automation) -> bool:
         """Return whether the current code is running as an action of the automation."""
-        current = asyncio.current_task()
-        return any(
-            execution.task is current for execution in self._pool.get_active_actions(automation.automation_id)
-        )
+        return self._dispatcher.runs_in_current_task(automation.automation_id)
 
     async def _stop_or_schedule(
         self, automation: Automation, operation: Callable[[], Awaitable[None]]

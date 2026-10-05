@@ -545,8 +545,8 @@ class TestAutomationManagerActions:
         assert result["/tmp/bad.py"] == "Syntax error"
 
 
-class TestAutomationManagerLifecycle:
-    """Tests for automation manager lifecycle handlers."""
+class TestAutomationManagerProperties:
+    """Tests for the manager's Home Assistant event handlers and its properties."""
 
     @pytest.fixture
     def mock_hass(self, tmp_path: Path) -> MagicMock:
@@ -591,6 +591,8 @@ class TestAutomationManagerLifecycle:
 
         assert manager._started is True
         assert mock_hass.async_create_task.called
+        # The mock never runs the watcher it was handed
+        mock_hass.async_create_task.call_args[0][0].close()
 
     @patch("custom_components.haanim.automation_manager.get_config_manager")
     async def test_on_ha_stop(
@@ -600,7 +602,7 @@ class TestAutomationManagerLifecycle:
         mock_entry: MagicMock,
         tmp_path: Any,
     ) -> None:
-        """Test _on_ha_stop sets stop event and cleans up."""
+        """Test _on_ha_stop shuts the dispatcher down and unloads the automations."""
         mock_config = MagicMock()
         mock_config.get_automation_path.return_value = str(tmp_path)
         mock_config.get_import_allowlist.return_value = []
@@ -608,21 +610,22 @@ class TestAutomationManagerLifecycle:
         mock_get_config.return_value = mock_config
 
         manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        assert not manager._stop_event.is_set()
+        assert not manager.dispatcher.is_shutting_down
 
         # Call _on_ha_stop
         await manager._on_ha_stop(MagicMock())
 
-        assert manager._stop_event.is_set()
+        assert manager.dispatcher.is_shutting_down
+        assert manager.get_all_contexts() == []
 
     @patch("custom_components.haanim.automation_manager.get_config_manager")
-    async def test_action_pool_property(
+    async def test_dispatcher_property(
         self,
         mock_get_config: MagicMock,
         mock_hass: MagicMock,
         mock_entry: MagicMock,
     ) -> None:
-        """Test action_pool property returns the pool."""
+        """Test the dispatcher property returns the dispatcher every action request goes through."""
         mock_config = MagicMock()
         mock_config.get_automation_path.return_value = "/tmp"
         mock_config.get_import_allowlist.return_value = []
@@ -630,9 +633,8 @@ class TestAutomationManagerLifecycle:
         mock_get_config.return_value = mock_config
 
         manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
-        pool = manager.action_pool
-
-        assert pool is manager._action_pool
+        assert manager.dispatcher is manager._dispatcher
+        assert manager.dispatcher.pool is manager._action_pool
 
     @patch("custom_components.haanim.automation_manager.get_config_manager")
     def test_get_all_automation_statuses(

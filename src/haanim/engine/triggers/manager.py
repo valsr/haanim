@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 
 from haanim import const
-from haanim.engine.action_pool import ActionWorkerPool
+from haanim.engine.action_dispatcher import ActionDispatcher
 from haanim.engine.callables import event_arguments
 from haanim.engine.constraints import ConstraintChecker
 from haanim.interfaces import EventBus, Host, StateProvider
@@ -41,18 +41,18 @@ class TriggerManager:
     def __init__(
         self,
         host: Host,
-        action_pool: ActionWorkerPool,
+        dispatcher: ActionDispatcher,
     ) -> None:
         """Initialize the trigger manager.
 
         Args:
             host: The host the engine runs in.
-            action_pool: Action worker pool for executing triggered functions.
+            dispatcher: Where the triggered actions are requested.
         """
         self.host = host
         self.state_manager: StateProvider = host.states
         self.event_manager: EventBus = host.events
-        self.action_pool = action_pool
+        self.dispatcher = dispatcher
         self.constraint_checker = ConstraintChecker(host.states)
 
         # Store triggers by ID
@@ -624,12 +624,14 @@ class TriggerManager:
         try:
             event = self._event(trigger_def, notification)
 
-            # Execute through action pool
-            await self.action_pool.submit_action(
+            # A trigger function is an action: its execution mode applies
+            await self.dispatcher.dispatch(
                 trigger_def.automation_id or "",
-                trigger_def.func_name,
+                trigger_def.action_name or trigger_def.func_name,
                 trigger_def.func,
                 *event_arguments(trigger_def.func, event),
+                mode=trigger_def.execution_mode,
+                triggered=True,
             )
 
         except Exception as err:

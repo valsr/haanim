@@ -52,7 +52,7 @@ class ControlWorld(World):
         super().__init__(root)
         self.storage = storage or FakeStorage()
         self.flags = EnabledFlags(self.storage)
-        self.control = AutomationControl(self.flags, self.pool)
+        self.control = AutomationControl(self.flags, self.dispatcher)
 
     def add(self, name: str, source: str, **files: str) -> Automation:
         """Create an automation whose code can call ``record()`` to write to the log."""

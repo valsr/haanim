@@ -1,7 +1,8 @@
-"""Action worker pool for managing concurrent action execution.
+"""Action worker pool: executes the requests the dispatcher lets through.
 
-This module provides a pool-based execution model for running automation actions
-concurrently while respecting per-automation and global concurrency limits.
+The pool enforces the global limit on concurrently executing actions and records
+each execution. Execution modes, queues and cancellation belong to the
+dispatcher (``action_dispatcher.py``), which is the only caller of the pool.
 """
 
 from __future__ import annotations
@@ -15,23 +16,13 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from haanim.const import DEFAULT_MAX_CONCURRENT_ACTIONS, DEFAULT_WORKER_SHUTDOWN_TIMEOUT
+from haanim.const import DEFAULT_MAX_CONCURRENT_ACTIONS
 from haanim.engine.callables import as_coroutine_function
-from haanim.engine.errors import (
-    ActionCancelledError,
-    PoolExhaustedError,
-    ShutdownTimeoutError,
-)
+from haanim.engine.errors import PoolExhaustedError
 from haanim.engine.automation_status import AutomationStatusManager
 from haanim.interfaces import Clock
 
 _LOGGER = logging.getLogger(__name__)
-
-# How long an automation's cancelled actions get to finish before its shutdown action runs.
-CANCEL_CLEANUP_SECONDS = 0.05
-
-# How long the pool waits for cancelled actions when it shuts down.
-POOL_SHUTDOWN_WAIT_SECONDS = 1.0
 
 
 class ActionState(Enum):
@@ -81,9 +72,8 @@ class ActionExecution:
 class ActionWorkerPool:
     """Pool for managing concurrent action execution across automations.
 
-    Manages a pool of workers that can execute actions concurrently. Enforces:
-    - Global maximum concurrent actions limit
-    - Automation shutdown handling with timeout
+    Executes actions on the event loop, enforces the global maximum of
+    concurrent actions and records what is executing.
     """
 
     def __init__(
@@ -91,7 +81,6 @@ class ActionWorkerPool:
         status_manager: AutomationStatusManager,
         clock: Clock,
         max_workers: int = DEFAULT_MAX_CONCURRENT_ACTIONS,
-        shutdown_timeout: float = DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
     ) -> None:
         """Initialize the action worker pool.
 
@@ -99,14 +88,10 @@ class ActionWorkerPool:
             status_manager: Where the running actions of each automation are recorded.
             clock: Source of timestamps, delays and timeouts.
             max_workers: Maximum number of concurrent actions allowed.
-            shutdown_timeout: Timeout for shutdown actions in seconds.
         """
         self._status_manager = status_manager
         self._clock = clock
-        # Set each time an execution ends; lets wait_idle() wake up and re-check.
-        self._execution_ended = asyncio.Event()
         self._max_workers = max_workers
-        self._shutdown_timeout = shutdown_timeout
 
         # Track active executions by execution_id
         self._active_executions: dict[str, ActionExecution] = {}
@@ -117,17 +102,7 @@ class ActionWorkerPool:
         # Lock for modifying active executions
         self._lock = asyncio.Lock()
 
-        # Flag indicating pool is shutting down
-        self._shutting_down = False
-
-        # Automations that are in shutdown mode (no new actions allowed)
-        self._automations_shutting_down: set[str] = set()
-
-        _LOGGER.debug(
-            "ActionWorkerPool initialized with max_workers=%d, shutdown_timeout=%.3fs",
-            max_workers,
-            shutdown_timeout,
-        )
+        _LOGGER.debug("ActionWorkerPool initialized with max_workers=%d", max_workers)
 
     @property
     def max_workers(self) -> int:
@@ -143,22 +118,6 @@ class ActionWorkerPool:
     def available_workers(self) -> int:
         """Get the number of available worker slots."""
         return self._max_workers - len(self._active_executions)
-
-    @property
-    def is_shutting_down(self) -> bool:
-        """Check if the pool is shutting down."""
-        return self._shutting_down
-
-    def is_automation_shutting_down(self, automation_id: str) -> bool:
-        """Check if an automation is in shutdown mode.
-
-        Args:
-            automation_id: Name of the automation to check.
-
-        Returns:
-            True if the automation is shutting down.
-        """
-        return automation_id in self._automations_shutting_down
 
     def get_active_actions(self, automation_id: str) -> list[ActionExecution]:
         """Get all currently active actions for an automation.
@@ -207,17 +166,9 @@ class ActionWorkerPool:
 
         Raises:
             PoolExhaustedError: If no workers are available.
-            ActionCancelledError: If the action was cancelled.
+            asyncio.CancelledError: If the execution was cancelled.
         """
         async with self._lock:
-            # Check if pool is shutting down (for non-shutdown actions)
-            if self._shutting_down and not is_lifecycle:
-                raise ActionCancelledError(action_name, "pool is shutting down")
-
-            # Check if automation is in shutdown mode
-            if automation_id in self._automations_shutting_down and not is_lifecycle:
-                raise ActionCancelledError(action_name, "automation is shutting down")
-
             # Check if pool has available workers (non-blocking check)
             if self._semaphore.locked() and self.available_workers <= 0:
                 _LOGGER.error(
@@ -252,32 +203,11 @@ class ActionWorkerPool:
                 # Clean up after execution
                 if execution.execution_id in self._active_executions:
                     del self._active_executions[execution.execution_id]
-            self._execution_ended.set()
 
     @property
     def clock(self) -> Clock:
         """The clock this pool takes its time from."""
         return self._clock
-
-    async def wait_idle(self, automation_id: str | None = None) -> None:
-        """Wait until no action is executing.
-
-        Returns at once if nothing is executing. This does not stop new actions
-        from being submitted while waiting; it returns the first time the pool
-        is found idle.
-
-        Args:
-            automation_id: Wait only for this automation's actions. All automations if omitted.
-        """
-        while self._has_active(automation_id):
-            self._execution_ended.clear()
-            await self._execution_ended.wait()
-
-    def _has_active(self, automation_id: str | None) -> bool:
-        """Return whether any action is executing, optionally for one automation only."""
-        if automation_id is None:
-            return bool(self._active_executions)
-        return any(execution.automation_id == automation_id for execution in self._active_executions.values())
 
     async def _execute_action(self, execution: ActionExecution) -> Any:
         """Execute an action with semaphore limiting.
@@ -289,7 +219,7 @@ class ActionWorkerPool:
             The result of the action.
 
         Raises:
-            ActionCancelledError: If the action was cancelled.
+            asyncio.CancelledError: If the execution was cancelled.
             Exception: Any exception from the action itself.
         """
         status_manager = self._status_manager
@@ -337,7 +267,7 @@ class ActionWorkerPool:
 
                 return result
 
-            except asyncio.CancelledError as exc:
+            except asyncio.CancelledError:
                 execution.state = ActionState.CANCELLED
                 execution.completed_at = self._clock.now()
                 _LOGGER.warning(
@@ -347,7 +277,7 @@ class ActionWorkerPool:
                 )
                 # Update status - remove this action
                 status_manager.remove_running_action(execution.automation_id, execution.execution_id)
-                raise ActionCancelledError(execution.action_name) from exc
+                raise
 
             except Exception as err:
                 execution.state = ActionState.FAILED
@@ -364,187 +294,3 @@ class ActionWorkerPool:
                     execution.automation_id, execution.execution_id, error=str(err)
                 )
                 raise
-
-    async def cancel_automation_actions(self, automation_id: str, reason: str = "cancelled") -> int:
-        """Cancel all running actions for an automation.
-
-        Args:
-            automation_id: Name of the automation whose actions should be cancelled.
-            reason: Reason for cancellation.
-
-        Returns:
-            Number of actions cancelled.
-        """
-        async with self._lock:
-            executions = [
-                exec_info
-                for exec_info in self._active_executions.values()
-                if exec_info.automation_id == automation_id and exec_info.task
-            ]
-
-        if not executions:
-            return 0
-
-        _LOGGER.info(
-            "Cancelling %d action(s) for automation '%s': %s",
-            len(executions),
-            automation_id,
-            reason,
-        )
-
-        for execution in executions:
-            if execution.task:
-                execution.task.cancel()
-
-        return len(executions)
-
-    async def run_shutdown_action(
-        self,
-        automation_id: str,
-        shutdown_func: Callable[..., Any],
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """Run a shutdown action with timeout and proper handling.
-
-        This method:
-        1. Marks the automation as shutting down (prevents new actions)
-        2. Cancels any currently running actions for the automation
-        3. Runs the shutdown function with a timeout
-        4. Cleans up automation state
-
-        Args:
-            automation_id: Name of the automation shutting down.
-            shutdown_func: The shutdown function to execute.
-            *args: Positional arguments for the shutdown function.
-            **kwargs: Keyword arguments for the shutdown function.
-
-        Returns:
-            The result of the shutdown function, or None if timed out.
-
-        Raises:
-            ShutdownTimeoutError: If the shutdown action exceeds the timeout.
-        """
-        # Mark automation as shutting down
-        self._automations_shutting_down.add(automation_id)
-
-        try:
-            # Cancel any currently running actions
-            await self.cancel_automation_actions(automation_id, "automation shutdown")
-
-            # Give cancelled actions a moment to finish cleaning up
-            try:
-                await self._clock.wait_for(self.wait_idle(automation_id), CANCEL_CLEANUP_SECONDS)
-            except TimeoutError:
-                pass
-
-            # Execute shutdown with timeout
-            _LOGGER.debug("Running shutdown action for automation '%s'", automation_id)
-            try:
-                return await self._clock.wait_for(
-                    self.submit_action(
-                        automation_id,
-                        "__shutdown__",
-                        shutdown_func,
-                        *args,
-                        is_lifecycle=True,
-                        **kwargs,
-                    ),
-                    self._shutdown_timeout,
-                )
-            except TimeoutError as exc:
-                _LOGGER.error(
-                    "Shutdown action for automation '%s' timed out after %.0fs",
-                    automation_id,
-                    self._shutdown_timeout,
-                )
-                raise ShutdownTimeoutError(automation_id, self._shutdown_timeout) from exc
-            except ActionCancelledError as exc:
-                # This can happen if the action was cancelled due to timeout
-                _LOGGER.error(
-                    "Shutdown action for automation '%s' exceeded timeout of %.0fms",
-                    automation_id,
-                    self._shutdown_timeout * 1000,
-                )
-                raise ShutdownTimeoutError(automation_id, self._shutdown_timeout) from exc
-
-        finally:
-            # Clean up shutdown state
-            self._automations_shutting_down.discard(automation_id)
-
-    async def run_startup_action(
-        self,
-        automation_id: str,
-        startup_func: Callable[..., Any],
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """Run a startup action for an automation.
-
-        Args:
-            automation_id: Name of the automation starting up.
-            startup_func: The startup function to execute.
-            *args: Positional arguments for the startup function.
-            **kwargs: Keyword arguments for the startup function.
-
-        Returns:
-            The result of the startup function.
-
-        Raises:
-            PoolExhaustedError: If no workers are available.
-        """
-        _LOGGER.debug("Running startup action for automation '%s'", automation_id)
-        return await self.submit_action(
-            automation_id,
-            "__startup__",
-            startup_func,
-            *args,
-            is_lifecycle=True,
-            **kwargs,
-        )
-
-    async def shutdown(self) -> None:
-        """Shutdown the worker pool.
-
-        This will:
-        1. Set the shutting down flag
-        2. Cancel all running actions
-        3. Wait for all actions to complete or be cancelled
-        """
-        _LOGGER.info("Shutting down action worker pool")
-        self._shutting_down = True
-
-        # Cancel all running actions
-        async with self._lock:
-            execution_ids = list(self._active_executions.keys())
-
-        for execution_id in execution_ids:
-            execution = self._active_executions.get(execution_id)
-            if execution and execution.task:
-                execution.task.cancel()
-
-        # Wait for all actions to complete
-        try:
-            await self._clock.wait_for(self.wait_idle(), POOL_SHUTDOWN_WAIT_SECONDS)
-        except TimeoutError:
-            pass
-
-        if self.active_count > 0:
-            _LOGGER.warning(
-                "Pool shutdown complete with %d actions still active",
-                self.active_count,
-            )
-        else:
-            _LOGGER.info("Action worker pool shutdown complete")
-
-    def reset(self) -> None:
-        """Reset the pool state.
-
-        This clears all tracking data and resets the shutdown flag.
-        Should only be used for testing or reinitialization.
-        """
-        self._active_executions.clear()
-        self._automations_shutting_down.clear()
-        self._shutting_down = False
-        self._semaphore = asyncio.Semaphore(self._max_workers)
-        _LOGGER.debug("Action worker pool reset")

@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from haanim.const import DEFAULT_SHUTDOWN_TIMEOUT, DEFAULT_STARTUP_TIMEOUT, DEFAULT_STOP_GRACE_PERIOD
+from haanim.engine.action_dispatcher import ActionDispatcher
 from haanim.engine.action_pool import ActionWorkerPool
 from haanim.engine.automation_context import AutomationContext
 from haanim.engine.automation_status import AutomationStatusManager
@@ -75,6 +76,7 @@ class World:
         self.clock = FakeClock()
         self.host = make_host(files=LocalFileSystem(), clock=self.clock)
         self.pool = ActionWorkerPool(status_manager=AutomationStatusManager(), clock=self.clock)
+        self.dispatcher = ActionDispatcher(self.pool)
         self.triggers = RecordingTriggers()
         self.settings = settings
         self.automations: dict[str, Automation] = {}
@@ -120,7 +122,9 @@ class World:
         context = make_context(
             str(folder), host=self.host, registry=self, storage_path=str(self.root / ".storage")
         )
-        automation = Automation(context, pool=self.pool, triggers=self.triggers, settings=self.settings)
+        automation = Automation(
+            context, dispatcher=self.dispatcher, triggers=self.triggers, settings=self.settings
+        )
         self.automations[automation.automation_id] = automation
         return automation
 
@@ -275,7 +279,7 @@ class TestLoad:
         folder = world.root / "empty"
         folder.mkdir()
         automation = Automation(
-            make_context(str(folder), host=world.host), pool=world.pool, triggers=world.triggers
+            make_context(str(folder), host=world.host), dispatcher=world.dispatcher, triggers=world.triggers
         )
 
         assert await automation.load() is False
@@ -511,7 +515,7 @@ class TestStartFailure:
         world.settings = None
         automation = Automation(
             automation.context,
-            pool=world.pool,
+            dispatcher=world.dispatcher,
             triggers=world.triggers,
             settings=LifecycleSettings(startup_timeout=2),
         )
@@ -1068,7 +1072,7 @@ class TestNoTriggers:
         """Registering with the null registrar succeeds and does nothing."""
         folder = world.write("lights", SIMPLE)
         automation = Automation(
-            make_context(str(folder), host=world.host), pool=world.pool, triggers=NoTriggers()
+            make_context(str(folder), host=world.host), dispatcher=world.dispatcher, triggers=NoTriggers()
         )
 
         await automation.load()

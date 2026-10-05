@@ -85,6 +85,8 @@ class TriggerDefinition:
         kwargs: The trigger's own options.
         automation_id: ID of the automation the trigger belongs to.
         constraints: The constraint arguments given to the trigger decorator, by name.
+        action_name: The name of the action the function is; the function name if omitted.
+        execution_mode: The execution mode of that action.
     """
 
     trigger_type: str
@@ -94,6 +96,8 @@ class TriggerDefinition:
     kwargs: dict[str, Any] = field(default_factory=dict[str, Any])
     automation_id: str | None = None
     constraints: dict[str, Any] = field(default_factory=dict[str, Any])
+    action_name: str | None = None
+    execution_mode: const.ActionMode = const.ActionMode.DROP
 
 
 @dataclass
@@ -475,6 +479,8 @@ class AutomationContext:
                             kwargs=trigger_info.kwargs,
                             automation_id=self.automation_id,
                             constraints=trigger_info.constraints,
+                            action_name=definition.name,
+                            execution_mode=definition.execution_mode,
                         )
                     )
 

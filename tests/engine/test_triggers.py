@@ -279,7 +279,7 @@ class TestTriggerManager:
         """Create a TriggerManager instance."""
         return TriggerManager(
             host=mock_host(states=mock_state_manager, events=mock_event_manager),
-            action_pool=MagicMock(),
+            dispatcher=MagicMock(),
         )
 
     async def test_async_setup(
@@ -898,7 +898,7 @@ class TestTriggerManagerAdvanced:
         """Create a TriggerManager instance."""
         return TriggerManager(
             host=mock_host(),
-            action_pool=MagicMock(),
+            dispatcher=MagicMock(),
         )
 
     async def test_unregister_trigger(self, trigger_manager: TriggerManager) -> None:

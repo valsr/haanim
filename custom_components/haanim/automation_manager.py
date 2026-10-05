@@ -20,12 +20,12 @@ from custom_components.haanim.config import ConfigManager, get_config_manager
 
 from custom_components.haanim.const import (
     DEFAULT_MAX_CONCURRENT_ACTIONS,
-    DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
     DOMAIN,
     EVENT_AUTOMATION_ERROR,
     EVENT_AUTOMATION_LOADED,
     EVENT_AUTOMATION_UNLOADED,
 )
+from haanim.engine.action_dispatcher import ActionDispatcher
 from haanim.engine.action_pool import ActionWorkerPool
 from haanim.engine.automation_context import (
     ActionDefinition,
@@ -119,10 +119,12 @@ class AutomationManager:
             status_manager=self._status_manager,
             clock=host.clock,
             max_workers=DEFAULT_MAX_CONCURRENT_ACTIONS,
-            shutdown_timeout=DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
         )
 
-        self._control = AutomationControl(self._flags, self._action_pool)
+        # Every action request goes through the dispatcher (execution modes, queues)
+        self._dispatcher = ActionDispatcher(self._action_pool)
+
+        self._control = AutomationControl(self._flags, self._dispatcher)
 
         # State
         self._started = False
@@ -185,8 +187,8 @@ class AutomationManager:
         # Stop all automations, one at a time in descending ID order
         await stop_all(self._automations.values())
 
-        # Shutdown the worker pool
-        await self._action_pool.shutdown()
+        # Reject new requests and cancel what is still running
+        await self._dispatcher.shutdown()
 
         # Unload all automations
         await self.async_unload_all_automations()
@@ -275,7 +277,7 @@ class AutomationManager:
             additional_imports=self._import_allowlist,
             allow_all_imports=self._allow_all_imports,
         )
-        automation = Automation(context, pool=self._action_pool, triggers=self._triggers)
+        automation = Automation(context, dispatcher=self._dispatcher, triggers=self._triggers)
 
         # Kept also when loading fails: the automation is then in the error state
         self._automations[automation_path] = automation
@@ -648,13 +650,9 @@ class AutomationManager:
             self._flags_loaded = True
 
     @property
-    def action_pool(self) -> ActionWorkerPool:
-        """Get the action worker pool.
-
-        Returns:
-            The ActionWorkerPool instance.
-        """
-        return self._action_pool
+    def dispatcher(self) -> ActionDispatcher:
+        """The dispatcher every action request goes through."""
+        return self._dispatcher
 
     def get_automation_status(self, automation_id: str) -> AutomationStatus:
         """Get the current status of an automation.

@@ -17,7 +17,6 @@ from haanim.engine.action_pool import ActionWorkerPool
 from haanim.engine.ast_evaluator import DEFAULT_CHECKPOINT_INTERVAL, AstEvaluator
 from haanim.engine.automation_status import AutomationStatusManager
 from haanim.engine.callables import as_coroutine_function
-from haanim.engine.errors import ActionCancelledError
 from haanim.engine.eval_function import CHECKPOINT, NATIVE_CALL_WARNING_SECONDS, run_to_completion
 from haanim.testing import FakeClock, LocalFileSystem, make_host
 from tests.engine.helpers import automation_file, load_and_run, make_context
@@ -359,8 +358,8 @@ class TestCancellation:
 
         assert symbols["log"] == ["cancelled", "finally"]
 
-    async def test_pool_cancels_an_endless_def_action(self) -> None:
-        """The pool can cancel a def action that loops forever."""
+    async def test_an_endless_def_action_in_the_pool_can_be_cancelled(self) -> None:
+        """A def action that loops forever in the pool can be cancelled."""
         clock = FakeClock()
         pool = ActionWorkerPool(status_manager=AutomationStatusManager(), clock=clock)
         symbols = await load(
@@ -371,8 +370,8 @@ class TestCancellation:
         assert symbols["started"] == [1]
         assert len(pool.get_active_actions("auto")) == 1
 
-        assert await pool.cancel_automation_actions("auto") == 1
-        with pytest.raises(ActionCancelledError):
+        submitted.cancel()
+        with pytest.raises(asyncio.CancelledError):
             await submitted
 
         assert pool.get_active_actions("auto") == []
