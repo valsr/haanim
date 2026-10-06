@@ -17,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar, overload
 
+from haanim.engine.cron_schedule import validate_cron
 from haanim.engine.durations import parse_duration
 from haanim.engine.time_expr import parse_day_of_week
 from haanim.engine.time_schedule import TimeSchedule
@@ -456,6 +457,10 @@ def on_cron(
         when_not: Constraint: only while this state expression is false.
     """
     _require_name("on_cron", "the cron expression", expr)
+    try:
+        validate_cron(expr)
+    except ValueError as err:
+        raise ValueError(f"@on_cron: {err}") from None
     constraints: dict[str, Any] = {
         "start_time": start_time,
         "end_time": end_time,

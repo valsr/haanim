@@ -19,6 +19,7 @@ from haanim.engine.action_dispatcher import ActionDispatcher
 from haanim.engine.callables import event_arguments
 from haanim.engine.constraints import ConstraintChecker
 from haanim.engine.triggers.base import BaseTrigger
+from haanim.engine.triggers.cron_trigger import CronTrigger
 from haanim.engine.triggers.interval_trigger import IntervalTrigger
 from haanim.engine.triggers.time_trigger import TimeTrigger
 from haanim.interfaces import EventBus, Host, StateProvider
@@ -31,7 +32,8 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 # The trigger kinds that run their own schedule on the clock
-_SCHEDULED: dict[str, type[IntervalTrigger] | type[TimeTrigger]] = {
+_SCHEDULED: dict[str, type[IntervalTrigger] | type[TimeTrigger] | type[CronTrigger]] = {
+    const.TRIGGER_CRON: CronTrigger,
     const.TRIGGER_INTERVAL: IntervalTrigger,
     const.TRIGGER_TIME: TimeTrigger,
 }
