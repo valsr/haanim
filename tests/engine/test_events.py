@@ -700,7 +700,7 @@ class TestTriggerFiredEvents:
         self.check_base(event, clock)
 
     async def test_events_from_the_trigger_manager(self) -> None:
-        """The manager that fires registered triggers builds StateEvent and TimeEvent."""
+        """The manager builds a StateEvent for a state trigger; a time trigger delivers a TimeEvent."""
         clock = FakeClock()
         states = FakeStateProvider(clock)
         host = make_host(clock=clock, states=states)
@@ -728,7 +728,8 @@ class TestTriggerFiredEvents:
         time_id = await manager.register_trigger(time_definition)
 
         await manager._execute_trigger(state_id, change)  # pylint: disable=protected-access
-        await manager._execute_trigger(time_id)  # pylint: disable=protected-access
+        assert time_id
+        await clock.advance(hours=24)
 
         state_event, time_event = fired
         assert type(state_event) is StateEvent
@@ -738,9 +739,10 @@ class TestTriggerFiredEvents:
             "35",
         )
         assert type(time_event) is TimeEvent
-        assert time_event.trigger_time == clock.now()
-        for event in fired:
-            self.check_base(event, clock)
+        assert (time_event.trigger_time.hour, time_event.trigger_time.minute) == (9, 0)
+        assert time_event.call_time == time_event.trigger_time
+        assert (time_event.automation_id, time_event.source) == (state_event.automation_id, "trigger")
+        await manager.async_teardown()
 
     async def test_trigger_function_without_event_parameter_is_called_without_it(self) -> None:
         """A trigger function declared without parameters is fired without the event."""

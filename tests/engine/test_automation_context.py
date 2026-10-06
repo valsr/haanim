@@ -64,7 +64,7 @@ class TestTriggerDefinition:
         ("trigger_type", "trigger_expr"),
         [
             ("state", "sensor.temperature > 25"),
-            ("time", "cron(0 * * * *)"),
+            ("time", "09:00"),
             ("event", "my_custom_event"),
         ],
     )
@@ -313,7 +313,7 @@ from haanim import on_state, on_time
 def on_temp_high():
     pass
 
-@on_time("cron(0 * * * *)")
+@on_time("09:00")
 def on_hour():
     pass
 """
@@ -584,7 +584,7 @@ def on_high():
 from haanim import on_state, on_time
 @on_state("sensor.a > 10")
 @on_state("sensor.b < 5")
-@on_time("cron(0 8 * * *)")
+@on_time("08:00")
 def multi_trigger():
     pass
 """

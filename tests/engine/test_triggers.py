@@ -308,9 +308,10 @@ class TestTriggerManager:
         trigger_type: str,
     ) -> None:
         """Test registering different trigger types."""
+        expressions = {TRIGGER_STATE: "sensor.a == 'on'", TRIGGER_TIME: "09:00", TRIGGER_EVENT: "my_event"}
         trigger_def = TriggerDefinition(
             trigger_type=trigger_type,
-            trigger_expr="test_expr",
+            trigger_expr=expressions[trigger_type],
             func_name="func",
             func=MagicMock(),
             kwargs={},
@@ -519,75 +520,6 @@ class TestStateTrigger:
         await state_trigger.async_stop()
 
 
-class TestTimeTrigger:
-    """Tests for TimeTrigger class."""
-
-    @pytest.fixture
-    def mock_hass(self) -> MagicMock:
-        """Create a mock Home Assistant instance."""
-        hass = MagicMock()
-        hass.async_create_task = MagicMock()
-        return hass
-
-    @pytest.fixture
-    def trigger_def(self) -> TriggerDefinition:
-        """Create a trigger definition."""
-        return TriggerDefinition(
-            trigger_type=TRIGGER_TIME,
-            trigger_expr="time(08:00)",
-            func_name="on_time",
-            func=MagicMock(),
-            kwargs={},
-            automation_id="test_automation",
-        )
-
-    @pytest.fixture
-    def time_trigger(self, mock_hass: MagicMock, trigger_def: TriggerDefinition) -> TimeTrigger:
-        """Create a TimeTrigger instance."""
-        return TimeTrigger(
-            host=mock_host(),
-            trigger_def=trigger_def,
-        )
-
-    def test_init(self, time_trigger: TimeTrigger) -> None:
-        """Test initialization."""
-        assert time_trigger._startup_triggered is False
-
-    async def test_async_start(self, time_trigger: TimeTrigger, mock_hass: MagicMock) -> None:
-        """Test async_start creates task."""
-        await time_trigger.async_start()
-        assert time_trigger._task is not None
-        await time_trigger.async_stop()
-
-    async def test_async_stop(self, time_trigger: TimeTrigger) -> None:
-        """Test async_stop cancels task."""
-
-        # Create an actual async task that we can cancel
-        async def long_running():
-            await asyncio.Event().wait()
-
-        time_trigger._task = asyncio.create_task(long_running())
-        await time_trigger.async_stop()
-        assert time_trigger._task.cancelled() or time_trigger._task.done()
-
-    @pytest.mark.parametrize(
-        ("time_str", "expected"),
-        [
-            ("time(08:00)", True),
-            ("time(23:59:59)", True),
-            ("invalid", False),
-        ],
-    )
-    def test_parse_time_spec(self, time_trigger: TimeTrigger, time_str: str, expected: bool) -> None:
-        """Test parsing time specifications."""
-        now = datetime(2024, 6, 15, 7, 0, 0)
-        result = time_trigger._parse_time_spec(time_str, now)
-        if expected:
-            assert result is not None
-        else:
-            assert result is None
-
-
 class TestEventTrigger:
     """Tests for EventTrigger class."""
 
@@ -655,123 +587,6 @@ class TestEventTrigger:
         await event_trigger.async_stop()
 
         assert event_trigger._task.cancelled() or event_trigger._task.done()
-
-
-class TestTimeTriggerParsing:
-    """Tests for TimeTrigger parsing methods."""
-
-    @pytest.fixture
-    def mock_hass(self) -> MagicMock:
-        """Create a mock Home Assistant instance."""
-        hass = MagicMock()
-        hass.async_create_task = MagicMock()
-        return hass
-
-    @pytest.fixture
-    def time_trigger(self, mock_hass: MagicMock) -> TimeTrigger:
-        """Create a TimeTrigger instance."""
-        trigger_def = TriggerDefinition(
-            trigger_type=TRIGGER_TIME,
-            trigger_expr="time(08:00)",
-            func_name="on_time",
-            func=MagicMock(),
-            kwargs={},
-            automation_id="test_automation",
-        )
-        return TimeTrigger(
-            host=mock_host(),
-            trigger_def=trigger_def,
-        )
-
-    @pytest.mark.parametrize(
-        ("interval_str", "expected_seconds"),
-        [
-            ("1 hour", 3600),
-            ("30 min", 1800),
-            ("2 hours 30 minutes", 9000),
-            ("1h30m", 5400),
-            ("45 seconds", 45),
-            ("2h", 7200),
-            ("invalid", None),
-        ],
-    )
-    def test_parse_interval(
-        self, time_trigger: TimeTrigger, interval_str: str, expected_seconds: int | None
-    ) -> None:
-        """Test parsing interval strings."""
-        result = time_trigger._parse_interval(interval_str)
-        if expected_seconds is not None:
-            assert result is not None
-            assert result.total_seconds() == expected_seconds
-        else:
-            assert result is None
-
-    @pytest.mark.parametrize(
-        ("field", "value", "min_val", "max_val", "expected"),
-        [
-            ("*", 5, 0, 59, True),  # Wildcard
-            ("*/5", 10, 0, 59, True),  # Every 5, matches
-            ("*/5", 7, 0, 59, False),  # Every 5, doesn't match
-            ("1,5,10", 5, 0, 59, True),  # Comma list, matches
-            ("1,5,10", 7, 0, 59, False),  # Comma list, doesn't match
-            ("1-10", 5, 0, 59, True),  # Range, within
-            ("1-10", 15, 0, 59, False),  # Range, outside
-            ("30", 30, 0, 59, True),  # Single value, matches
-            ("30", 31, 0, 59, False),  # Single value, doesn't match
-        ],
-    )
-    def test_cron_field_matches(
-        self,
-        time_trigger: TimeTrigger,
-        field: str,
-        value: int,
-        min_val: int,
-        max_val: int,
-        expected: bool,
-    ) -> None:
-        """Test cron field matching."""
-        result = time_trigger._cron_field_matches(value, field, min_val, max_val)
-        assert result is expected
-
-    def test_cron_matches(self, time_trigger: TimeTrigger) -> None:
-        """Test cron expression matching."""
-        # Test matching: 30 8 * * * (8:30 every day)
-        dt = datetime(2024, 6, 15, 8, 30, 0)
-        assert time_trigger._cron_matches(dt, "30", "8", "*", "*", "*") is True
-
-        # Test not matching
-        dt2 = datetime(2024, 6, 15, 9, 30, 0)
-        assert time_trigger._cron_matches(dt2, "30", "8", "*", "*", "*") is False
-
-    def test_parse_cron_valid(self, time_trigger: TimeTrigger) -> None:
-        """Test parsing valid cron expression."""
-        now = datetime(2024, 6, 15, 8, 0, 0)
-        result = time_trigger._parse_cron("30 8 * * *", now)
-        assert result is not None
-        assert result.hour == 8
-        assert result.minute == 30
-
-    def test_parse_cron_invalid(self, time_trigger: TimeTrigger) -> None:
-        """Test parsing invalid cron expression."""
-        now = datetime(2024, 6, 15, 8, 0, 0)
-        result = time_trigger._parse_cron("invalid cron", now)
-        assert result is None
-
-    def test_calculate_next_trigger(self, time_trigger: TimeTrigger) -> None:
-        """Test calculating next trigger time."""
-        specs = ["time(10:00)", "time(15:00)"]
-        # At 8:00, next should be 10:00
-        with patch.object(time_trigger.host.clock, "now") as mock_now:
-            mock_now.return_value = datetime(2024, 6, 15, 8, 0, 0)
-            result = time_trigger._calculate_next_trigger(specs)
-            assert result is not None
-            assert result.hour == 10
-
-    def test_calculate_next_trigger_no_valid(self, time_trigger: TimeTrigger) -> None:
-        """Test calculating next trigger with no valid specs."""
-        specs = ["invalid_spec"]
-        result = time_trigger._calculate_next_trigger(specs)
-        assert result is None
 
 
 class TestStateTriggerAdvanced:
@@ -1165,92 +980,6 @@ class TestBaseTriggerConstraints:
         )
         result = trigger._evaluate_state_expr("sensor.temp > 25")
         assert result is expected
-
-
-class TestTimeTriggerTimeLoop:
-    """Tests for TimeTrigger time loop functionality."""
-
-    @pytest.fixture
-    def mock_hass(self) -> MagicMock:
-        """Create a mock Home Assistant instance."""
-        hass = MagicMock()
-        hass.async_create_task = MagicMock(return_value=MagicMock())
-        hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
-        return hass
-
-    @pytest.fixture
-    def mock_state_manager(self) -> MagicMock:
-        """Create a mock state manager."""
-        return MagicMock()
-
-    @pytest.fixture
-    def mock_event_manager(self) -> MagicMock:
-        """Create a mock event manager."""
-        return MagicMock()
-
-    @pytest.mark.parametrize(
-        ("interval_str", "expected_seconds"),
-        [
-            ("5s", 5),
-            ("5sec", 5),
-            ("5second", 5),
-            ("5seconds", 5),
-            ("2m", 120),
-            ("2min", 120),
-            ("2minute", 120),
-            ("2minutes", 120),
-            ("1h", 3600),
-            ("1hr", 3600),
-            ("1hour", 3600),
-            ("1hours", 3600),
-        ],
-    )
-    def test_parse_interval(
-        self,
-        mock_hass: MagicMock,
-        mock_state_manager: MagicMock,
-        mock_event_manager: MagicMock,
-        interval_str: str,
-        expected_seconds: int,
-    ) -> None:
-        """Test _parse_interval with various formats."""
-        trigger_def = TriggerDefinition(
-            trigger_type=TRIGGER_TIME,
-            trigger_expr=f"every({interval_str})",
-            func_name="on_time",
-            func=MagicMock(),
-            kwargs={},
-            automation_id="test_automation",
-        )
-        trigger = TimeTrigger(
-            host=mock_host(states=mock_state_manager, events=mock_event_manager),
-            trigger_def=trigger_def,
-        )
-        result = trigger._parse_interval(interval_str)
-        assert result is not None
-        assert result.total_seconds() == expected_seconds
-
-    def test_parse_interval_invalid(
-        self,
-        mock_hass: MagicMock,
-        mock_state_manager: MagicMock,
-        mock_event_manager: MagicMock,
-    ) -> None:
-        """Test _parse_interval with invalid format."""
-        trigger_def = TriggerDefinition(
-            trigger_type=TRIGGER_TIME,
-            trigger_expr="every(invalid)",
-            func_name="on_time",
-            func=MagicMock(),
-            kwargs={},
-            automation_id="test_automation",
-        )
-        trigger = TimeTrigger(
-            host=mock_host(states=mock_state_manager, events=mock_event_manager),
-            trigger_def=trigger_def,
-        )
-        result = trigger._parse_interval("invalid")
-        assert result is None
 
 
 class TestEventTriggerAdvanced:

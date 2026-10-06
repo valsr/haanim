@@ -8,6 +8,7 @@ automations.
 from __future__ import annotations
 
 import asyncio
+import gc
 import logging
 from collections import defaultdict
 from collections.abc import AsyncIterator, Callable
@@ -490,8 +491,20 @@ class TestCancelledCaller:
         caller.cancel()
         with caplog.at_level(logging.ERROR, logger="asyncio"):
             await bench.release("x")
+            await asyncio.gather(caller, return_exceptions=True)
+            del caller
+            gc.collect()
+            await bench.clock.settle()
         assert bench.dispatcher.is_idle()
-        assert "never retrieved" not in caplog.text
+        # Only this test's exception counts: another test's leftovers may be collected here too
+        leaked = [
+            record
+            for record in caplog.records
+            if "never retrieved" in record.getMessage()
+            and record.exc_info is not None
+            and isinstance(record.exc_info[1], ValueError)
+        ]
+        assert leaked == []
 
 
 class Chain:

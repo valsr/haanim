@@ -104,15 +104,18 @@ class FakeClock:
         """
         if now.tzinfo is None:
             raise ValueError("FakeClock needs a timezone-aware datetime")
-        self._now = now
+        # Kept as an instant in UTC and shown in the starting time's zone, so that
+        # moving the clock is elapsed time also across a daylight saving change
+        self._zone = now.tzinfo
+        self._now = now.astimezone(timezone.utc)
         self._timers: list[_FakeTimer] = []
         self._sequence = 0
 
     # --- Clock protocol ---------------------------------------------------------
 
     def now(self) -> datetime:
-        """Return the current fake time."""
-        return self._now
+        """Return the current fake time, in the time zone the clock was started in."""
+        return self._now.astimezone(self._zone)
 
     async def sleep(self, seconds: float) -> None:
         """Suspend the caller until the clock has been advanced by ``seconds``."""
@@ -139,7 +142,7 @@ class FakeClock:
         if when.tzinfo is None:
             raise ValueError("FakeClock needs a timezone-aware datetime")
         self._sequence += 1
-        timer = _FakeTimer(max(when, self._now), self._sequence, callback)
+        timer = _FakeTimer(max(when.astimezone(timezone.utc), self._now), self._sequence, callback)
         self._timers.append(timer)
         return timer
 
@@ -222,7 +225,7 @@ class FakeClock:
             timer.fire()
             await self.settle()
         self._now = target
-        return self._now
+        return self.now()
 
     async def settle(self) -> None:
         """Let tasks that are ready to run do so, without moving time."""

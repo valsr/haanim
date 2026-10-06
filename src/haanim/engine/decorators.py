@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from typing import Any, TypeVar, overload
 
 from haanim.engine.durations import parse_duration
+from haanim.engine.time_expr import parse_day_of_week
+from haanim.engine.time_schedule import TimeSchedule
 from haanim.const import (
     TRIGGER_CRON,
     TRIGGER_EVENT,
@@ -302,6 +304,11 @@ def _constraints(decorator: str, given: dict[str, Any]) -> dict[str, Any]:
         allowed: tuple[type, ...] = (str, int) if name == "day_of_week" else (str,)
         if isinstance(value, bool) or not isinstance(value, allowed):
             raise TypeError(f"@{decorator}: {name} must be a string, not {type(value).__name__}")
+        if name == "day_of_week":
+            try:
+                parse_day_of_week(value)
+            except ValueError as err:
+                raise ValueError(f"@{decorator}: {err}") from None
         constraints[name] = value
     return constraints
 
@@ -380,6 +387,10 @@ def on_time(
     options: dict[str, Any] = {"day_of_week": day_of_week, "day_of_month": day_of_month}
     # day_of_week does the same job for the trigger and as a constraint; it is checked once, here.
     _constraints("on_time", {"day_of_week": day_of_week})
+    try:
+        TimeSchedule.parse(expr, day_of_week, day_of_month)
+    except ValueError as err:
+        raise ValueError(f"@on_time: {err}") from None
     return _trigger("on_time", TRIGGER_TIME, expr, options, constraints)
 
 

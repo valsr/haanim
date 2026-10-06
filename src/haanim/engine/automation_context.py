@@ -90,6 +90,7 @@ class TriggerDefinition:
         action_name: The name of the action the function is; the function name if omitted.
         execution_mode: The execution mode of that action.
         timeout: The time limit of that action in seconds; None for the default timeout.
+        logger: The automation's logger, for what the trigger has to tell the automation's author.
     """
 
     trigger_type: str
@@ -102,6 +103,7 @@ class TriggerDefinition:
     action_name: str | None = None
     execution_mode: const.ActionMode = const.ActionMode.DROP
     timeout: float | None = None
+    logger: logging.Logger | None = None
 
 
 @dataclass
@@ -480,6 +482,7 @@ class AutomationContext:
                             action_name=definition.name,
                             execution_mode=definition.execution_mode,
                             timeout=definition.timeout,
+                            logger=self._logger,
                         )
                     )
 

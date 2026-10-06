@@ -20,14 +20,21 @@ from haanim.engine.callables import event_arguments
 from haanim.engine.constraints import ConstraintChecker
 from haanim.engine.triggers.base import BaseTrigger
 from haanim.engine.triggers.interval_trigger import IntervalTrigger
+from haanim.engine.triggers.time_trigger import TimeTrigger
 from haanim.interfaces import EventBus, Host, StateProvider
-from haanim.events import SOURCE_TRIGGER, ActionEvent, StateEvent, TimeEvent
+from haanim.events import SOURCE_TRIGGER, ActionEvent, StateEvent
 from haanim.types import StateChangedEvent
 
 if TYPE_CHECKING:
     from haanim.engine.automation_context import TriggerDefinition
 
 _LOGGER = logging.getLogger(__name__)
+
+# The trigger kinds that run their own schedule on the clock
+_SCHEDULED: dict[str, type[IntervalTrigger] | type[TimeTrigger]] = {
+    const.TRIGGER_INTERVAL: IntervalTrigger,
+    const.TRIGGER_TIME: TimeTrigger,
+}
 
 
 class TriggerManager:
@@ -66,9 +73,6 @@ class TriggerManager:
         # Track which entities are being watched for state triggers
         self._entity_triggers: dict[str, list[str]] = {}  # entity_id -> [trigger_ids]
 
-        # Track time-based triggers
-        self._time_triggers: list[str] = []  # trigger_ids
-
         # Track event-based triggers
         self._event_triggers: dict[str, list[str]] = {}  # event_type -> [trigger_ids]
 
@@ -77,7 +81,6 @@ class TriggerManager:
 
         # Background tasks
         self._state_watch_task: asyncio.Task[Any] | None = None
-        self._time_watch_task: asyncio.Task[Any] | None = None
 
         # Triggers that run their own schedule, by trigger ID
         self._running: dict[str, BaseTrigger] = {}
@@ -99,10 +102,6 @@ class TriggerManager:
         if self._entity_triggers:
             await self._start_state_watching()
 
-        # Start watching for time-based triggers
-        if self._time_triggers:
-            await self._start_time_watching()
-
         _LOGGER.info("Trigger manager started with %d triggers", len(self._triggers))
 
     async def async_teardown(self) -> None:
@@ -114,14 +113,6 @@ class TriggerManager:
             self._state_watch_task.cancel()
             try:
                 await self._state_watch_task
-            except asyncio.CancelledError:
-                pass
-
-        # Stop time watching
-        if self._time_watch_task:
-            self._time_watch_task.cancel()
-            try:
-                await self._time_watch_task
             except asyncio.CancelledError:
                 pass
 
@@ -141,7 +132,6 @@ class TriggerManager:
         self._triggers.clear()
         self._trigger_metadata.clear()
         self._entity_triggers.clear()
-        self._time_triggers.clear()
         self._event_triggers.clear()
         self._hold_tasks.clear()
 
@@ -170,15 +160,13 @@ class TriggerManager:
         # Handle different trigger types
         if trigger_def.trigger_type == const.TRIGGER_STATE:
             self._register_state_trigger(trigger_id, trigger_def, metadata)
-        elif trigger_def.trigger_type == const.TRIGGER_TIME:
-            self._register_time_trigger(trigger_id, trigger_def, metadata)
         elif trigger_def.trigger_type == const.TRIGGER_EVENT:
             self._register_event_trigger(trigger_id, trigger_def, metadata)
-        elif trigger_def.trigger_type == const.TRIGGER_INTERVAL:
+        elif trigger_def.trigger_type in _SCHEDULED:
             # Scheduled from now: the automation's @startup has completed
-            interval = IntervalTrigger(self.host, trigger_def, self.dispatcher)
-            self._running[trigger_id] = interval
-            await interval.async_start()
+            scheduled = _SCHEDULED[trigger_def.trigger_type](self.host, trigger_def, self.dispatcher)
+            self._running[trigger_id] = scheduled
+            await scheduled.async_start()
         else:
             _LOGGER.error("Unknown trigger type: %s", trigger_def.trigger_type)
             del self._triggers[trigger_id]
@@ -190,8 +178,6 @@ class TriggerManager:
         if self._started:
             if trigger_def.trigger_type == const.TRIGGER_STATE:
                 await self._start_state_watching()
-            elif trigger_def.trigger_type == const.TRIGGER_TIME:
-                await self._start_time_watching()
 
         _LOGGER.debug("Registered trigger: %s", trigger_id)
         return trigger_id
@@ -234,22 +220,6 @@ class TriggerManager:
             if entity_id not in self._entity_triggers:
                 self._entity_triggers[entity_id] = []
             self._entity_triggers[entity_id].append(trigger_id)
-
-    def _register_time_trigger(
-        self,
-        trigger_id: str,
-        trigger_def: TriggerDefinition,
-        metadata: dict[str, Any],
-    ) -> None:
-        """Register a time-based trigger.
-
-        Args:
-            trigger_id: Unique trigger ID.
-            trigger_def: The trigger definition.
-            metadata: Trigger metadata dictionary to populate.
-        """
-        self._time_triggers.append(trigger_id)
-        metadata["time_specs"] = trigger_def.trigger_expr
 
     def _register_event_trigger(
         self,
@@ -322,10 +292,6 @@ class TriggerManager:
                     self._entity_triggers[entity_id].remove(trigger_id)
                     if not self._entity_triggers[entity_id]:
                         del self._entity_triggers[entity_id]
-
-        elif trigger_def.trigger_type == const.TRIGGER_TIME:
-            if trigger_id in self._time_triggers:
-                self._time_triggers.remove(trigger_id)
 
         elif trigger_def.trigger_type == const.TRIGGER_EVENT:
             event_type = metadata.get("event_type", "")
@@ -520,66 +486,6 @@ class TriggerManager:
     # Time Trigger Handling
     # =========================================================================
 
-    async def _start_time_watching(self) -> None:
-        """Start watching for time-based triggers."""
-        if self._time_watch_task:
-            return  # Already watching
-
-        self._time_watch_task = asyncio.create_task(
-            self._time_watch_loop(),
-            name="haanim_trigger_manager_time_watch",
-        )
-
-    async def _time_watch_loop(self) -> None:
-        """Watch for time-based triggers."""
-        while True:
-            try:
-                # Check all time triggers every minute
-                await self.host.clock.sleep(60)
-
-                current_time = self.host.clock.now()
-
-                for trigger_id in self._time_triggers:
-                    if await self._should_fire_time_trigger(trigger_id, current_time):
-                        asyncio.create_task(
-                            self._handle_time_trigger(trigger_id),
-                            name=f"haanim_time_trigger_{trigger_id}",
-                        )
-
-            except asyncio.CancelledError:
-                break
-            except Exception as err:
-                _LOGGER.error("Error in time watch loop: %s", err, exc_info=True)
-
-    async def _should_fire_time_trigger(
-        self,
-        trigger_id: str,
-        current_time: datetime,
-    ) -> bool:
-        """Check if a time trigger should fire.
-
-        Args:
-            trigger_id: The trigger ID.
-            current_time: Current time.
-
-        Returns:
-            True if trigger should fire.
-        """
-        # TODO: Implement full time trigger evaluation (cron, intervals, etc.)
-        # For now, this is a placeholder
-        return False
-
-    async def _handle_time_trigger(self, trigger_id: str) -> None:
-        """Handle a time-based trigger firing.
-
-        Args:
-            trigger_id: The trigger ID.
-        """
-        if not await self._check_constraints(trigger_id):
-            return
-
-        await self._execute_trigger(trigger_id)
-
     # =========================================================================
     # Constraint Checking
     # =========================================================================
@@ -621,8 +527,6 @@ class TriggerManager:
                 new_state=notification.new_state,
                 **fields,
             )
-        if trigger_def.trigger_type == const.TRIGGER_TIME:
-            return TimeEvent(trigger_time=now, **fields)
         return ActionEvent(**fields)
 
     async def _execute_trigger(

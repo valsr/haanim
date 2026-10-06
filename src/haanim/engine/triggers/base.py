@@ -56,7 +56,9 @@ class BaseTrigger(ABC):
         self._task: asyncio.Task[None] | None = None
         self._enabled = True
         self._constraints: list[dict[str, Any]] = []
-        self._logger = logging.getLogger(f"{__name__}.{trigger_def.automation_id}.{trigger_def.func_name}")
+        self._logger = trigger_def.logger or logging.getLogger(
+            f"{__name__}.{trigger_def.automation_id}.{trigger_def.func_name}"
+        )
 
     @abstractmethod
     async def async_start(self) -> None:
