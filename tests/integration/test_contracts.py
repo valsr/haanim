@@ -598,6 +598,7 @@ class TestFileSystemContract:
         path = file_setup.write("main.py", "x = 1\n# héllo")
         assert file_setup.files.exists(path) is True
         assert await file_setup.files.read_text(path) == "x = 1\n# héllo"
+        assert await file_setup.files.read_bytes(path) == "x = 1\n# héllo".encode("utf-8")
         assert isinstance(file_setup.files.modified_time(path), datetime)
 
     async def test_missing_file(self, file_setup: FileSetup) -> None:
@@ -606,6 +607,8 @@ class TestFileSystemContract:
         assert file_setup.files.exists(path) is False
         with pytest.raises(OSError):
             await file_setup.files.read_text(path)
+        with pytest.raises(OSError):
+            await file_setup.files.read_bytes(path)
         with pytest.raises(OSError):
             file_setup.files.modified_time(path)
 

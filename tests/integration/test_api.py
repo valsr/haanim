@@ -310,7 +310,7 @@ class TestAsyncRegisterAPI:
         async_register_api(hass)
 
         # Should register 5 views
-        assert hass.http.register_view.call_count == 5
+        assert hass.http.register_view.call_count == 6
 
 
 class TestRunActionViewErrors:

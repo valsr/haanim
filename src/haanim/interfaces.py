@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 __all__ = [
+    "AssetSigner",
     "AutomationRegistry",
     "Clock",
     "EventBus",
@@ -208,6 +209,13 @@ class FileSystem(Protocol):
             OSError: If the file cannot be read.
         """
 
+    async def read_bytes(self, path: Path) -> bytes:
+        """Return the file's contents.
+
+        Raises:
+            OSError: If the file cannot be read.
+        """
+
     def is_dir(self, path: Path) -> bool:
         """Return whether the path is an existing directory."""
 
@@ -217,6 +225,13 @@ class FileSystem(Protocol):
         Raises:
             OSError: If the path is not a directory that can be read.
         """
+
+
+class AssetSigner(Protocol):
+    """Makes URL paths that work without login for a limited time."""
+
+    def sign(self, path: str, expires: float) -> str:
+        """Return a signed form of a URL path, valid for ``expires`` seconds."""
 
 
 class StorageBackend(Protocol):
@@ -347,6 +362,8 @@ class Host:
         hass: What an automation gets from ``import hass``: the running Home
             Assistant instance. The engine never uses it itself. None if the
             host has none to offer.
+        asset_signer: Signs asset URLs so they work without login. None if
+            the host cannot.
     """
 
     states: StateProvider
@@ -358,3 +375,4 @@ class Host:
     issues: IssueReporter
     storage: StorageBackend
     hass: Any = None
+    asset_signer: AssetSigner | None = None

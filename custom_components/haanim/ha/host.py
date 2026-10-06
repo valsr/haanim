@@ -24,6 +24,7 @@ from homeassistant.helpers.sun import get_astral_event_next
 from homeassistant.util import dt as dt_util
 
 from custom_components.haanim.const import DOMAIN
+from custom_components.haanim.ha.assets import HAAssetSigner
 from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.ha.state import StateManager
 from haanim.engine.errors import ServiceCallError
@@ -176,6 +177,10 @@ class HAFileSystem:
         """Return the file's contents decoded as UTF-8."""
         return await self._hass.async_add_executor_job(_read_text, path)
 
+    async def read_bytes(self, path: Path) -> bytes:
+        """Return the file's contents."""
+        return await self._hass.async_add_executor_job(path.read_bytes)
+
     def is_dir(self, path: Path) -> bool:
         """Return whether the path is an existing directory."""
         return path.is_dir()
@@ -275,4 +280,5 @@ def build_host(hass: HomeAssistant, state_manager: StateManager, event_manager: 
         issues=HAIssueReporter(hass),
         storage=HAStorage(hass),
         hass=hass,
+        asset_signer=HAAssetSigner(hass),
     )

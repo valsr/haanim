@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from haanim.engine.assets import AssetStore
 from haanim.engine.durations import parse_duration
 from haanim.engine.expression_eval import parse_expression
 from haanim.engine.variables import VariableStore
@@ -381,6 +382,8 @@ class HAAnim:
         automation_id: str,
         automation_manager: AutomationRegistry,
         variables: VariableStore | None = None,
+        *,
+        folder: Path | None = None,
     ) -> None:
         """Initialize HAAnim API.
 
@@ -390,11 +393,14 @@ class HAAnim:
             automation_manager: The automation manager instance.
             variables: The automation's persistent variables. A store on the
                 host's storage if omitted; it starts empty until it is loaded.
+            folder: The automation's folder, which holds its ``assets/``.
+                Without it the automation has no assets.
         """
         self._host = host
         self._automation_id = automation_id
         self._manager = automation_manager
         self._variables = variables or VariableStore(automation_id, host.storage, host.clock)
+        self._assets = AssetStore(automation_id, folder, host.files, host.asset_signer)
 
     @property
     def variables(self) -> VariableStore:
@@ -622,3 +628,32 @@ class HAAnim:
     def clear_variables(self) -> None:
         """Clear all stored variables."""
         self._variables.clear()
+
+    # --- Assets: the files in the automation's assets/ folder ----------------------
+
+    async def read_asset(self, name: str, text: bool = False) -> bytes | str:
+        """Read a file from the automation's ``assets/`` folder.
+
+        Args:
+            name: Path of the file relative to ``assets/``, using ``/``.
+            text: Return a string decoded as UTF-8 instead of bytes.
+
+        Raises:
+            ValueError: If the name resolves outside ``assets/``.
+            FileNotFoundError: If the file does not exist.
+        """
+        return await self._assets.read(name, text)
+
+    def asset_url(self, name: str, expires: float | None = None) -> str:
+        """Return the URL path of an asset, served by Home Assistant.
+
+        Args:
+            name: Path of the file relative to ``assets/``, using ``/``.
+            expires: Seconds for which the URL works without login. Without
+                it the URL needs a logged-in Home Assistant session.
+
+        Raises:
+            ValueError: If the name resolves outside ``assets/``.
+            FileNotFoundError: If the file does not exist.
+        """
+        return self._assets.url(name, expires)

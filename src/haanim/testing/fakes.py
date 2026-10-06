@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from haanim.engine.errors import NonExistingAutomationError, ServiceCallError
-from haanim.interfaces import AutomationTimes, FileSystem, Host, IssueReporter, StorageBackend
+from haanim.interfaces import AssetSigner, AutomationTimes, FileSystem, Host, IssueReporter, StorageBackend
 from haanim.types import EventData, ServiceInfo, StateChangedEvent, StateVal
 
 if TYPE_CHECKING:
@@ -27,6 +27,7 @@ __all__ = [
     "FakeAutomationRegistry",
     "FakeClock",
     "FakeEventBus",
+    "FakeAssetSigner",
     "FakeFileSystem",
     "FakeIssueReporter",
     "FakeServiceCaller",
@@ -582,7 +583,7 @@ class FakeFileSystem:
             clock: Clock used to stamp writes. A new FakeClock if omitted.
         """
         self._clock = clock or FakeClock()
-        self._files: dict[Path, tuple[str, datetime]] = {}
+        self._files: dict[Path, tuple[str | bytes, datetime]] = {}
         self._unreadable: set[Path] = set()
 
     # --- FileSystem protocol ----------------------------------------------------
@@ -605,7 +606,7 @@ class FakeFileSystem:
         Raises:
             FileNotFoundError: If the file does not exist.
         """
-        return len(self._entry(path)[0].encode("utf-8"))
+        return len(self._bytes(path))
 
     async def read_text(self, path: Path) -> str:
         """Return the file's contents.
@@ -616,7 +617,18 @@ class FakeFileSystem:
         """
         if Path(path) in self._unreadable:
             raise PermissionError(f"Permission denied: {path}")
-        return self._entry(path)[0]
+        return self._bytes(path).decode("utf-8")
+
+    async def read_bytes(self, path: Path) -> bytes:
+        """Return the file's contents as bytes.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            PermissionError: If the file was marked unreadable.
+        """
+        if Path(path) in self._unreadable:
+            raise PermissionError(f"Permission denied: {path}")
+        return self._bytes(path)
 
     def is_dir(self, path: Path) -> bool:
         """Return whether the path is a directory: something that has files below it."""
@@ -634,7 +646,11 @@ class FakeFileSystem:
         depth = len(directory.parts)
         return sorted({Path(*file.parts[: depth + 1]) for file in self._files if directory in file.parents})
 
-    def _entry(self, path: Path) -> tuple[str, datetime]:
+    def _bytes(self, path: Path) -> bytes:
+        content = self._entry(path)[0]
+        return content.encode("utf-8") if isinstance(content, str) else content
+
+    def _entry(self, path: Path) -> tuple[str | bytes, datetime]:
         try:
             return self._files[Path(path)]
         except KeyError:
@@ -642,7 +658,7 @@ class FakeFileSystem:
 
     # --- Test controls ----------------------------------------------------------
 
-    def write(self, path: Path | str, content: str) -> None:
+    def write(self, path: Path | str, content: str | bytes) -> None:
         """Create or replace a file, stamping it with the clock's current time."""
         self._files[Path(path)] = (content, self._clock.now())
 
@@ -680,6 +696,10 @@ class LocalFileSystem:
         """Return the file's contents decoded as UTF-8."""
         return Path(path).read_text(encoding="utf-8")
 
+    async def read_bytes(self, path: Path) -> bytes:
+        """Return the file's contents."""
+        return Path(path).read_bytes()
+
     def is_dir(self, path: Path) -> bool:
         """Return whether the path is an existing directory."""
         return Path(path).is_dir()
@@ -687,6 +707,20 @@ class LocalFileSystem:
     async def list_dir(self, path: Path) -> list[Path]:
         """Return the files and directories directly in a directory, sorted."""
         return sorted(Path(path).iterdir())
+
+
+class FakeAssetSigner:
+    """Signs URL paths by adding the lifetime, so a test can read it back."""
+
+    def __init__(self) -> None:
+        """Initialize with nothing signed."""
+        self.signed: list[tuple[str, float]] = []
+        """``(path, expires)`` for every signed path, oldest first."""
+
+    def sign(self, path: str, expires: float) -> str:
+        """Return the path with ``?signed=<expires>`` added."""
+        self.signed.append((path, expires))
+        return f"{path}?signed={expires:g}"
 
 
 class FakeIssueReporter:
@@ -844,6 +878,7 @@ def make_host(
     issues: IssueReporter | None = None,
     storage: StorageBackend | None = None,
     hass: Any = None,
+    asset_signer: AssetSigner | None = None,
 ) -> Host:
     """Build a Host from fakes.
 
@@ -865,4 +900,5 @@ def make_host(
         issues=issues or FakeIssueReporter(),
         storage=storage or FakeStorage(),
         hass=hass,
+        asset_signer=asset_signer or FakeAssetSigner(),
     )

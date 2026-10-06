@@ -411,6 +411,14 @@ class HAAnim:
         """Clear all persistent variables."""
         ...
 
+    async def read_asset(self, name: str, text: bool = False) -> bytes | str:
+        """Read a file from the automation's assets/ folder, as bytes or as UTF-8 text."""
+        ...
+
+    def asset_url(self, name: str, expires: float | None = None) -> str:
+        """URL path of an asset; with expires (seconds) it works without login until then."""
+        ...
+
 # Global haa instance (injected at runtime)
 haa: HAAnim
 

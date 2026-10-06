@@ -239,7 +239,7 @@ class AutomationContext:
             HAAnim,
         )
 
-        self._haa = HAAnim(self.host, self.automation_id, self._registry)
+        self._haa = HAAnim(self.host, self.automation_id, self._registry, folder=self.folder)
         self.variables = self._haa.variables
         logging_module = create_logger_wrapper(self._logger)
         haanim_module = build_haanim_module(

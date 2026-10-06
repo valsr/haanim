@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.http import HomeAssistantView
 
 from custom_components.haanim.const import DOMAIN, VERSION
+from custom_components.haanim.ha.assets import AssetView
 from custom_components.haanim.automation_manager import async_get_manager, get_config_manager
 
 _LOGGER = logging.getLogger(__name__)
@@ -221,5 +222,6 @@ def async_register_api(hass: HomeAssistant) -> None:
     hass.http.register_view(ConfigView())
     hass.http.register_view(RunActionView())
     hass.http.register_view(ReloadAutomationsView())
+    hass.http.register_view(AssetView())
 
     _LOGGER.debug("HAAnim API views registered")
