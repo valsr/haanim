@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import re
+from pathlib import Path
+
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -132,12 +135,16 @@ class TestPanelRegistration:
             ((paths,), _) = http.async_register_static_paths.call_args
             assert paths[0].url_path == "/haanim/ui"
             assert paths[0].path.endswith("custom_components/haanim/ui")
+            # The frontend is given an address that has the fingerprint of the files in it
+            versioned = paths[1].url_path
+            assert re.fullmatch(r"/haanim/ui-[0-9a-f]{12}", versioned)
+            assert paths[1].path == paths[0].path
+            assert versioned == integration.ui_url(integration.ui_fingerprint(paths[0].path))
             config = frontend.async_register_built_in_panel.call_args.kwargs["config"]["_panel_custom"]
             assert config["name"] == "haanim-panel"
-            assert config["module_url"].startswith("/haanim/ui/haanim-panel.js?v=")
+            assert config["module_url"] == f"{versioned}/haanim-panel.js"
             assert "js_url" not in config
-            frontend.add_extra_js_url.assert_called_once_with(hass, integration.CARD_URL)
-            assert integration.CARD_URL.startswith("/haanim/ui/haanim-card.js?v=")
+            frontend.add_extra_js_url.assert_called_once_with(hass, f"{versioned}/haanim-card.js")
 
             hass.data["frontend_panels"] = {"haanim": object()}
             await integration._async_register_panel(hass)  # pylint: disable=protected-access
@@ -145,4 +152,24 @@ class TestPanelRegistration:
 
             await integration._async_unregister_panel(hass)  # pylint: disable=protected-access
             frontend.async_remove_panel.assert_called_once_with(hass, "haanim")
-            frontend.remove_extra_js_url.assert_called_once_with(hass, integration.CARD_URL)
+            frontend.remove_extra_js_url.assert_called_once_with(hass, f"{versioned}/haanim-card.js")
+            await integration._async_unregister_panel(hass)  # pylint: disable=protected-access
+            assert frontend.remove_extra_js_url.call_count == 1, "nothing is left to remove"
+
+    def test_fingerprint_follows_the_files(self, tmp_path: Path) -> None:
+        """Test the fingerprint changes when a file changes, appears or is renamed, and is otherwise the same."""
+        import custom_components.haanim as integration  # pylint: disable=import-outside-toplevel
+
+        (tmp_path / "a.js").write_text("one", encoding="utf-8")
+        (tmp_path / "folder").mkdir()
+        first = integration.ui_fingerprint(str(tmp_path))
+        assert first == integration.ui_fingerprint(str(tmp_path))
+        assert len(first) == 12
+
+        (tmp_path / "a.js").write_text("two", encoding="utf-8")
+        second = integration.ui_fingerprint(str(tmp_path))
+        (tmp_path / "b.js").write_text("", encoding="utf-8")
+        third = integration.ui_fingerprint(str(tmp_path))
+        (tmp_path / "b.js").rename(tmp_path / "c.js")
+        assert len({first, second, third, integration.ui_fingerprint(str(tmp_path))}) == 4
+        assert integration.ui_url(first) == f"/haanim/ui-{first}"

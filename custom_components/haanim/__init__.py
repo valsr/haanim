@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 
@@ -14,7 +15,7 @@ from homeassistant.components.http import StaticPathConfig
 
 from custom_components.haanim.api import async_register_api
 from custom_components.haanim.config import get_config_manager
-from custom_components.haanim.const import DOMAIN, NAME, VERSION
+from custom_components.haanim.const import DOMAIN, NAME
 from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.ha.host import HAServiceCaller, build_host
 from custom_components.haanim.ha.services import ServiceManager
@@ -30,8 +31,33 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]  # One enum sensor per automation
 
-CARD_URL = f"/{DOMAIN}/ui/haanim-card.js?v={VERSION}"
-"""Where the frontend loads ``custom:haanim-card`` from."""
+UI_URL = f"/{DOMAIN}/ui"
+"""Where the files of the frontend are served. Browsers load them from ``ui_url()`` instead."""
+
+CARD_URLS = "frontend_card_urls"
+"""Key in ``hass.data``: the address the frontend was told to load the card from."""
+
+
+def ui_fingerprint(ui_dir: str) -> str:
+    """Return a short text that changes whenever a file of the frontend changes."""
+    digest = hashlib.sha256()
+    for name in sorted(os.listdir(ui_dir)):
+        path = os.path.join(ui_dir, name)
+        if os.path.isfile(path):
+            digest.update(name.encode())
+            with open(path, "rb") as file:
+                digest.update(file.read())
+    return digest.hexdigest()[:12]
+
+
+def ui_url(fingerprint: str) -> str:
+    """Return the folder browsers load the frontend from: it has the fingerprint of the files in its name.
+
+    The modules import each other by relative addresses, so a new folder is a
+    new address for every one of them: a browser cannot mix a new module
+    with an old one it has kept, and needs no reload to get a new version.
+    """
+    return f"{UI_URL}-{fingerprint}"
 
 
 async def async_setup(hass: HomeAssistant, _: ConfigType) -> bool:  # noqa: ARG001
@@ -149,10 +175,16 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     # Get the path to the UI directory
     ui_dir = os.path.join(os.path.dirname(__file__), "ui")
 
-    # Register static path for serving UI assets (includes the panel JS file)
+    # The files are served twice: under a plain address, and under one that changes with the files,
+    # which is the one the frontend is given
+    versioned = ui_url(await hass.async_add_executor_job(ui_fingerprint, ui_dir))
     await hass.http.async_register_static_paths(
-        [StaticPathConfig(f"/{DOMAIN}/ui", ui_dir, cache_headers=False)]
+        [
+            StaticPathConfig(UI_URL, ui_dir, cache_headers=False),
+            StaticPathConfig(versioned, ui_dir, cache_headers=False),
+        ]
     )
+    card_url = f"{versioned}/haanim-card.js"
 
     # Register as a custom panel using Web Component
     # haanim-panel.js is an ES module that defines the 'haanim-panel' custom element
@@ -165,7 +197,7 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
         config={
             "_panel_custom": {
                 "name": "haanim-panel",
-                "module_url": f"/{DOMAIN}/ui/haanim-panel.js?v={VERSION}",
+                "module_url": f"{versioned}/haanim-panel.js",
                 "embed_iframe": False,
                 "trust_external": False,
             }
@@ -174,7 +206,8 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     )
 
     # Dashboards load the card with the rest of the frontend
-    frontend.add_extra_js_url(hass, CARD_URL)
+    frontend.add_extra_js_url(hass, card_url)
+    hass.data[CARD_URLS] = card_url
 
     _LOGGER.info("HAAnim panel registered successfully")
 
@@ -188,7 +221,9 @@ async def _async_unregister_panel(hass: HomeAssistant) -> None:
     # Remove the panel if it exists
     if DOMAIN in hass.data.get("frontend_panels", {}):
         frontend.async_remove_panel(hass, DOMAIN)
-        frontend.remove_extra_js_url(hass, CARD_URL)
+        card_url = hass.data.pop(CARD_URLS, None)
+        if card_url is not None:
+            frontend.remove_extra_js_url(hass, card_url)
         _LOGGER.debug("HAAnim panel unregistered")
 
 

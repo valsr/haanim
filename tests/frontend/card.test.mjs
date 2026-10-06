@@ -4,7 +4,7 @@ import { beforeEach, describe, test } from 'node:test';
 import { FakeHass, clicked, installDom, settle } from './fake-dom.mjs';
 
 const dom = installDom();
-const { HAAnimCard } = await import('../../custom_components/haanim/ui/haanim-card.js');
+const { HAAnimCard, REGISTRATION_CHECK, keepRegistered, registerCard } = await import('../../custom_components/haanim/ui/haanim-card.js');
 
 const DETAIL = {
     id: 'climate',
@@ -40,6 +40,43 @@ describe('haanim-card', () => {
         assert.equal(dom.registry.get('haanim-card'), HAAnimCard);
         assert.deepEqual(dom.window.customCards.map((entry) => entry.type), ['haanim-card']);
         assert.deepEqual(HAAnimCard.getStubConfig(), { automation_id: '' });
+    });
+
+    test('registers again in a registry that does not know it, and only once in one that does', () => {
+        assert.equal(registerCard(), false, 'it is registered already');
+
+        // Home Assistant replaces the registry after the module was loaded
+        const native = globalThis.customElements;
+        const replaced = new Map();
+        globalThis.customElements = { define: (name, constructor) => replaced.set(name, constructor), get: (name) => replaced.get(name) };
+        assert.equal(registerCard(), true);
+        assert.equal(replaced.get('haanim-card'), HAAnimCard);
+        assert.equal(dom.window.customCards.length, 1, 'the card is listed once');
+
+        // A registry that refuses is tried again later
+        globalThis.customElements = { define: () => { throw new Error('not now'); }, get: () => undefined };
+        assert.equal(registerCard(), false);
+        globalThis.customElements = native;
+    });
+
+    test('the registration is checked for the first seconds after loading, then no more', () => {
+        const native = globalThis.customElements;
+        let run = null;
+        let period = null;
+        let stopped = null;
+        const timer = keepRegistered((callback, every) => { run = callback; period = every; return 'timer'; }, (which) => { stopped = which; });
+        assert.equal(timer, 'timer');
+        assert.equal(period, REGISTRATION_CHECK.every);
+
+        const replaced = new Map();
+        globalThis.customElements = { define: (name, constructor) => replaced.set(name, constructor), get: (name) => replaced.get(name) };
+        run();
+        assert.equal(replaced.get('haanim-card'), HAAnimCard, 'the first check after the registry was replaced makes it good');
+        for (let check = 1; check < REGISTRATION_CHECK.times - 1; check += 1) run();
+        assert.equal(stopped, null);
+        run();
+        assert.equal(stopped, 'timer');
+        globalThis.customElements = native;
     });
 
     test('needs an automation ID', () => {

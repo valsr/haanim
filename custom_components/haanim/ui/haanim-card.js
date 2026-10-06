@@ -541,12 +541,49 @@ export class HAAnimCard extends HTMLElement {
     }
 }
 
-if (!customElements.get('haanim-card')) {
-    customElements.define('haanim-card', HAAnimCard);
+/**
+ * Register the card with the page, unless it is registered. Returns whether it had to be.
+ *
+ * Registering can fail while the page is still being set up; it is then tried again later.
+ */
+export function registerCard() {
+    if (customElements.get('haanim-card')) return false;
+    try {
+        customElements.define('haanim-card', HAAnimCard);
+    } catch (error) {
+        return false;
+    }
     window.customCards = window.customCards || [];
-    window.customCards.push({
-        type: 'haanim-card',
-        name: 'HAAnim automation',
-        description: 'The card of one HAAnim automation: its title, state, content and actions',
-    });
+    if (!window.customCards.some((card) => card.type === 'haanim-card')) {
+        window.customCards.push({
+            type: 'haanim-card',
+            name: 'HAAnim automation',
+            description: 'The card of one HAAnim automation: its title, state, content and actions',
+        });
+    }
+    return true;
 }
+
+/** How often, and for how long, the registration is checked after the module was loaded. */
+export const REGISTRATION_CHECK = { every: 250, times: 80 };
+
+/**
+ * Keep the card registered while the page starts.
+ *
+ * Home Assistant loads this module early, and may only afterwards replace the browser's registry of custom
+ * elements with one of its own, which does not know what was registered before: the dashboard then says the
+ * card does not exist. So the registration is checked again for the first seconds, and made good.
+ */
+export function keepRegistered(setTimer = setInterval, clearTimer = clearInterval) {
+    let left = REGISTRATION_CHECK.times;
+    const timer = setTimer(() => {
+        registerCard();
+        left -= 1;
+        if (left <= 0) clearTimer(timer);
+    }, REGISTRATION_CHECK.every);
+    return timer;
+}
+
+registerCard();
+// Only in a browser: the tests have a window without events, and register by hand
+if (typeof window.addEventListener === 'function') keepRegistered();
