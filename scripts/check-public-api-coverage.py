@@ -55,7 +55,9 @@ def uncovered(report: Path) -> dict[str, list[str]]:
             number = line.get("number", "?")
             if line.get("hits") == "0":
                 problems.append(f"line {number} is not executed")
-            elif line.get("branch") == "true" and not (line.get("condition-coverage") or "").startswith("100%"):
+            elif line.get("branch") == "true" and not (line.get("condition-coverage") or "").startswith(
+                "100%"
+            ):
                 problems.append(f"line {number}: branches {line.get('condition-coverage')}")
     for module in PUBLIC_API:
         seen.setdefault(module, ["not in the coverage report"])

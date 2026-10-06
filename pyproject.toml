@@ -131,7 +131,7 @@ extraPaths = ["src"]
 exclude = [".venv", "venv", ".pytest_cache", "**/__pycache__", "htmlcov", "out"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "examples/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

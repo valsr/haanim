@@ -16,8 +16,10 @@ fakes of ``haanim.testing``::
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -59,6 +61,10 @@ __all__ = ["AutomationCall", "AutomationHarness", "HarnessCard", "HarnessError"]
 
 # How often wait_idle lets the event loop run before it gives up on actions that do not finish
 IDLE_ROUNDS = 200
+
+# How often a lifecycle step gets the event loop before the clock is moved for it, and by how much
+DRIVE_ROUNDS = 20
+DRIVE_STEP_SECONDS = 0.5
 
 
 class HarnessError(Exception):
@@ -301,6 +307,9 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         self._automation = Automation(
             self._context, dispatcher=self._dispatcher, triggers=self._triggers, settings=settings
         )
+        limits = settings or LifecycleSettings()
+        # No step of the lifecycle waits longer than its three limits together
+        self._longest_wait = limits.startup_timeout + limits.shutdown_timeout + limits.stop_grace_period + 1.0
         self._stubs: dict[str, dict[str, Any]] = {}
         self._automation_calls: list[AutomationCall] = []
         self._records: list[logging.LogRecord] = []
@@ -348,7 +357,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         self._closed = True
         try:
             if self._automation.state is not AutomationState.UNAVAILABLE:
-                await self._automation.unload()
+                await self.unload()
             await self._triggers.async_teardown()
             await self._dispatcher.shutdown()
         finally:
@@ -402,20 +411,27 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
     async def start(self) -> bool:
         """Start the automation: run ``main.py`` and ``@startup``, register the triggers.
 
+        A ``@startup`` that sleeps or waits gets the time it needs: the clock
+        moves forward until it has finished or reached the startup timeout.
+
         Returns:
             Whether the automation started.
         """
-        started = await self._automation.start()
+        started = await self._drive(self._automation.start())
         await self.clock.settle()
-        return started
+        return bool(started)
 
     async def stop(self) -> None:
-        """Stop the automation: triggers, running actions, ``@shutdown``."""
-        await self._automation.stop()
+        """Stop the automation: triggers, running actions, ``@shutdown``.
+
+        Actions that are still running get their grace period and are then
+        cancelled, as in Home Assistant. The clock moves forward by the time that takes.
+        """
+        await self._drive(self._automation.stop())
 
     async def unload(self) -> None:
         """Unload the automation, stopping it first if it runs."""
-        await self._automation.unload()
+        await self._drive(self._automation.unload())
 
     async def restart(self) -> bool:
         """Stop and start the automation. Returns whether it started."""
@@ -429,8 +445,35 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
             Whether the automation started.
         """
         if self._automation.state is not AutomationState.UNAVAILABLE:
-            await self._automation.unload()
+            await self.unload()
         return await self.load() and await self.start()
+
+    async def _drive(self, step: Coroutine[Any, Any, Any]) -> Any:
+        """Run a lifecycle step to its end, moving the clock when the step waits for time to pass.
+
+        Time only moves if the step has not finished after the event loop had
+        its turns: a step that waits for nothing leaves the clock alone.
+
+        Raises:
+            HarnessError: If the step has not finished after every time limit of the lifecycle has passed.
+        """
+        task = asyncio.ensure_future(step)
+        try:
+            for _ in range(DRIVE_ROUNDS):
+                await self.clock.settle()
+                if task.done():
+                    return task.result()
+            waited = 0.0
+            while waited <= self._longest_wait:
+                await self.clock.advance(seconds=DRIVE_STEP_SECONDS)
+                waited += DRIVE_STEP_SECONDS
+                if task.done():
+                    return task.result()
+        except BaseException:
+            task.cancel()
+            raise
+        task.cancel()
+        raise HarnessError("A lifecycle step did not finish within the lifecycle's own time limits")
 
     # --- States, events and time -------------------------------------------------
 

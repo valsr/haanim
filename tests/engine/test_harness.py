@@ -693,3 +693,94 @@ class TestAssets:
         async with AutomationHarness(folder, assets={"data.json": "[]"}) as automation:
             haa = automation._context._haa  # pylint: disable=protected-access
             assert await haa.read_asset("data.json", text=True) == "[]"
+
+
+WAITING = """
+from haanim import haa, action, startup, shutdown
+
+@startup
+async def warm_up(event):
+    await haa.sleep(3)
+    haa.set_message("warm")
+
+@action
+async def wait_forever(event):
+    await haa.wait_for("binary_sensor.never == 'on'")
+
+@shutdown
+async def cool_down(event):
+    await haa.sleep(2)
+    haa.set_variable("cooled", True)
+"""
+
+
+class TestLifecycleTakesItsTime:
+    """Lifecycle steps that wait for time get it: the harness moves the clock for them."""
+
+    @pytest.fixture
+    def waiting(self, tmp_path: Path) -> Path:
+        """An automation whose startup and shutdown sleep, with an action that never finishes."""
+        folder = tmp_path / "waiting"
+        folder.mkdir()
+        (folder / "main.py").write_text(WAITING, encoding="utf-8")
+        return folder
+
+    async def test_startup_that_sleeps(self, waiting: Path) -> None:
+        """Test entering waits for a sleeping @startup by moving the clock, and no further than needed."""
+        async with AutomationHarness(waiting, now="2025-01-06 12:00:00") as automation:
+            assert automation.message == "warm"
+            assert automation.now == datetime(2025, 1, 6, 12, 0, 3, tzinfo=timezone.utc)
+
+    async def test_leaving_with_an_action_still_waiting(self, waiting: Path) -> None:
+        """Test leaving the harness stops an action that would wait forever: grace period, then cancel."""
+        async with AutomationHarness(waiting) as automation:
+            task = asyncio.ensure_future(automation.call("wait_forever"))
+            await automation.clock.settle()
+            assert not task.done()
+        assert automation.state == "unavailable"
+        assert automation.get_variable("cooled") is True
+        result = (await asyncio.gather(task, return_exceptions=True))[0]
+        assert isinstance(result, HAAnimError)
+
+    async def test_stop_moves_the_clock_by_what_it_takes(self, waiting: Path) -> None:
+        """Test stop takes the shutdown handler's two seconds and no more."""
+        async with AutomationHarness(waiting, now="2025-01-06 12:00:00") as automation:
+            before = automation.now
+            await automation.stop()
+            assert automation.now - before == timedelta(seconds=2)
+            assert automation.state == "off"
+
+    async def test_step_without_waiting_leaves_the_clock_alone(self, folder: Path) -> None:
+        """Test a lifecycle that waits for nothing moves no time."""
+        async with AutomationHarness(folder) as automation:
+            start = automation.now
+            await automation.restart()
+            await automation.reload()
+            assert automation.now == start
+
+    async def test_startup_that_never_finishes_fails_at_the_timeout(self, tmp_path: Path) -> None:
+        """Test a @startup that waits forever fails the start at the startup timeout, as in Home Assistant."""
+        folder = tmp_path / "stuck"
+        folder.mkdir()
+        (folder / "main.py").write_text(
+            "from haanim import haa, startup\n\n@startup\nasync def stuck(event):\n"
+            "    await haa.wait_for(\"binary_sensor.never == 'on'\")\n",
+            encoding="utf-8",
+        )
+        async with AutomationHarness(folder, start=False) as automation:
+            assert await automation.load() is True
+            assert await automation.start() is False
+            assert automation.state == "error"
+            assert "30" in automation.error
+
+    async def test_step_that_cannot_finish(self, folder: Path) -> None:
+        """Test a step that outlasts every limit of the lifecycle is reported, not waited for forever."""
+        async with AutomationHarness(folder) as automation:
+            with pytest.raises(HarnessError, match="did not finish"):
+                await automation._drive(asyncio.Event().wait())  # pylint: disable=protected-access
+
+    async def test_step_that_raises(self, folder: Path) -> None:
+        """Test what a step raises reaches the test."""
+        async with AutomationHarness(folder) as automation:
+            with pytest.raises(AutomationNotRunningError):
+                await automation.stop() or await automation.stop()

@@ -846,20 +846,23 @@ class TestAtStart:
         assert automation.state is AutomationState.ERROR
         assert "@on_state: hold must be seconds or 'HH:MM:SS', not list" in (automation.message or "")
 
-    async def test_example_automation_starts(self, tmp_path: Path) -> None:
-        """The example in the repository uses the decorators as they are now."""
-        example = Path(__file__).parents[2] / "examples" / "demo"
-        shutil.copytree(example, tmp_path / "demo")
-        clock = FakeClock()
-        host = make_host(files=LocalFileSystem(), clock=clock)
-        triggers = RecordingTriggers()
-        pool = ActionWorkerPool(status_manager=AutomationStatusManager(), clock=clock)
-        context = make_context(str(tmp_path / "demo"), host=host)
-        automation = Automation(context, dispatcher=ActionDispatcher(pool), triggers=triggers)
+    async def test_example_automations_start(self, tmp_path: Path) -> None:
+        """The examples in the repository use the decorators as they are now, every kind of trigger among them."""
+        examples = Path(__file__).parents[2] / "examples"
+        kinds: set[str] = set()
+        actions = 0
+        for name in ("climate", "dashboard", "motion_light"):
+            shutil.copytree(examples / name, tmp_path / name)
+            clock = FakeClock()
+            host = make_host(files=LocalFileSystem(), clock=clock)
+            pool = ActionWorkerPool(status_manager=AutomationStatusManager(), clock=clock)
+            context = make_context(str(tmp_path / name), host=host)
+            automation = Automation(context, dispatcher=ActionDispatcher(pool), triggers=RecordingTriggers())
 
-        assert await automation.load(), automation.message
-        await automation.context.execute()
+            assert await automation.load(), automation.message
+            await automation.context.execute()
+            actions += len(automation.context.get_actions())
+            kinds |= {trigger.trigger_type for trigger in automation.context.get_triggers()}
 
-        assert len(automation.context.get_actions()) >= 10
-        kinds = {trigger.trigger_type for trigger in automation.context.get_triggers()}
+        assert actions >= 10
         assert kinds == {TRIGGER_TIME, TRIGGER_STATE, TRIGGER_INTERVAL, TRIGGER_CRON, TRIGGER_EVENT}
