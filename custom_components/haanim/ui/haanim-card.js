@@ -88,6 +88,27 @@ const STYLES = `
     .block-icon .value { margin-left: auto; }
     @keyframes haanim-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .block-icon .icon.spin { animation: none; } }
+    .block-gauge[data-more-info], .block-badge[data-more-info] { cursor: pointer; }
+    .gauge-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+    .block-gauge .bar {
+        height: 8px; border-radius: 4px; overflow: hidden;
+        background: var(--divider-color, #e0e0e0);
+    }
+    .block-gauge .fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
+    .block-gauge .dial { display: block; width: 100%; max-width: 180px; margin: 0 auto; }
+    .block-gauge .dial ~ .label { display: block; text-align: center; }
+    .dial-track, .dial-fill { fill: none; stroke-width: 10; stroke-linecap: round; }
+    .dial-track { stroke: var(--divider-color, #e0e0e0); }
+    .dial-fill { transition: stroke-dasharray 0.3s ease; }
+    .dial-value { fill: var(--primary-text-color, #212121); font-size: 18px; font-weight: 500; }
+    .dial-unit { font-size: 10px; font-weight: 400; fill: var(--secondary-text-color, #727272); }
+    .badge {
+        display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 12px;
+        background: var(--primary-color); color: white; font-size: 0.85em; font-weight: 500;
+        --mdc-icon-size: 16px; max-width: 100%;
+    }
+    .badge-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @media (prefers-reduced-motion: reduce) { .block-gauge .fill, .dial-fill { transition: none; } }
     .block-text p, .block-text h1, .block-text h2, .block-text h3 { margin: 0 0 6px 0; }
     ul { list-style: none; margin: 8px 0 0 0; padding: 0; }
     .block-text ul { list-style: disc; padding-left: 20px; }
@@ -333,8 +354,10 @@ export class HAAnimCard extends HTMLElement {
         const states = this._hass.states || {};
         const own = states[this._entityId];
         const ids = this._blocks.flatMap((block) => {
-            if (block.type === 'entity' || (block.type === 'icon' && block.follow_entity)) return [block.entity_id];
-            return block.type === 'graph' && block.entities ? block.entities : [];
+            if (block.type === 'graph') return block.entities || [];
+            // Every other block with an entity shows its state; an icon only if it follows the entity
+            const follows = block.entity_id && (block.type !== 'icon' || block.follow_entity);
+            return follows ? [block.entity_id] : [];
         });
         const watched = [this._entityId, ...ids]
             .map((id) => `${id}=${states[id] ? `${states[id].state}@${states[id].last_updated}` : ''}`)

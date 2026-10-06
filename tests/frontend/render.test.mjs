@@ -8,6 +8,7 @@ import {
     PANEL_PATH,
     automationPath,
     escapeHtml,
+    formatNumber,
     formatTime,
     iconColor,
     isActive,
@@ -261,6 +262,118 @@ describe('icon block', () => {
             assert.equal(iconColor(bad), null, String(bad));
         }
         assert.equal(iconColor('constructor'), 'constructor', 'a word that is no theme colour is passed on as a colour name');
+    });
+});
+
+describe('gauge block', () => {
+    const gauge = (extra = {}) => ({ id: 'g', type: 'gauge', value: 42, entity_id: null, min: 0, max: 100, label: null, unit: null, kind: 'bar', color: null, ...extra });
+    const battery = (state, attributes = {}) => ({ 'sensor.battery': { state, attributes } });
+
+    test('a progress bar is filled as far as the value is along the range', () => {
+        const html = renderBlock(gauge({ label: 'Done <so far>', unit: '%' }));
+        assert.match(html, /^<div class="block block-gauge" data-block="g"><div class="gauge-head">/);
+        assert.match(html, /<span class="label">Done &lt;so far&gt;<\/span><span class="value">42 <span class="unit">%<\/span><\/span>/);
+        assert.match(html, /<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="42">/);
+        assert.match(html, /<div class="fill" style="width: 42.0%; background: var\(--primary-color\)">/);
+        assert.doesNotMatch(html, /data-more-info/);
+    });
+    test('the range need not start at zero', () => {
+        assert.match(renderBlock(gauge({ value: 20, min: 10, max: 50 })), /width: 25.0%/);
+        assert.match(renderBlock(gauge({ value: -5, min: -10, max: 10 })), /width: 25.0%/);
+    });
+    test('a value outside the range is shown as it is, with the gauge empty or full', () => {
+        const over = renderBlock(gauge({ value: 130 }));
+        assert.match(over, /width: 100.0%/);
+        assert.match(over, /<span class="value">130<\/span>/);
+        assert.match(renderBlock(gauge({ value: -3 })), /width: 0.0%/);
+    });
+    test('numbers are shown with at most two decimals', () => {
+        assert.equal(formatNumber(42), '42');
+        assert.equal(formatNumber(21.456), '21.46');
+        assert.equal(formatNumber(0.1 + 0.2), '0.3');
+        assert.match(renderBlock(gauge({ value: 33.3333 })), /<span class="value">33.33<\/span>/);
+    });
+    test('the colour is a theme colour or a plain one, and nothing else', () => {
+        assert.match(renderBlock(gauge({ color: 'success' })), /background: var\(--success-color, #4caf50\)"/);
+        assert.match(renderBlock(gauge({ color: '#ff0000' })), /background: #ff0000"/);
+        assert.match(renderBlock(gauge({ color: 'red; x: url(y)' })), /background: var\(--primary-color\)"/);
+    });
+    test('following an entity: its state, its name and its unit', () => {
+        const states = battery('87.5', { friendly_name: 'Battery', unit_of_measurement: '%' });
+        const html = renderBlock(gauge({ value: null, entity_id: 'sensor.battery' }), { states });
+        assert.match(html, /data-block="g" data-more-info="sensor.battery">/);
+        assert.match(html, /<span class="label">Battery<\/span><span class="value">87.5 <span class="unit">%<\/span>/);
+        assert.match(html, /width: 87.5%/);
+    });
+    test("the block's own label and unit win over the entity's", () => {
+        const states = battery('50', { friendly_name: 'Battery', unit_of_measurement: '%' });
+        const html = renderBlock(gauge({ value: null, entity_id: 'sensor.battery', label: 'Phone', unit: 'pct' }), { states });
+        assert.match(html, /<span class="label">Phone<\/span><span class="value">50 <span class="unit">pct<\/span>/);
+        assert.match(renderBlock(gauge({ value: null, entity_id: 'sensor.battery', unit: '' }), { states }), /<span class="value">50<\/span>/);
+    });
+    test('an entity without a name or unit', () => {
+        const html = renderBlock(gauge({ value: null, entity_id: 'sensor.battery' }), { states: battery('10') });
+        assert.match(html, /<span class="label">sensor.battery<\/span><span class="value">10<\/span>/);
+    });
+    test('a state that is not a number leaves the gauge empty and is shown as text', () => {
+        const states = battery('unknown', { unit_of_measurement: '%' });
+        const html = renderBlock(gauge({ value: null, entity_id: 'sensor.battery' }), { states });
+        assert.match(html, /<span class="value">unknown<\/span>/);
+        assert.match(html, /width: 0.0%/);
+        assert.doesNotMatch(html, /aria-valuenow/);
+        assert.match(renderBlock(gauge({ value: null, entity_id: 'sensor.gone' })), /<span class="value">unavailable<\/span>/);
+        assert.match(renderBlock(gauge({ value: null, entity_id: 'sensor.battery' }), { states: battery('') }), /width: 0.0%/);
+    });
+    test('a gauge with neither a value nor an entity is empty', () => {
+        const html = renderBlock(gauge({ value: null }));
+        assert.match(html, /<span class="value"><\/span>/);
+        assert.match(html, /width: 0.0%/);
+        assert.match(renderBlock(gauge({ value: true })), /width: 0.0%/);
+    });
+    test('a range that is not one draws an empty gauge', () => {
+        assert.match(renderBlock(gauge({ min: 5, max: 5 })), /width: 0.0%/);
+    });
+    test('a dial fills its arc', () => {
+        const html = renderBlock(gauge({ kind: 'dial', value: 50, label: 'Load', unit: '%', color: 'warning' }));
+        assert.match(html, /<svg class="dial" viewBox="0 0 120 70" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">/);
+        assert.match(html, /<path class="dial-track" d="M 10 60 A 50 50 0 0 1 110 60"><\/path>/);
+        assert.match(html, /<path class="dial-fill" d="M 10 60 A 50 50 0 0 1 110 60" style="stroke: var\(--warning-color, #ff9800\)" stroke-dasharray="78.54 157.08">/);
+        assert.match(html, /<text class="dial-value" x="60" y="58" text-anchor="middle">50<tspan class="dial-unit"> %<\/tspan><\/text>/);
+        assert.match(html, /<\/svg><span class="label">Load<\/span><\/div>$/);
+    });
+    test('a dial without a label or unit, and one whose entity has no number', () => {
+        const plain = renderBlock(gauge({ kind: 'dial', value: 100 }));
+        assert.match(plain, /stroke-dasharray="157.08 157.08"/);
+        assert.match(plain, />100<\/text><\/svg><\/div>$/);
+        const html = renderBlock(gauge({ kind: 'dial', value: null, entity_id: 'sensor.battery' }), { states: battery('unavailable', { unit_of_measurement: '%' }) });
+        assert.match(html, /stroke-dasharray="0.00 157.08"/);
+        assert.match(html, />unavailable<\/text>/);
+        assert.match(html, /<span class="label">sensor.battery<\/span>/);
+    });
+});
+
+describe('badge block', () => {
+    const badge = (extra = {}) => ({ id: 'b', type: 'badge', text: 'OK', entity_id: null, icon: null, color: null, ...extra });
+
+    test('a text in a pill', () => {
+        assert.equal(
+            renderBlock(badge()),
+            '<div class="block block-badge" data-block="b"><span class="badge"><span class="badge-text">OK</span></span></div>'
+        );
+        assert.match(renderBlock(badge({ text: '<b>hot</b>' })), /<span class="badge-text">&lt;b&gt;hot&lt;\/b&gt;<\/span>/);
+    });
+    test('with an icon and a colour', () => {
+        const html = renderBlock(badge({ icon: 'mdi:check', color: 'success' }));
+        assert.match(html, /<span class="badge" style="background: var\(--success-color, #4caf50\)"><ha-icon icon="mdi:check"><\/ha-icon><span/);
+    });
+    test('an icon or colour that is not one is left out', () => {
+        const html = renderBlock(badge({ icon: 'mdi:x"><script>', color: 'red;x' }));
+        assert.doesNotMatch(html, /ha-icon|style=|script/);
+    });
+    test('following an entity: its state, and a click opens its dialog', () => {
+        const html = renderBlock(badge({ text: null, entity_id: 'lock.door' }), { states: { 'lock.door': { state: 'locked' } } });
+        assert.match(html, /data-block="b" data-more-info="lock.door"><span class="badge"><span class="badge-text">locked<\/span>/);
+        assert.match(renderBlock(badge({ text: null, entity_id: 'lock.gone' })), /<span class="badge-text">unavailable<\/span>/);
     });
 });
 

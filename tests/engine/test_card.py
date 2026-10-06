@@ -17,17 +17,21 @@ import pytest
 from haanim.engine.assets import AssetStore
 from haanim.engine.card import CARD_PARTS, HAAnimCard
 from haanim.engine.card_elements import (
+    GAUGE_KINDS,
     GRAPH_KINDS,
+    MAX_BADGE_LENGTH,
     MAX_BLOCKS,
     MAX_GRAPH_HOURS,
     MAX_GRAPH_POINTS,
     MAX_GRAPH_SERIES,
     MAX_ROW_CELLS,
     MAX_TEXT_LENGTH,
+    BadgeElement,
     ButtonElement,
     CardElement,
     CardLayout,
     CardRow,
+    GaugeElement,
     GraphElement,
     IconElement,
     ImageElement,
@@ -186,6 +190,70 @@ class TestBlocks:
         """Test a colour is a name or a hex value."""
         put(card).icon("i", icon="mdi:fan", color=color)
         assert card.blocks[0]["color"] == color
+
+    def test_gauge_of_a_value(self, card: HAAnimCard) -> None:
+        """Test a gauge shows a number between 0 and 100 as a bar unless told otherwise."""
+        put(card).gauge("done", 42)
+        assert card.blocks == [
+            {
+                "id": "done",
+                "type": "gauge",
+                "value": 42.0,
+                "entity_id": None,
+                "min": 0.0,
+                "max": 100.0,
+                "label": None,
+                "unit": None,
+                "kind": "bar",
+                "color": None,
+            }
+        ]
+        json.dumps(card.blocks)
+
+    def test_gauge_with_everything(self, card: HAAnimCard) -> None:
+        """Test a gauge takes a range, a label, a unit, a kind and a colour."""
+        gauge = put(card).gauge(
+            "load", 3.5, min=-10, max=10, label="Load", unit="kW", kind="dial", color="#f80"
+        )
+        assert (gauge.value, gauge.entity_id, gauge.min, gauge.max) == (3.5, None, -10.0, 10.0)
+        assert (gauge.label, gauge.unit, gauge.kind, gauge.color) == ("Load", "kW", "dial", "#f80")
+        assert GAUGE_KINDS == ("bar", "dial")
+
+    def test_gauge_of_an_entity(self, card: HAAnimCard) -> None:
+        """Test a gauge can follow an entity instead of showing a value of the automation's own."""
+        gauge = put(card).gauge("battery", entity_id="sensor.battery")
+        assert (gauge.value, gauge.entity_id) == (None, "sensor.battery")
+        assert card.blocks[0]["entity_id"] == "sensor.battery"
+
+    @pytest.mark.parametrize("value", [-50, 0, 100, 250.5])
+    def test_gauge_value_may_be_outside_the_range(self, card: HAAnimCard, value: float) -> None:
+        """Test a value outside the range is accepted: the card draws the gauge empty or full."""
+        assert put(card).gauge("g", value).value == value
+
+    def test_badge(self, card: HAAnimCard) -> None:
+        """Test a badge is a short text, with an icon and a colour if wanted."""
+        put(card).badge("ok", "OK")
+        put(card).badge("hot", "Too hot", icon="mdi:fire", color="error")
+        assert card.blocks == [
+            {"id": "ok", "type": "badge", "text": "OK", "entity_id": None, "icon": None, "color": None},
+            {
+                "id": "hot",
+                "type": "badge",
+                "text": "Too hot",
+                "entity_id": None,
+                "icon": "mdi:fire",
+                "color": "error",
+            },
+        ]
+
+    def test_badge_of_an_entity(self, card: HAAnimCard) -> None:
+        """Test a badge can show the state of an entity."""
+        badge = put(card).badge("door", entity_id="lock.door", icon="mdi:lock")
+        assert (badge.text, badge.entity_id, badge.icon, badge.color) == (None, "lock.door", "mdi:lock", None)
+
+    def test_badge_at_the_limit(self, card: HAAnimCard) -> None:
+        """Test a badge takes 40 characters."""
+        assert put(card).badge("b", "x" * MAX_BADGE_LENGTH).text == "x" * 40
 
     def test_graph_of_entities(self, card: HAAnimCard) -> None:
         """Test a history graph keeps its entities and time span; one entity can be given as text."""
@@ -599,6 +667,8 @@ class TestElements:
             card.create_icon("e", icon="mdi:fan"),
             card.create_graph("f", series={"A": [1]}),
             card.create_button("g", "Go", "reset"),
+            card.create_gauge("h", 1),
+            card.create_badge("i", "OK"),
         ]
         assert [element.type for element in created] == [
             "text",
@@ -608,6 +678,8 @@ class TestElements:
             "icon",
             "graph",
             "button",
+            "gauge",
+            "badge",
         ]
         assert [type(element).__name__ for element in created] == [
             "TextElement",
@@ -617,6 +689,8 @@ class TestElements:
             "IconElement",
             "GraphElement",
             "ButtonElement",
+            "GaugeElement",
+            "BadgeElement",
         ]
         assert repr(created[0]) == "<TextElement 'a'>"
 
@@ -680,6 +754,57 @@ class TestElements:
         icon.set_label(None)
         icon.set_color(None)
         assert (icon.entity_id, icon.label, icon.color) == (None, None, None)
+
+    def test_gauge_setters(self, card: HAAnimCard) -> None:
+        """Test every property of a gauge has a setter, and a value and an entity replace each other."""
+        gauge: GaugeElement = put(card).gauge("g", 10)
+        gauge.set_value(55)
+        gauge.set_range(0, 200)
+        gauge.set_label("Power")
+        gauge.set_unit("W")
+        gauge.set_kind("dial")
+        gauge.set_color("warning")
+        assert card.blocks[0] == {
+            "id": "g",
+            "type": "gauge",
+            "value": 55.0,
+            "entity_id": None,
+            "min": 0.0,
+            "max": 200.0,
+            "label": "Power",
+            "unit": "W",
+            "kind": "dial",
+            "color": "warning",
+        }
+        gauge.set_entity("sensor.power")
+        assert (gauge.value, gauge.entity_id) == (None, "sensor.power")
+        gauge.set_value(0)
+        assert (gauge.value, gauge.entity_id) == (0.0, None)
+        gauge.set_label(None)
+        gauge.set_unit(None)
+        gauge.set_color(None)
+        assert (gauge.label, gauge.unit, gauge.color) == (None, None, None)
+
+    def test_badge_setters(self, card: HAAnimCard) -> None:
+        """Test every property of a badge has a setter, and a text and an entity replace each other."""
+        badge: BadgeElement = put(card).badge("b", "OK")
+        badge.set_text("Warning")
+        badge.set_icon("mdi:alert")
+        badge.set_color("warning")
+        assert card.blocks[0] == {
+            "id": "b",
+            "type": "badge",
+            "text": "Warning",
+            "entity_id": None,
+            "icon": "mdi:alert",
+            "color": "warning",
+        }
+        badge.set_entity("lock.door")
+        assert (badge.text, badge.entity_id) == (None, "lock.door")
+        badge.set_text("OK")
+        badge.set_icon(None)
+        badge.set_color(None)
+        assert (badge.text, badge.entity_id, badge.icon, badge.color) == ("OK", None, None, None)
 
     def test_graph_setters(self, card: HAAnimCard) -> None:
         """Test a graph's data and look are changed in place."""
@@ -762,6 +887,21 @@ class TestElements:
             (lambda e: e["graph"].set_entities("nodomain"), ValueError, "Invalid entity ID"),
             (lambda e: e["graph"].set_range(min=5, max=1), ValueError, "must be less than max"),
             (lambda e: e["graph"].set_marks(x_major=-1), ValueError, "x_major must be more than 0"),
+            (lambda e: e["gauge"].set_value("high"), TypeError, "value must be a number"),
+            (lambda e: e["gauge"].set_value(None), ValueError, "exactly one of value and entity_id"),
+            (lambda e: e["gauge"].set_entity(None), ValueError, "exactly one of value and entity_id"),
+            (lambda e: e["gauge"].set_entity("nodomain"), ValueError, "Invalid entity ID"),
+            (lambda e: e["gauge"].set_range(5, 5), ValueError, "must be less than max"),
+            (lambda e: e["gauge"].set_kind("pie"), ValueError, "a gauge is one of bar, dial"),
+            (lambda e: e["gauge"].set_color("red; x"), ValueError, "Invalid color"),
+            (lambda e: e["gauge"].set_label(3), TypeError, "label must be a string"),
+            (lambda e: e["gauge"].set_unit(3), TypeError, "unit must be a string"),
+            (lambda e: e["badge"].set_text("x" * 41), ValueError, "at most 40 characters"),
+            (lambda e: e["badge"].set_text(""), ValueError, "text must not be empty"),
+            (lambda e: e["badge"].set_text(None), ValueError, "exactly one of text and entity_id"),
+            (lambda e: e["badge"].set_entity(None), ValueError, "exactly one of text and entity_id"),
+            (lambda e: e["badge"].set_icon("check"), ValueError, "an icon is named like"),
+            (lambda e: e["badge"].set_color("#12"), ValueError, "Invalid color"),
             (lambda e: e["button"].set_action("missing"), ValueError, "has no action 'missing'"),
             (lambda e: e["button"].set_data(when={1, 2}), TypeError, "JSON values"),
             (lambda e: e["button"].set_confirm(True), TypeError, "confirm must be a string"),
@@ -780,6 +920,8 @@ class TestElements:
             "plain_icon": put(card).icon("plain_icon", icon="mdi:home"),
             "graph": put(card).graph("graph", series={"A": [1]}),
             "button": put(card).button("button", "Go", "reset"),
+            "gauge": put(card).gauge("gauge", 5),
+            "badge": put(card).badge("badge", "OK"),
         }
         await FakeClock().advance()
         before = card.blocks
@@ -1084,6 +1226,46 @@ INVALID: list[tuple[str, Any, type[Exception], str]] = [
         ValueError,
         "Automation 'climate' has no action 'nothing'",
     ),
+    ("gauge without value or entity", lambda c: c.create_gauge("g"), ValueError, "exactly one of value"),
+    (
+        "gauge with value and entity",
+        lambda c: c.create_gauge("g", 1, "sensor.a"),
+        ValueError,
+        "exactly one of value and entity_id",
+    ),
+    ("gauge value not a number", lambda c: c.create_gauge("g", "1"), TypeError, "value must be a number"),
+    ("gauge value a boolean", lambda c: c.create_gauge("g", True), TypeError, "value must be a number"),
+    ("gauge value not finite", lambda c: c.create_gauge("g", float("nan")), ValueError, "finite number"),
+    (
+        "gauge entity invalid",
+        lambda c: c.create_gauge("g", entity_id="battery"),
+        ValueError,
+        "Invalid entity",
+    ),
+    ("gauge empty range", lambda c: c.create_gauge("g", 1, min=10, max=10), ValueError, "less than max"),
+    (
+        "gauge range not a number",
+        lambda c: c.create_gauge("g", 1, max="x"),
+        TypeError,
+        "max must be a number",
+    ),
+    ("gauge kind unknown", lambda c: c.create_gauge("g", 1, kind="ring"), ValueError, "a gauge is one of"),
+    ("gauge color with css", lambda c: c.create_gauge("g", 1, color="red;x"), ValueError, "Invalid color"),
+    ("gauge label not a string", lambda c: c.create_gauge("g", 1, label=1), TypeError, "label must be"),
+    ("gauge unit not a string", lambda c: c.create_gauge("g", 1, unit=1), TypeError, "unit must be"),
+    ("badge without text or entity", lambda c: c.create_badge("b"), ValueError, "exactly one of text"),
+    (
+        "badge with text and entity",
+        lambda c: c.create_badge("b", "OK", "lock.door"),
+        ValueError,
+        "exactly one of text and entity_id",
+    ),
+    ("badge too long", lambda c: c.create_badge("b", "x" * 41), ValueError, "at most 40 characters, not 41"),
+    ("badge empty", lambda c: c.create_badge("b", "  "), ValueError, "text must not be empty"),
+    ("badge not a string", lambda c: c.create_badge("b", 5), TypeError, "text must be a string"),
+    ("badge entity invalid", lambda c: c.create_badge("b", entity_id="door"), ValueError, "Invalid entity"),
+    ("badge icon invalid", lambda c: c.create_badge("b", "OK", icon="check"), ValueError, "Invalid icon"),
+    ("badge color invalid", lambda c: c.create_badge("b", "OK", color="a b"), ValueError, "Invalid color"),
     (
         "icon without icon or entity",
         lambda c: c.create_icon("i"),

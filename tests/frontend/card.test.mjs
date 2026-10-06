@@ -310,6 +310,24 @@ describe('haanim-card', () => {
         assert.match(card.shadowRoot.innerHTML, /<span class="value">on<\/span>/);
     });
 
+    test('a gauge and a badge follow their entities', async () => {
+        const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'sensor.battery': entity('40'), 'lock.door': entity('locked') });
+        hass.push('haanim/card/subscribe', {
+            blocks: [
+                { id: 'g', type: 'gauge', value: null, entity_id: 'sensor.battery', min: 0, max: 100, kind: 'bar' },
+                { id: 'b', type: 'badge', text: null, entity_id: 'lock.door' },
+                { id: 'own', type: 'gauge', value: 5, entity_id: null, min: 0, max: 10, kind: 'bar' },
+            ],
+        });
+        assert.match(card.shadowRoot.innerHTML, /width: 40.0%/);
+        assert.match(card.shadowRoot.innerHTML, /<span class="badge-text">locked<\/span>/);
+        hass.states = { ...hass.states, 'sensor.battery': entity('65', '2'), 'lock.door': entity('unlocked', '2') };
+        card.hass = hass;
+        assert.match(card.shadowRoot.innerHTML, /width: 65.0%/);
+        assert.match(card.shadowRoot.innerHTML, /<span class="badge-text">unlocked<\/span>/);
+        assert.match(card.shadowRoot.innerHTML, /width: 50.0%/);
+    });
+
     test('an icon that does not follow its entity is not redrawn when the entity changes', async () => {
         const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'fan.bedroom': { state: 'off', last_updated: '1' } });
         hass.push('haanim/card/subscribe', {

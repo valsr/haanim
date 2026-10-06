@@ -300,6 +300,8 @@ actions, which exist only once the file has run: create buttons in `@startup`.
 | `create_value(id, label, value, unit="")`                   | A labelled value                           | `set_value`, `set_label`, `set_unit`            |
 | `create_entity(id, entity_id)`                              | The live state of an entity                | `set_entity`                                    |
 | `create_icon(id, entity_id=None, icon=None, ...)`           | An icon, driven by an entity by default    | `set_icon`, `set_color`, `set_spin`, `set_label`, `set_entity`, `set_follow_entity` |
+| `create_gauge(id, value=None, entity_id=None, ...)`         | A progress bar or a dial                   | `set_value`, `set_entity`, `set_range`, `set_label`, `set_unit`, `set_kind`, `set_color` |
+| `create_badge(id, text=None, entity_id=None, ...)`          | A short text in a coloured pill            | `set_text`, `set_entity`, `set_icon`, `set_color` |
 | `create_graph(id, entities=None, series=None, ...)`         | A graph of history or of your own numbers  | `set_series`, `set_entities`, `set_hours`, `set_kind`, `set_title`, `set_unit`, `set_range`, `set_marks` |
 | `create_button(id, label, action, confirm=None, **data)`    | A button that runs an action               | `set_label`, `set_action`, `set_confirm`, `set_data` |
 
@@ -369,6 +371,42 @@ icons.add_element(fan).add_element(door).add_element(mode).add_element(alarm)
 mode.set_icon("mdi:fire")
 mode.set_label("Heating")
 ```
+
+### Gauges and badges
+
+A gauge shows a number within a range (`min=0`, `max=100` unless given): `kind="bar"` is a progress bar,
+`kind="dial"` a half-round dial. The number is either yours, changed with `set_value()`, or the state of an
+entity, which the gauge then follows; the entity also gives the label and the unit unless you give them.
+
+```python
+done = haa.card.create_gauge("done", 0, label="Backup", unit="%")                       # a progress bar
+battery = haa.card.create_gauge("battery", entity_id="sensor.phone_battery")            # follows the entity
+load = haa.card.create_gauge("load", 1.2, min=0, max=5, unit="kW", kind="dial", color="warning")
+haa.card.add_element(done)
+haa.card.layout.split_row(2).add_element(battery).add_element(load)
+done.set_value(40)
+load.set_color("error")
+```
+
+A number outside the range is shown as it is, with the gauge empty or full. While an entity's state is not a
+number (`unavailable`), the gauge is empty and shows the state.
+
+A badge is a short text (at most 40 characters) in a coloured pill, with an icon if you name one. Like a
+gauge it shows either a text of yours or the state of an entity:
+
+```python
+mode = haa.card.create_badge("mode", "Heating", icon="mdi:fire", color="warning")
+door = haa.card.create_badge("door", entity_id="lock.front_door")                       # the lock's state
+haa.card.layout.split_row(4).add_element(mode).add_element(door)
+mode.set_text("Idle")
+mode.set_icon(None)
+mode.set_color("disabled")
+```
+
+Colours are the same as for icons: a theme colour (`primary`, `accent`, `success`, `warning`, `error`,
+`disabled`), a colour name or `#rrggbb`. A click on a gauge or badge of an entity opens the entity's dialog.
+
+There is no table element: rows split into cells, filled with texts, values and badges, make one.
 
 ### Graphs
 

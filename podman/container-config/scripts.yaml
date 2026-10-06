@@ -1,7 +1,22 @@
-add gauges/progress bar, badge. Table can be mocked via layout now
-
-for images lets do the followng:
-- Size, alignment and caption options (small).
-- Camera entities: a live picture from a camera.* entity (medium).
-
 finaly add html (allowing raw html to be injected)
+
+redesign the HAAnim page:
+  - automation table should show the disable/stop/restart/start buttons
+  - details page:
+      - keep the header and use tabs for the following:
+          - preview (first tab)
+          - actions (second tab)
+          - logs (thrid tab)
+
+note that the climate card send_notification/hourly_check action triggers an error
+
+rework the demo/examples to include a demo for each of the following
+
+  - basic demo covering actions, text, buttons
+  - demo for graphs
+  - demo for images
+  - demo for other advance controls
+  - demo for layout
+  - demo for html
+  - demo to illustrate error handling/etc
+  - demo to call other automations/services/entities (setting)

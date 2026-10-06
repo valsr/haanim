@@ -226,6 +226,85 @@ class HAAnimCard:
             follow_entity=follow_entity,
         )
 
+    def create_gauge(
+        self,
+        id: str,
+        value: float | None = None,
+        entity_id: str | None = None,
+        *,
+        min: float = 0,
+        max: float = 100,
+        label: str | None = None,
+        unit: str | None = None,
+        kind: str = "bar",
+        color: str | None = None,
+    ) -> _elements.GaugeElement:
+        """Create a gauge: a number within a range, drawn as a progress bar or as a dial.
+
+        Exactly one of ``value`` and ``entity_id`` is given. With ``value``
+        the gauge shows that number until ``set_value()`` changes it. With
+        ``entity_id`` it follows the entity's state; while the state is not a
+        number (``unavailable``) the gauge is empty and shows the state.
+
+        A number outside the range is shown as it is, with the gauge empty or full.
+
+        Args:
+            id: ID of the element.
+            value: The number shown.
+            entity_id: The entity whose state is shown.
+            min: The value at which the gauge is empty.
+            max: The value at which the gauge is full.
+            label: Text next to the gauge. The entity's name if omitted and the gauge shows an entity.
+            unit: The unit shown after the number. The entity's own if omitted.
+            kind: ``"bar"`` for a progress bar, ``"dial"`` for a half-round dial.
+            color: Colour of the filled part: a theme colour (``primary``, ``accent``, ``success``,
+                ``warning``, ``error``, ``disabled``), a colour name or ``#rrggbb``.
+
+        Raises:
+            ValueError: Unless exactly one of ``value`` and ``entity_id`` is given, or ``min`` is
+                not less than ``max``, or an argument is not valid.
+        """
+        return _elements.GaugeElement(
+            self,
+            id,
+            value=value,
+            entity_id=entity_id,
+            min=min,
+            max=max,
+            label=label,
+            unit=unit,
+            kind=kind,
+            color=color,
+        )
+
+    def create_badge(
+        self,
+        id: str,
+        text: str | None = None,
+        entity_id: str | None = None,
+        *,
+        icon: str | None = None,
+        color: str | None = None,
+    ) -> _elements.BadgeElement:
+        """Create a badge: a short text in a coloured pill.
+
+        Exactly one of ``text`` and ``entity_id`` is given. With ``entity_id``
+        the badge shows the entity's state and follows it.
+
+        Args:
+            id: ID of the element.
+            text: The text, at most 40 characters.
+            entity_id: The entity whose state is the text.
+            icon: An icon before the text, as ``"mdi:check"``.
+            color: Colour of the badge: a theme colour (``primary``, ``accent``, ``success``,
+                ``warning``, ``error``, ``disabled``), a colour name or ``#rrggbb``.
+
+        Raises:
+            ValueError: Unless exactly one of ``text`` and ``entity_id`` is given, or an
+                argument is not valid.
+        """
+        return _elements.BadgeElement(self, id, text=text, entity_id=entity_id, icon=icon, color=color)
+
     def create_graph(
         self,
         id: str,

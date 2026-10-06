@@ -240,6 +240,80 @@ function renderIcon(block, context, open) {
     );
 }
 
+/** The length of the dial's arc: half a circle of radius 50. */
+const DIAL_LENGTH = Math.PI * 50;
+
+/** A number as a gauge shows it: at most two decimals, and none that are zero. */
+export function formatNumber(value) {
+    return String(Math.round(value * 100) / 100);
+}
+
+/**
+ * Render a gauge block: a number within a range, as a progress bar or as a dial.
+ *
+ * The number is the block's own, or the state of its entity; the entity then also gives the label and the
+ * unit unless the block has its own. A state that is not a number leaves the gauge empty and is shown as
+ * text. A number outside the range is shown as it is, with the gauge empty or full.
+ */
+function renderGauge(block, context, open) {
+    const state = block.entity_id ? (context.states || {})[block.entity_id] : null;
+    const attributes = (state && state.attributes) || {};
+    const raw = block.entity_id ? (state ? state.state : 'unavailable') : block.value;
+    const number = raw === null || raw === '' || typeof raw === 'boolean' ? NaN : Number(raw);
+    const known = Number.isFinite(number);
+    const low = Number(block.min);
+    const high = Number(block.max);
+    const span = high - low;
+    const part = known && span > 0 ? Math.min(Math.max((number - low) / span, 0), 1) : 0;
+    const label = block.label ?? (block.entity_id ? attributes.friendly_name || block.entity_id : '');
+    const unitText = block.unit ?? (block.entity_id ? attributes.unit_of_measurement || '' : '');
+    const text = known ? formatNumber(number) : String(raw ?? '');
+    const color = iconColor(block.color) || 'var(--primary-color)';
+    const more = block.entity_id ? ` data-more-info="${escapeHtml(block.entity_id)}"` : '';
+    const start = `${open.slice(0, -1)}${more}>`;
+    const range = `role="progressbar" aria-valuemin="${low}" aria-valuemax="${high}"${known ? ` aria-valuenow="${number}"` : ''}`;
+    if (block.kind === 'dial') {
+        const arc = 'M 10 60 A 50 50 0 0 1 110 60';
+        const filled = (part * DIAL_LENGTH).toFixed(2);
+        const unit = known && unitText ? `<tspan class="dial-unit"> ${escapeHtml(unitText)}</tspan>` : '';
+        return (
+            `${start}<svg class="dial" viewBox="0 0 120 70" ${range}>` +
+            `<path class="dial-track" d="${arc}"></path>` +
+            `<path class="dial-fill" d="${arc}" style="stroke: ${color}"` +
+            ` stroke-dasharray="${filled} ${DIAL_LENGTH.toFixed(2)}"></path>` +
+            `<text class="dial-value" x="60" y="58" text-anchor="middle">${escapeHtml(text)}${unit}</text></svg>` +
+            (label ? `<span class="label">${escapeHtml(label)}</span>` : '') +
+            '</div>'
+        );
+    }
+    const unit = known && unitText ? ` <span class="unit">${escapeHtml(unitText)}</span>` : '';
+    return (
+        `${start}<div class="gauge-head"><span class="label">${escapeHtml(label)}</span>` +
+        `<span class="value">${escapeHtml(text)}${unit}</span></div>` +
+        `<div class="bar" ${range}><div class="fill" style="width: ${(part * 100).toFixed(1)}%; background: ${color}">` +
+        '</div></div></div>'
+    );
+}
+
+/**
+ * Render a badge block: a short text in a coloured pill, with an icon if the block names one.
+ *
+ * The text is the block's own, or the state of its entity.
+ */
+function renderBadge(block, context, open) {
+    const state = block.entity_id ? (context.states || {})[block.entity_id] : null;
+    const text = block.entity_id ? (state ? state.state : 'unavailable') : block.text;
+    const named = /^[a-z0-9-]+:[a-z0-9-]+$/.test(String(block.icon ?? '')) ? block.icon : null;
+    const color = iconColor(block.color);
+    const style = color ? ` style="background: ${color}"` : '';
+    const more = block.entity_id ? ` data-more-info="${escapeHtml(block.entity_id)}"` : '';
+    return (
+        `${open.slice(0, -1)}${more}><span class="badge"${style}>` +
+        (named ? `<ha-icon icon="${escapeHtml(named)}"></ha-icon>` : '') +
+        `<span class="badge-text">${escapeHtml(text)}</span></span></div>`
+    );
+}
+
 /**
  * Render one content block.
  *
@@ -281,6 +355,10 @@ export function renderBlock(block, context = {}) {
         }
         case 'icon':
             return renderIcon(block, context, open);
+        case 'gauge':
+            return renderGauge(block, context, open);
+        case 'badge':
+            return renderBadge(block, context, open);
         case 'graph':
             return `${open}${renderGraph(block, context)}</div>`;
         case 'button': {

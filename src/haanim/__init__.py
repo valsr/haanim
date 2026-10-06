@@ -21,11 +21,13 @@ from typing import TYPE_CHECKING, Any
 from haanim.const import ActionMode
 from haanim.engine.card import HAAnimCard
 from haanim.engine.card_elements import (
+    BadgeElement,
     ButtonElement,
     CardElement,
     CardLayout,
     CardRow,
     EntityElement,
+    GaugeElement,
     GraphElement,
     IconElement,
     ImageElement,
@@ -113,6 +115,8 @@ __all__ = [
     "ValueElement",
     "EntityElement",
     "IconElement",
+    "GaugeElement",
+    "BadgeElement",
     "GraphElement",
     "ButtonElement",
     "HAAnimEntity",

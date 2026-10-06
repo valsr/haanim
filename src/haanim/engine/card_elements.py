@@ -17,24 +17,39 @@ from __future__ import annotations
 import copy
 import json
 import math
-import re
 from collections.abc import Callable, Mapping, Sequence
-from datetime import datetime
 from typing import Any, ClassVar, Protocol
 
 from haanim.engine.assets import AssetStore
-from haanim.engine.durations import parse_duration
+from haanim.engine.card_checks import (
+    MAX_GRAPH_HOURS,
+    MAX_GRAPH_POINTS,
+    MAX_GRAPH_SERIES,
+    MAX_GRAPH_STATE_LENGTH,
+    _check_color,
+    _check_entity_id,
+    _check_icon,
+    _check_number,
+    _check_str,
+    _graph_entities,
+    _graph_marks,
+    _graph_series,
+)
 
 __all__ = [
+    "BadgeElement",
     "ButtonElement",
     "CardElement",
     "CardLayout",
     "CardRow",
     "EntityElement",
+    "GAUGE_KINDS",
     "GRAPH_KINDS",
+    "GaugeElement",
     "GraphElement",
     "IconElement",
     "ImageElement",
+    "MAX_BADGE_LENGTH",
     "MAX_BLOCKS",
     "MAX_GRAPH_HOURS",
     "MAX_GRAPH_POINTS",
@@ -56,178 +71,17 @@ MAX_TEXT_LENGTH = 10_000
 MAX_TITLE_LENGTH = 100
 """The most characters the card's title can have."""
 
-MAX_GRAPH_SERIES = 8
-"""The most lines a graph can have: entities, or series of the automation's own."""
-
-MAX_GRAPH_POINTS = 500
-"""The most points one series of a graph can have."""
-
-MAX_GRAPH_STATE_LENGTH = 40
-"""The most characters a state in a series of states can have."""
-
-MAX_GRAPH_HOURS = 720
-"""The longest entity history a graph can show: 30 days."""
-
 GRAPH_KINDS = ("line", "area", "bar")
 """How a graph can be drawn."""
 
+GAUGE_KINDS = ("bar", "dial")
+"""How a gauge can be drawn: a progress bar, or a dial."""
+
+MAX_BADGE_LENGTH = 40
+"""The most characters the text of a badge can have."""
+
 MAX_ROW_CELLS = 6
 """The most cells a row of the layout can be split into."""
-
-
-def _check_str(value: Any, what: str, *, empty: bool = True) -> str:
-    """Return a string argument, checked."""
-    if not isinstance(value, str):
-        raise TypeError(f"{what} must be a string, not {type(value).__name__}")
-    if not empty and not value.strip():
-        raise ValueError(f"{what} must not be empty")
-    return value
-
-
-def _check_entity_id(entity_id: Any) -> str:
-    """Return an entity ID argument, checked to have the form ``domain.name``."""
-    domain, dot, name = _check_str(entity_id, "entity_id").partition(".")
-    if not dot or not domain or not name or "." in name or entity_id != entity_id.strip():
-        raise ValueError(f"Invalid entity ID {entity_id!r}")
-    return str(entity_id)
-
-
-def _check_number(value: Any, what: str) -> float:
-    """Return a numeric argument as a float, checked to be a finite number."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise TypeError(f"{what} must be a number, not {type(value).__name__}")
-    if not math.isfinite(value):
-        raise ValueError(f"{what} must be a finite number, not {value!r}")
-    return float(value)
-
-
-def _graph_x(value: Any, where: str) -> tuple[str, float]:
-    """Return what kind of horizontal position a value is (``number`` or ``time``) and its number.
-
-    A time becomes seconds since 1970, which is what the card draws along the axis.
-    """
-    if isinstance(value, datetime):
-        moment = value
-    elif isinstance(value, str):
-        try:
-            moment = datetime.fromisoformat(value)
-        except ValueError:
-            raise ValueError(f"{where}: {value!r} is not a time in ISO 8601 form") from None
-    else:
-        return "number", _check_number(value, where)
-    if moment.tzinfo is None:
-        raise ValueError(f"{where}: the time {value!r} has no time zone")
-    return "time", moment.timestamp()
-
-
-def _graph_entities(entities: Any, hours: Any) -> dict[str, Any]:
-    """Check the entities and the time span of a history graph and return them as the block carries them."""
-    span = _check_number(hours, "hours")
-    if not 0 < span <= MAX_GRAPH_HOURS:
-        raise ValueError(f"hours must be more than 0 and at most {MAX_GRAPH_HOURS}, not {span:g}")
-    if isinstance(entities, (bytes, Mapping)) or not isinstance(entities, (str, Sequence)):
-        raise TypeError(f"entities must be an entity ID or a list of them, not {type(entities).__name__}")
-    names = [entities] if isinstance(entities, str) else list(entities)
-    if not 1 <= len(names) <= MAX_GRAPH_SERIES:
-        raise ValueError(f"A graph shows 1 to {MAX_GRAPH_SERIES} entities, not {len(names)}")
-    checked = [_check_entity_id(name) for name in names]
-    if len(set(checked)) != len(checked):
-        raise ValueError("A graph shows each entity once")
-    return {"entities": checked, "hours": span}
-
-
-def _graph_marks(major: Any, minor: Any, *, time: bool) -> dict[str, float | None]:
-    """Check the distances between the marks of the horizontal axis and return them as the block carries them.
-
-    On a time axis a distance is a duration and is carried in seconds.
-    """
-    distances: dict[str, float | None] = {}
-    for name, value in (("x_major", major), ("x_minor", minor)):
-        if value is None:
-            distances[name] = None
-        elif time:
-            try:
-                distances[name] = parse_duration(value)
-            except ValueError as err:
-                raise ValueError(f"{name} is a duration on a time axis: {err}") from None
-        else:
-            distance = _check_number(value, name)
-            if distance <= 0:
-                raise ValueError(f"{name} must be more than 0, not {distance:g}")
-            distances[name] = distance
-    large, small = distances["x_major"], distances["x_minor"]
-    if large is not None and small is not None and small >= large:
-        raise ValueError(f"x_minor ({small:g}) must be less than x_major ({large:g})")
-    return distances
-
-
-def _graph_point(point: Any, index: int, here: str) -> tuple[str, float, float | str | None]:
-    """Check one point of a series.
-
-    Returns:
-        The kind of its horizontal position (``index``, ``number`` or ``time``), that
-        position as a number, and its value: a number, a state as text, or None.
-    """
-    if isinstance(point, (list, tuple)):
-        if len(point) != 2:
-            raise ValueError(f"{here}: a point is a value or an (x, y) pair, not {point!r}")
-        kind, horizontal = _graph_x(point[0], here)
-        value = point[1]
-    else:
-        kind, horizontal, value = "index", float(index), point
-    if value is None:
-        return kind, horizontal, None
-    if isinstance(value, str):
-        if not value.strip() or len(value) > MAX_GRAPH_STATE_LENGTH:
-            raise ValueError(
-                f"{here}: a state is 1 to {MAX_GRAPH_STATE_LENGTH} characters of text, not {value!r}"
-            )
-        return kind, horizontal, value
-    return kind, horizontal, _check_number(value, here)
-
-
-def _graph_series(series: Any) -> dict[str, Any]:
-    """Check the series of a graph and return them as the block carries them.
-
-    Returns:
-        ``series`` as ``{name: [[x, y], ...]}``, where ``x`` is a number and ``y`` a number,
-        a state as text, or None; and ``x``: ``index`` if the points were plain values, else
-        ``number`` or ``time``.
-    """
-    if not isinstance(series, Mapping):
-        raise TypeError(f"series must be a dictionary of name to points, not {type(series).__name__}")
-    if not 1 <= len(series) <= MAX_GRAPH_SERIES:
-        raise ValueError(f"A graph shows 1 to {MAX_GRAPH_SERIES} series, not {len(series)}")
-    kinds: set[str] = set()
-    checked: dict[str, list[list[float | str | None]]] = {}
-    for name, points in series.items():
-        where = f"series {_check_str(name, 'a series name', empty=False)!r}"
-        if isinstance(points, (str, bytes, Mapping)) or not isinstance(points, Sequence):
-            raise TypeError(f"{where}: the points must be a list, not {type(points).__name__}")
-        if len(points) > MAX_GRAPH_POINTS:
-            raise ValueError(f"{where} has {len(points)} points; a series has at most {MAX_GRAPH_POINTS}")
-        pairs: list[list[float | str | None]] = []
-        forms: set[str] = set()
-        for index, point in enumerate(points):
-            kind, horizontal, value = _graph_point(point, index, f"{where}, point {index}")
-            kinds.add(kind)
-            if value is not None:
-                forms.add("states" if isinstance(value, str) else "numbers")
-            pairs.append([horizontal, value])
-        if len(forms) > 1:
-            raise ValueError(f"{where} mixes numbers and states; a series is one or the other")
-        checked[name] = pairs
-    if len(kinds) > 1:
-        raise ValueError(
-            "The points of a graph are all plain values, all (number, y) pairs or all (time, y) pairs; "
-            f"these are mixed: {', '.join(sorted(kinds))}"
-        )
-    return {"series": checked, "x": kinds.pop() if kinds else "index"}
-
-
-# An icon is "<set>:<name>", as in "mdi:fan"; a colour is a name or a hex value
-_ICON = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*:[a-z0-9]+(-[a-z0-9]+)*")
-_COLOR = re.compile(r"#[0-9a-fA-F]{3,8}|[a-zA-Z]+(-[a-zA-Z]+)*")
 
 
 def _optional(value: Any) -> str | None:
@@ -252,7 +106,7 @@ class _Card(Protocol):
 
 
 class CardElement:
-    """One thing on a card: a text, an image, a value, an entity, an icon, a graph or a button.
+    """One thing on a card: a text, an image, a value, a gauge, a badge, an icon, a graph, a button, ...
 
     An element is created by the card (``haa.card.create_*()``) and shown once
     it has been added to the layout. Its setters change it in place.
@@ -466,10 +320,10 @@ class IconElement(CardElement):
         follows = follow_entity and entity_id is not None
         if icon is None and not follows:
             raise ValueError("An icon element needs an icon, or an entity to follow")
-        if icon is not None and not _ICON.fullmatch(_check_str(icon, "icon")):
-            raise ValueError(f"Invalid icon {icon!r}: an icon is named like 'mdi:fan'")
-        if color is not None and not _COLOR.fullmatch(_check_str(color, "color")):
-            raise ValueError(f"Invalid color {color!r}: use a colour name or '#rrggbb'")
+        if icon is not None:
+            _check_icon(icon)
+        if color is not None:
+            _check_color(color)
         if label is not None:
             _check_str(label, "label")
         return {
@@ -633,6 +487,179 @@ class GraphElement(CardElement):
     def set_marks(self, x_major: float | str | None = None, x_minor: float | str | None = None) -> None:
         """Set the distances between the marks of the horizontal axis; None lets the card pick."""
         self._apply(x_major=x_major, x_minor=x_minor)
+
+
+class GaugeElement(CardElement):
+    """A number within a range, drawn as a progress bar or as a dial."""
+
+    TYPE = "gauge"
+
+    def _build(self, **arguments: Any) -> dict[str, Any]:
+        value, entity_id = arguments["value"], arguments["entity_id"]
+        label, unit, color, kind = (
+            arguments["label"],
+            arguments["unit"],
+            arguments["color"],
+            arguments["kind"],
+        )
+        if (value is None) == (entity_id is None):
+            raise ValueError("A gauge needs exactly one of value and entity_id")
+        if kind not in GAUGE_KINDS:
+            raise ValueError(f"Invalid kind {kind!r}: a gauge is one of {', '.join(GAUGE_KINDS)}")
+        low, high = _check_number(arguments["min"], "min"), _check_number(arguments["max"], "max")
+        if low >= high:
+            raise ValueError(f"min ({low:g}) must be less than max ({high:g})")
+        if label is not None:
+            _check_str(label, "label")
+        if unit is not None:
+            _check_str(unit, "unit")
+        return {
+            "value": None if value is None else _check_number(value, "value"),
+            "entity_id": None if entity_id is None else _check_entity_id(entity_id),
+            "min": low,
+            "max": high,
+            "label": label,
+            "unit": unit,
+            "kind": kind,
+            "color": None if color is None else _check_color(color),
+        }
+
+    @property
+    def value(self) -> float | None:
+        """The number shown; None if the gauge shows an entity."""
+        value: float | None = self._content["value"]
+        return value
+
+    @property
+    def entity_id(self) -> str | None:
+        """The entity whose state is shown; None if the gauge shows a value of the automation's own."""
+        return _optional(self._content["entity_id"])
+
+    @property
+    def min(self) -> float:
+        """The value at which the gauge is empty."""
+        return float(self._content["min"])
+
+    @property
+    def max(self) -> float:
+        """The value at which the gauge is full."""
+        return float(self._content["max"])
+
+    @property
+    def label(self) -> str | None:
+        """The text next to the gauge; None for the entity's name, or no text."""
+        return _optional(self._content["label"])
+
+    @property
+    def unit(self) -> str | None:
+        """The unit shown after the number; None for the entity's own, or no unit."""
+        return _optional(self._content["unit"])
+
+    @property
+    def kind(self) -> str:
+        """How the gauge is drawn: ``bar`` or ``dial``."""
+        return str(self._content["kind"])
+
+    @property
+    def color(self) -> str | None:
+        """The colour of the filled part; None for the default."""
+        return _optional(self._content["color"])
+
+    def set_value(self, value: float) -> None:
+        """Show this number, instead of the number or the entity the gauge showed."""
+        if value is None:
+            raise ValueError("A gauge needs exactly one of value and entity_id")
+        self._apply(value=value, entity_id=None)
+
+    def set_entity(self, entity_id: str) -> None:
+        """Show the state of this entity, instead of the number or the entity the gauge showed."""
+        if entity_id is None:
+            raise ValueError("A gauge needs exactly one of value and entity_id")
+        self._apply(value=None, entity_id=entity_id)
+
+    def set_range(self, min: float, max: float) -> None:  # pylint: disable=redefined-builtin
+        """Change the values at which the gauge is empty and full."""
+        self._apply(min=min, max=max)
+
+    def set_label(self, label: str | None) -> None:
+        """Change the text next to the gauge."""
+        self._apply(label=label)
+
+    def set_unit(self, unit: str | None) -> None:
+        """Change the unit shown after the number."""
+        self._apply(unit=unit)
+
+    def set_kind(self, kind: str) -> None:
+        """Change how the gauge is drawn: ``bar`` or ``dial``."""
+        self._apply(kind=kind)
+
+    def set_color(self, color: str | None) -> None:
+        """Change the colour of the filled part; None for the default."""
+        self._apply(color=color)
+
+
+class BadgeElement(CardElement):
+    """A short text in a coloured pill, with an icon if wanted."""
+
+    TYPE = "badge"
+
+    def _build(self, **arguments: Any) -> dict[str, Any]:
+        text, entity_id = arguments["text"], arguments["entity_id"]
+        icon, color = arguments["icon"], arguments["color"]
+        if (text is None) == (entity_id is None):
+            raise ValueError("A badge needs exactly one of text and entity_id")
+        if text is not None and len(_check_str(text, "text", empty=False)) > MAX_BADGE_LENGTH:
+            raise ValueError(f"A badge can have at most {MAX_BADGE_LENGTH} characters, not {len(text)}")
+        return {
+            "text": text,
+            "entity_id": None if entity_id is None else _check_entity_id(entity_id),
+            "icon": None if icon is None else _check_icon(icon),
+            "color": None if color is None else _check_color(color),
+        }
+
+    @property
+    def text(self) -> str | None:
+        """The text of the badge; None if it shows the state of an entity."""
+        return _optional(self._content["text"])
+
+    @property
+    def entity_id(self) -> str | None:
+        """The entity whose state the badge shows; None if it shows a text of the automation's own."""
+        return _optional(self._content["entity_id"])
+
+    @property
+    def icon(self) -> str | None:
+        """The icon before the text, as ``"mdi:check"``; None for no icon."""
+        return _optional(self._content["icon"])
+
+    @property
+    def color(self) -> str | None:
+        """The colour of the badge; None for the default."""
+        return _optional(self._content["color"])
+
+    def set_text(self, text: str) -> None:
+        """Show this text, instead of the text or the entity the badge showed.
+
+        Raises:
+            ValueError: If the text is empty or longer than 40 characters.
+        """
+        if text is None:
+            raise ValueError("A badge needs exactly one of text and entity_id")
+        self._apply(text=text, entity_id=None)
+
+    def set_entity(self, entity_id: str) -> None:
+        """Show the state of this entity, instead of the text or the entity the badge showed."""
+        if entity_id is None:
+            raise ValueError("A badge needs exactly one of text and entity_id")
+        self._apply(text=None, entity_id=entity_id)
+
+    def set_icon(self, icon: str | None) -> None:
+        """Change the icon before the text; None for no icon."""
+        self._apply(icon=icon)
+
+    def set_color(self, color: str | None) -> None:
+        """Change the colour of the badge; None for the default."""
+        self._apply(color=color)
 
 
 class ButtonElement(CardElement):

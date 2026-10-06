@@ -23,6 +23,8 @@ PUBLIC_API = (
     "src/haanim/types.py",
     "src/haanim/engine/assets.py",
     "src/haanim/engine/card.py",
+    "src/haanim/engine/card_checks.py",
+    "src/haanim/engine/card_elements.py",
     "src/haanim/engine/decorators.py",
     "src/haanim/engine/errors.py",
     "src/haanim/engine/haanim_api.py",

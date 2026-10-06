@@ -3,9 +3,10 @@
 Elements are created with ``haa.card.create_*()``, placed with the layout, and
 changed in place with their setters. The card has a title that changes with
 what the automation does, a heading, a logo from the automation's assets, a
-counter that is kept across restarts next to an uptime, two graphs (numbers the
-automation keeps itself, and the history of entities), the live state of an
-entity, a row of icons that follow entities, and a row of three buttons, one of
+counter that is kept across restarts next to an uptime, a progress bar towards
+a goal next to a dial that follows an entity, a row of badges, two graphs
+(numbers the automation keeps itself, and the history of entities), the live
+state of an entity, a row of icons that follow entities, and a row of three buttons, one of
 which strips the card to a bare box and back. Add it to a dashboard with::
 
     type: custom:haanim-card
@@ -33,6 +34,7 @@ from haanim import (
 ENTITY = "sun.sun"
 TEMPERATURE = "sensor.temperature"
 HISTORY = 20
+GOAL = 10  # the progress bar is full at this many presses
 FAN = "input_boolean.fan"  # a Toggle helper called "Fan"; any entity that is on or off will do
 
 
@@ -40,6 +42,10 @@ FAN = "input_boolean.fan"  # a Toggle helper called "Fan"; any entity that is on
 # automation starts, and put on the card in build_card.
 counter = haa.card.create_value("count", label="Button presses", value=0)
 running = haa.card.create_value("uptime", label="Running for", value=0, unit="min")
+# A gauge shows a number within a range: here as a progress bar, how far the count is towards the goal
+progress = haa.card.create_gauge("goal", 0, max=GOAL, label=f"Towards {GOAL} presses")
+# A badge is a short text in a coloured pill
+level = haa.card.create_badge("level", "Not started", color="disabled")
 # A graph of the automation's own numbers: the count after each of the last changes
 presses = haa.card.create_graph("presses", series={"Count": []}, kind="bar", title="Recent counts")
 
@@ -48,6 +54,15 @@ def show_count() -> int:
     """Put the stored count on the card and in its title, and return it."""
     count = int(haa.get_variable("count", 0))
     counter.set_value(count)
+    progress.set_value(count)
+    if count >= GOAL:
+        level.set_text("Goal reached")
+        level.set_icon("mdi:trophy")
+        level.set_color("success")
+    else:
+        level.set_text("Counting" if count else "Not started")
+        level.set_icon(None)
+        level.set_color("primary" if count else "disabled")
     presses.set_series({"Count": haa.get_variable("history", [])})
     # The title of the card follows the count
     haa.card.set_title(f"Dashboard demo: {count} pressed" if count else "Dashboard demo")
@@ -74,6 +89,17 @@ def build_card(event: ActionEvent) -> None:
 
     # A row split into cells puts elements side by side
     layout.split_row(2).add_element(counter).add_element(running)
+
+    # Gauges: the automation's own number as a progress bar, and an entity's state on a dial
+    gauges = layout.split_row(2)
+    gauges.add_element(progress)
+    gauges.add_element(card.create_gauge("dial", entity_id=TEMPERATURE, min=10, max=35, kind="dial"))
+
+    # Badges: one the automation sets, and one that shows the state of an entity
+    badges = layout.split_row(3)
+    badges.add_element(level)
+    badges.add_element(card.create_badge("fan_state", entity_id=FAN, icon="mdi:fan", color="accent"))
+
     layout.add_element(presses)
     layout.add_element(card.create_entity("sun", ENTITY))
 

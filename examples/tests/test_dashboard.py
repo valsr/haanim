@@ -10,13 +10,17 @@ DASHBOARD = Path(__file__).parents[1] / "dashboard"
 
 
 async def test_card_is_built_at_startup() -> None:
-    """The card has its thirteen elements in eight rows, with the logo from the automation's assets."""
+    """The card has its seventeen elements in ten rows, with the logo from the automation's assets."""
     async with AutomationHarness(DASHBOARD) as automation:
         assert [(block["id"], block["type"]) for block in automation.card.blocks] == [
             ("intro", "text"),
             ("logo", "image"),
             ("count", "value"),
             ("uptime", "value"),
+            ("goal", "gauge"),
+            ("dial", "gauge"),
+            ("level", "badge"),
+            ("fan_state", "badge"),
             ("presses", "graph"),
             ("sun", "entity"),
             ("temperature", "graph"),
@@ -31,6 +35,8 @@ async def test_card_is_built_at_startup() -> None:
             {"cells": 1, "elements": ["intro"]},
             {"cells": 1, "elements": ["logo"]},
             {"cells": 2, "elements": ["count", "uptime"]},
+            {"cells": 2, "elements": ["goal", "dial"]},
+            {"cells": 3, "elements": ["level", "fan_state"]},
             {"cells": 1, "elements": ["presses"]},
             {"cells": 1, "elements": ["sun"]},
             {"cells": 1, "elements": ["temperature"]},
@@ -49,6 +55,8 @@ async def test_count_button_adds_one() -> None:
         assert await automation.press("add") == 1
         assert await automation.press("add") == 2
         assert automation.card.block("count")["value"] == 2
+        assert automation.card.block("goal")["value"] == 2
+        assert automation.card.block("level")["text"] == "Counting"
         assert automation.card.title == "Dashboard demo: 2 pressed"
         assert automation.get_variable("count") == 2
         assert "Counted to 2" in automation.logs()
@@ -120,7 +128,7 @@ async def test_bare_card_and_back() -> None:
         assert all(automation.card.options.values())
         assert await automation.press("frame") is False
         assert not any(automation.card.options.values())
-        assert len(automation.card.blocks) == 13, "the content stays"
+        assert len(automation.card.blocks) == 17, "the content stays"
         assert await automation.press("frame") is True
         assert all(automation.card.options.values())
 
@@ -163,3 +171,23 @@ async def test_graph_keeps_the_last_twenty_counts() -> None:
         assert len(points) == 20
         assert points[-1][1] == 25.0
         assert points[0][1] == 6.0
+
+
+async def test_goal_and_badge_follow_the_count() -> None:
+    """The progress bar fills towards the goal, and the badge says how far the count is."""
+    async with AutomationHarness(DASHBOARD) as automation:
+        assert automation.card.block("goal")["max"] == 10
+        assert automation.card.block("level") == {
+            "id": "level",
+            "type": "badge",
+            "text": "Not started",
+            "entity_id": None,
+            "icon": None,
+            "color": "disabled",
+        }
+        assert await automation.call("count", step=12) == 12
+        assert automation.card.block("goal")["value"] == 12
+        level = automation.card.block("level")
+        assert (level["text"], level["icon"], level["color"]) == ("Goal reached", "mdi:trophy", "success")
+        await automation.press("reset")
+        assert automation.card.block("level")["text"] == "Not started"
