@@ -428,6 +428,7 @@ class Automation:
             action.func,
             *event_arguments(action.func, event),
             mode=action.execution_mode,
+            timeout=action.timeout,
         )
 
 

@@ -87,6 +87,7 @@ class TriggerDefinition:
         constraints: The constraint arguments given to the trigger decorator, by name.
         action_name: The name of the action the function is; the function name if omitted.
         execution_mode: The execution mode of that action.
+        timeout: The time limit of that action in seconds; None for the default timeout.
     """
 
     trigger_type: str
@@ -98,6 +99,7 @@ class TriggerDefinition:
     constraints: dict[str, Any] = field(default_factory=dict[str, Any])
     action_name: str | None = None
     execution_mode: const.ActionMode = const.ActionMode.DROP
+    timeout: float | None = None
 
 
 @dataclass
@@ -481,6 +483,7 @@ class AutomationContext:
                             constraints=trigger_info.constraints,
                             action_name=definition.name,
                             execution_mode=definition.execution_mode,
+                            timeout=definition.timeout,
                         )
                     )
 

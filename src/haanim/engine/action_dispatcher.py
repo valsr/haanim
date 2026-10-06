@@ -16,11 +16,18 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from haanim.const import DEFAULT_ACTION_QUEUE_SIZE, ActionMode
-from haanim.engine.errors import ActionCancelledError, ActionDroppedError, QueueFullError
+from haanim.const import DEFAULT_ACTION_QUEUE_SIZE, DEFAULT_ACTION_TIMEOUT, ActionMode
+from haanim.engine.errors import (
+    ActionCancelledError,
+    ActionDroppedError,
+    ActionTimeOutError,
+    PoolExhaustedError,
+    QueueFullError,
+)
 
 if TYPE_CHECKING:
-    from haanim.engine.action_pool import ActionWorkerPool
+    from haanim.engine.action_pool import ActionExecution, ActionWorkerPool
+    from haanim.interfaces import TimerHandle
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,8 +61,12 @@ class _Request:
         context: The context of the requester; the function runs in it.
         chain: The actions the function is called through, itself included.
         is_lifecycle: Whether this is ``@startup`` or ``@shutdown`` rather than an action.
+        timeout: How long the execution may take, in seconds; 0 or less for no limit.
+        execution: The pool's record of the execution, once it has started.
         task: The task executing the request, once it has started.
+        timer: The timer of the timeout, while the execution runs.
         cancel_reason: Why the execution was cancelled, once it has been.
+        timed_out: Whether it was cancelled for reaching its timeout.
     """
 
     automation_id: str
@@ -66,8 +77,12 @@ class _Request:
     context: contextvars.Context
     chain: tuple[ActionKey, ...] = ()
     is_lifecycle: bool = False
-    task: asyncio.Task[None] | None = None
+    timeout: float = 0
+    execution: ActionExecution | None = None
+    task: asyncio.Task[Any] | None = None
+    timer: TimerHandle | None = None
     cancel_reason: str | None = None
+    timed_out: bool = False
 
 
 @dataclass
@@ -93,15 +108,23 @@ class ActionDispatcher:
     cancels the running execution and runs the request once that has ended.
     """
 
-    def __init__(self, pool: ActionWorkerPool, *, queue_size: int = DEFAULT_ACTION_QUEUE_SIZE) -> None:
+    def __init__(
+        self,
+        pool: ActionWorkerPool,
+        *,
+        queue_size: int = DEFAULT_ACTION_QUEUE_SIZE,
+        default_timeout: float = DEFAULT_ACTION_TIMEOUT,
+    ) -> None:
         """Initialize the dispatcher.
 
         Args:
             pool: The worker pool that executes the requests.
             queue_size: How many requests may wait for one ``QUEUE`` action.
+            default_timeout: Timeout in seconds of actions that do not set one; 0 for none.
         """
         self._pool = pool
         self._queue_size = queue_size
+        self._default_timeout = default_timeout
         self._slots: dict[ActionKey, _Slot] = {}
         self._handlers: set[_Request] = set()
         # Set each time a request ends or is removed; lets wait_idle() wake up and re-check.
@@ -119,6 +142,11 @@ class ActionDispatcher:
         return self._queue_size
 
     @property
+    def default_timeout(self) -> float:
+        """Timeout in seconds of actions that do not set one; 0 for none."""
+        return self._default_timeout
+
+    @property
     def is_shutting_down(self) -> bool:
         """Whether the dispatcher has been shut down and accepts no more requests."""
         return self._shutting_down
@@ -132,6 +160,7 @@ class ActionDispatcher:
         func: Callable[..., Any],
         *args: Any,
         mode: ActionMode = ActionMode.DROP,
+        timeout: float | None = None,
         triggered: bool = False,
     ) -> Any:
         """Request an execution of an action and wait for its outcome.
@@ -145,6 +174,9 @@ class ActionDispatcher:
             func: The action's function.
             *args: What to call the function with.
             mode: The action's execution mode.
+            timeout: How long the execution may take, in seconds. The default
+                timeout if None; no limit if 0 or less. Time spent waiting
+                in the queue does not count.
             triggered: Whether a trigger fired the action. Such a request starts
                 a call chain of its own, whatever code caused the trigger to fire.
 
@@ -155,6 +187,9 @@ class ActionDispatcher:
             ActionDroppedError: If the call is re-entrant, or the action is
                 running and its mode is ``DROP``.
             QueueFullError: If the action's queue is full (``QUEUE``).
+            PoolExhaustedError: If the limit of concurrent actions is reached
+                when the execution is about to start.
+            ActionTimeOutError: If the execution reached its timeout.
             ActionCancelledError: If the execution was cancelled, the request
                 was removed from the queue or replaced by a newer one
                 (``CANCEL``), or the dispatcher is shutting down.
@@ -173,9 +208,15 @@ class ActionDispatcher:
 
         slot = self._slots.setdefault(key, _Slot())
         request = self._request(automation_id, action_name, func, args, chain=(*chain, key))
+        request.timeout = self._default_timeout if timeout is None else timeout
 
         if slot.running is None:
-            self._start(request, slot)
+            # The mode has been applied; now the limit is checked
+            try:
+                self._start(request, slot)
+            except PoolExhaustedError:
+                self._slots.pop(key, None)
+                raise
             return await self._outcome(request)
 
         if mode is ActionMode.DROP:
@@ -254,37 +295,70 @@ class ActionDispatcher:
     # --- Execution ----------------------------------------------------------------
 
     def _start(self, request: _Request, slot: _Slot | None) -> None:
-        """Start executing a request, in a task of its own and in the requester's context."""
+        """Start executing a request, in a task of its own and in the requester's context.
+
+        Raises:
+            PoolExhaustedError: If the limit of concurrent actions is reached; nothing was started.
+        """
+        # The slot is taken here, not in the task: nothing can take it in between
+        request.execution = self._pool.begin(
+            request.automation_id,
+            request.action_name,
+            request.func,
+            *request.args,
+            is_lifecycle=request.is_lifecycle,
+        )
         if slot is not None:
             slot.running = request
-        request.task = asyncio.get_running_loop().create_task(
-            self._run(request, slot), context=request.context
-        )
+        request.task = asyncio.get_running_loop().create_task(self._run(request), context=request.context)
+        # A callback, not a finally in the task: it also runs for a task cancelled before its first step
+        request.task.add_done_callback(lambda task: self._finished(request, slot, task))
 
-    async def _run(self, request: _Request, slot: _Slot | None) -> None:
-        """Execute a request and deliver its outcome."""
+        # The timeout measures execution time: it starts now, not when the request was made
+        if request.timeout > 0:
+            request.timer = self._pool.clock.call_later(request.timeout, lambda: self._expire(request))
+
+    async def _run(self, request: _Request) -> Any:
+        """Execute a request."""
         _CALL_CHAIN.set(request.chain)
-        try:
-            result = await self._pool.submit_action(
-                request.automation_id,
+        assert request.execution is not None
+        return await self._pool.run(request.execution)
+
+    def _expire(self, request: _Request) -> None:
+        """Cancel an execution that has reached its timeout."""
+        if request.cancel_reason is None and request.task is not None and not request.task.done():
+            _LOGGER.warning(
+                "Action '%s' of '%s' exceeded its timeout of %gs",
                 request.action_name,
-                request.func,
-                *request.args,
-                is_lifecycle=request.is_lifecycle,
+                request.automation_id,
+                request.timeout,
             )
-        except asyncio.CancelledError:
+            request.timed_out = True
+            self._cancel(request, "timeout")
+
+    def _finished(self, request: _Request, slot: _Slot | None, task: asyncio.Task[Any]) -> None:
+        """Deliver the outcome of an execution that has ended and start the request waiting for it."""
+        if request.timer is not None:
+            request.timer.cancel()
+        if request.execution is not None:
+            self._pool.end(request.execution)
+
+        if task.cancelled():
             # Only the dispatcher cancels this task; the caller learns why
-            reason = request.cancel_reason or "cancelled"
-            request.outcome.set_exception(ActionCancelledError(request.action_name, reason))
-        except Exception as err:  # pylint: disable=broad-exception-caught
+            if request.timed_out:
+                error: BaseException = ActionTimeOutError(
+                    request.automation_id, request.action_name, request.timeout
+                )
+            else:
+                error = ActionCancelledError(request.action_name, request.cancel_reason or "cancelled")
+            request.outcome.set_exception(error)
+        elif (raised := task.exception()) is not None:
             # The caller receives the action's own exception object
-            request.outcome.set_exception(err)
+            request.outcome.set_exception(raised)
         else:
-            request.outcome.set_result(result)
-        finally:
-            if not request.outcome.done():
-                request.outcome.cancel()
-            self._ended(request, slot)
+            request.outcome.set_result(task.result())
+
+        self._ended(request, slot)
 
     def _ended(self, request: _Request, slot: _Slot | None) -> None:
         """Record that an execution has ended and start the request waiting for it, if any."""
@@ -292,9 +366,14 @@ class ActionDispatcher:
             self._handlers.discard(request)
         else:
             slot.running = None
-            if slot.waiting:
-                self._start(slot.waiting.popleft(), slot)
-            else:
+            # The waiting request takes over the slot this execution has just given back
+            while slot.waiting and slot.running is None:
+                waiting = slot.waiting.popleft()
+                try:
+                    self._start(waiting, slot)
+                except PoolExhaustedError as err:
+                    waiting.outcome.set_exception(err)
+            if slot.running is None:
                 self._slots.pop((request.automation_id, request.action_name), None)
         self._changed.set()
 

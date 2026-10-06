@@ -631,6 +631,7 @@ class TriggerManager:
                 trigger_def.func,
                 *event_arguments(trigger_def.func, event),
                 mode=trigger_def.execution_mode,
+                timeout=trigger_def.timeout,
                 triggered=True,
             )
 
