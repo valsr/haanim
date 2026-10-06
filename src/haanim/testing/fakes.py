@@ -377,11 +377,18 @@ class FakeEventBus:
         elif queue in self._global_listeners:
             self._global_listeners.remove(queue)
 
-    def fire(self, event_type: str, event_data: dict[str, Any] | None = None) -> None:
+    def fire(
+        self, event_type: str, event_data: dict[str, Any] | None = None, *, user_id: str | None = None
+    ) -> None:
         """Fire an event and deliver it to subscribers and one-time listeners.
 
         One-time listeners that are coroutine functions are scheduled on the
         running event loop.
+
+        Args:
+            event_type: The type of the event.
+            event_data: The data of the event.
+            user_id: The user that caused the event, for tests of ``user_id``.
         """
         self._counter += 1
         event = EventData(
@@ -391,7 +398,7 @@ class FakeEventBus:
             time_fired=self._clock.now(),
             context_id=f"fake-context-{self._counter}",
             context_parent_id=None,
-            context_user_id=None,
+            context_user_id=user_id,
         )
         self.fired.append(event)
 
