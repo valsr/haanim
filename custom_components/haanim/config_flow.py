@@ -190,19 +190,26 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         config_manager.load_from_dict(self.config_entry.data, self.config_entry.options)
 
         # Get current values
-        current_path = config_manager.get("automation_path", DEFAULT_AUTOMATION_PATH)
-        current_allow_all = config_manager.get("allow_all_imports", DEFAULT_ALLOW_ALL_IMPORTS)
         current_allowlist = config_manager.get("import_allowlist", [])
 
         # Convert allowlist to comma-separated string for display
         allowlist_str = ", ".join(current_allowlist) if current_allowlist else ""
 
         # The ten options, in the order of the design's table
-        fields: dict[Any, Any] = {vol.Required(CONFIG_AUTOMATION_PATH, default=current_path): str}
+        fields: dict[Any, Any] = {
+            vol.Required(
+                CONFIG_AUTOMATION_PATH, default=config_manager.get("automation_path", DEFAULT_AUTOMATION_PATH)
+            ): str
+        }
         for key, (_, validator) in NUMERIC_OPTIONS.items():
             fields[vol.Required(key, default=numeric_option(stored, key))] = validator
         fields[vol.Optional("import_allowlist_str", default=allowlist_str)] = str
-        fields[vol.Required(CONFIG_ALLOW_ALL_IMPORTS, default=current_allow_all)] = bool
+        fields[
+            vol.Required(
+                CONFIG_ALLOW_ALL_IMPORTS,
+                default=config_manager.get("allow_all_imports", DEFAULT_ALLOW_ALL_IMPORTS),
+            )
+        ] = bool
         options_schema = vol.Schema(fields)
 
         return self.async_show_form(

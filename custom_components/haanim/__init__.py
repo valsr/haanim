@@ -20,6 +20,7 @@ from custom_components.haanim.ha.services import ServiceManager
 from custom_components.haanim.ha.state import StateManager
 from custom_components.haanim.automation_manager import AutomationManager
 from custom_components.haanim.options import engine_options
+from custom_components.haanim.websocket import async_register_websocket
 from haanim.engine.triggers import TriggerManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -92,6 +93,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Register API views for the frontend
     async_register_api(hass)
+    async_register_websocket(hass)
 
     # Register the frontend panel
     await _async_register_panel(hass)

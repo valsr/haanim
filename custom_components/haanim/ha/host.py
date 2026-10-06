@@ -259,6 +259,43 @@ class HAStorage:
         await self._store(key).async_save(copy.deepcopy(data))
 
 
+CardListener = Callable[[list[dict[str, Any]]], None]
+
+
+class HACardSink:
+    """Keeps the card content of the automations and passes changes on to subscribers."""
+
+    def __init__(self) -> None:
+        """Initialize with no cards."""
+        self._cards: dict[str, list[dict[str, Any]]] = {}
+        self._listeners: dict[str, list[CardListener]] = {}
+
+    def card_changed(self, automation_id: str, blocks: list[dict[str, Any]]) -> None:
+        """Take the new content of an automation's card and tell its subscribers."""
+        self._cards[automation_id] = blocks
+        for listener in list(self._listeners.get(automation_id, ())):
+            listener(blocks)
+
+    def blocks(self, automation_id: str) -> list[dict[str, Any]]:
+        """Return the current content of an automation's card; empty if it has none."""
+        return self._cards.get(automation_id, [])
+
+    def subscribe(self, automation_id: str, listener: CardListener) -> Callable[[], None]:
+        """Call ``listener(blocks)`` whenever the card of an automation changes.
+
+        Returns:
+            A function that ends the subscription.
+        """
+        listeners = self._listeners.setdefault(automation_id, [])
+        listeners.append(listener)
+
+        def unsubscribe() -> None:
+            if listener in listeners:
+                listeners.remove(listener)
+
+        return unsubscribe
+
+
 def build_host(hass: HomeAssistant, state_manager: StateManager, event_manager: EventManager) -> Host:
     """Bundle the Home Assistant implementations into a Host.
 
@@ -281,4 +318,5 @@ def build_host(hass: HomeAssistant, state_manager: StateManager, event_manager: 
         storage=HAStorage(hass),
         hass=hass,
         asset_signer=HAAssetSigner(hass),
+        cards=HACardSink(),
     )

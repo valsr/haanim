@@ -1089,3 +1089,20 @@ class TestNoTriggers:
         await automation.stop()
 
         assert automation.state is OFF
+
+
+class TestActionFailureAsDict:
+    """ActionFailure.as_dict: the value shown as last_error."""
+
+    def test_as_dict(self) -> None:
+        """Test the failure is given as JSON values with the time in ISO 8601 form."""
+        from haanim.engine.lifecycle import ActionFailure  # pylint: disable=import-outside-toplevel
+
+        clock = FakeClock()
+        failure = ActionFailure(clock.now(), "boom", "ValueError", "bad value")
+        assert failure.as_dict() == {
+            "time": clock.now().isoformat(),
+            "action": "boom",
+            "error_type": "ValueError",
+            "message": "bad value",
+        }

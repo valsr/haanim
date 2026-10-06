@@ -121,6 +121,15 @@ class ActionFailure:
     error_type: str
     message: str
 
+    def as_dict(self) -> dict[str, str]:
+        """Return the failure as JSON values, the time in ISO 8601 form."""
+        return {
+            "time": self.time.isoformat(),
+            "action": self.action,
+            "error_type": self.error_type,
+            "message": self.message,
+        }
+
     def __str__(self) -> str:
         """Describe the failure in one line."""
         return (

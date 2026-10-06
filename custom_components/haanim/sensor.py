@@ -106,16 +106,7 @@ class AutomationSensor(SensorEntity):
             ATTR_RUNNING_ACTIONS: list(status.running_actions.values()),
             ATTR_LAST_ACTION: status.last_action,
             ATTR_LAST_ACTION_TIME: times.last_action_time.isoformat() if times.last_action_time else None,
-            ATTR_LAST_ERROR: (
-                {
-                    "time": failure.time.isoformat(),
-                    "action": failure.action,
-                    "error_type": failure.error_type,
-                    "message": failure.message,
-                }
-                if failure
-                else None
-            ),
+            ATTR_LAST_ERROR: failure.as_dict() if failure else None,
         }
 
 
