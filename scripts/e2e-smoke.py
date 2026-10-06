@@ -198,8 +198,10 @@ async def run(base: str) -> None:
                 "intro",
                 "logo",
                 "count",
+                "presses",
                 "uptime",
                 "sun",
+                "temperature",
                 "fan",
                 "sun_icon",
                 "info",
@@ -271,9 +273,21 @@ async def run(base: str) -> None:
         check(status == 401, "the asset is refused without login")
         status, _, _ = await smoke.get("/api/haanim/assets/dashboard/..%2Fmain.py")
         check(status in (400, 404), "the automation's code is not served as an asset")
-        for module in ("haanim-panel.js", "haanim-card.js", "haanim-render.js"):
+        for module in ("haanim-panel.js", "haanim-card.js", "haanim-render.js", "haanim-graph.js"):
             status, _, body = await smoke.get(f"/haanim/ui/{module}", logged_in=False)
             check(status == 200 and "haanim" in body, f"the frontend module {module} is served")
+        _, recorded = await smoke.command(
+            "history/history_during_period",
+            start_time="2020-01-01T00:00:00+00:00",
+            entity_ids=["sensor.temperature"],
+            minimal_response=True,
+            no_attributes=True,
+        )
+        rows = recorded.get("sensor.temperature", [])
+        check(
+            len(rows) >= 2 and all("s" in row and "lu" in row for row in rows),
+            f"Home Assistant has the history the temperature graph draws: {len(rows)} states",
+        )
         _, panels = await smoke.command("get_panels")
         check("haanim" in panels, "the HAAnim panel is registered")
         _, config = await smoke.command("haanim/config/get")

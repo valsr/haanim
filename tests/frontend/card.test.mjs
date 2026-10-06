@@ -307,6 +307,85 @@ describe('haanim-card', () => {
         assert.equal(hass.services.length, 0);
     });
 
+    test('fetches the history of a graph once and draws it', async () => {
+        const temperature = (state, updated) => ({ state, last_updated: updated, attributes: { friendly_name: 'Temperature' } });
+        const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'sensor.t': temperature('22', new Date(Date.now() - 60000).toISOString()) });
+        const lu = Date.now() / 1000;
+        hass.answers['history/history_during_period'] = () => ({ 'sensor.t': [{ s: '20', lu: lu - 3000 }, { s: '22', lu: lu - 60 }] });
+        const graph = { id: 'h', type: 'graph', kind: 'line', entities: ['sensor.t'], hours: 1 };
+
+        hass.push('haanim/card/subscribe', { blocks: [graph] });
+        assert.match(card.shadowRoot.innerHTML, /Loading history/);
+        await settle();
+
+        const request = hass.calls.find((call) => call.type === 'history/history_during_period');
+        assert.deepEqual(request.entity_ids, ['sensor.t']);
+        assert.equal(request.minimal_response, true);
+        assert.equal(request.no_attributes, true);
+        assert.equal(Date.parse(request.end_time) - Date.parse(request.start_time), 3600000);
+        assert.match(card.shadowRoot.innerHTML, /<svg class="graph"/);
+        assert.match(card.shadowRoot.innerHTML, /legend-name">Temperature<\/span><span class="legend-value">22</);
+
+        hass.push('haanim/card/subscribe', { blocks: [graph, { id: 'a', type: 'text', markdown: 'more' }] });
+        await settle();
+        assert.equal(hass.calls.filter((call) => call.type === 'history/history_during_period').length, 1, 'not fetched again');
+    });
+
+    test('a graph follows its entity after the history was fetched', async () => {
+        const temperature = (state, updated) => ({ state, last_updated: updated, attributes: {} });
+        const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'sensor.t': temperature('22', new Date(Date.now() - 60000).toISOString()) });
+        hass.answers['history/history_during_period'] = () => ({ 'sensor.t': [{ s: '20', lu: Date.now() / 1000 - 3000 }] });
+        hass.push('haanim/card/subscribe', { blocks: [{ id: 'h', type: 'graph', kind: 'line', entities: ['sensor.t'], hours: 1 }] });
+        await settle();
+        card.hass = hass;
+        await settle();
+        assert.match(card.shadowRoot.innerHTML, /legend-value">22</);
+
+        hass.states = { ...hass.states, 'sensor.t': temperature('27.5', new Date().toISOString()) };
+        card.hass = hass;
+        await settle();
+        assert.match(card.shadowRoot.innerHTML, /legend-value">27.5</);
+        assert.equal(hass.calls.filter((call) => call.type === 'history/history_during_period').length, 1);
+
+        hass.states = { ...hass.states, 'sensor.t': temperature('unavailable', new Date(Date.now() + 1000).toISOString()), 'sensor.gone': undefined };
+        card.hass = hass;
+        await settle();
+        assert.match(card.shadowRoot.innerHTML, /legend-value">27.5</, 'the latest number stays in the legend');
+    });
+
+    test('a change of the entities or the time span of a graph fetches its history again', async () => {
+        const { hass } = await mounted();
+        hass.answers['history/history_during_period'] = () => ({});
+        const fetched = () => hass.calls.filter((call) => call.type === 'history/history_during_period').length;
+        hass.push('haanim/card/subscribe', { blocks: [{ id: 'h', type: 'graph', entities: ['sensor.t'], hours: 1 }] });
+        await settle();
+        hass.push('haanim/card/subscribe', { blocks: [{ id: 'h', type: 'graph', entities: ['sensor.t'], hours: 6 }] });
+        await settle();
+        hass.push('haanim/card/subscribe', { blocks: [{ id: 'h', type: 'graph', entities: ['sensor.t', 'sensor.u'], hours: 6 }] });
+        await settle();
+        assert.equal(fetched(), 3);
+        hass.push('haanim/card/subscribe', { blocks: [] });
+        hass.push('haanim/card/subscribe', { blocks: [{ id: 'h', type: 'graph', entities: ['sensor.t', 'sensor.u'], hours: 6 }] });
+        await settle();
+        assert.equal(fetched(), 4, 'a graph that was removed and set again is new');
+    });
+
+    test('history that cannot be fetched is said on the graph', async () => {
+        const { card, hass } = await mounted();
+        hass.answers['history/history_during_period'] = new Error('Unknown command');
+        hass.push('haanim/card/subscribe', { blocks: [{ id: 'h', type: 'graph', entities: ['sensor.t'], hours: 1 }] });
+        await settle();
+        assert.match(card.shadowRoot.innerHTML, /History is not available: Unknown command/);
+    });
+
+    test("a graph of the automation's own series needs no history", async () => {
+        const { card, hass } = await mounted();
+        hass.push('haanim/card/subscribe', { blocks: [{ id: 'g', type: 'graph', kind: 'bar', x: 'index', series: { A: [[0, 1], [1, 3]] } }] });
+        await settle();
+        assert.equal(hass.calls.filter((call) => call.type === 'history/history_during_period').length, 0);
+        assert.match(card.shadowRoot.innerHTML, /<rect class="bar"/);
+    });
+
     test('loads asset images with the session and shows them when they arrive', async () => {
         const { card, hass } = await mounted();
         const url = '/api/haanim/assets/climate/logo.png';

@@ -9,6 +9,7 @@
  *     automation_id: climate
  */
 
+import { historyPoints, numericState } from './haanim-graph.js';
 import { automationPath, renderCard, serviceCall } from './haanim-render.js';
 
 const DOMAIN = 'haanim';
@@ -42,6 +43,18 @@ const STYLES = `
     .block .label { color: var(--secondary-text-color); }
     .block .value { font-weight: 500; }
     .block img { max-width: 100%; border-radius: 4px; }
+    .graph { width: 100%; height: auto; display: block; }
+    .graph .grid { stroke: var(--divider-color, #e0e0e0); stroke-width: 1; }
+    .graph .tick { fill: var(--secondary-text-color, #727272); font-size: 10px; }
+    .graph .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    .graph .area { fill-opacity: 0.18; stroke: none; }
+    .graph-title { font-weight: 500; margin-bottom: 4px; }
+    .graph-empty { color: var(--secondary-text-color); font-style: italic; padding: 24px 0; text-align: center; }
+    .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; font-size: 0.9em; }
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .legend-name { color: var(--secondary-text-color); }
+    .legend-value { font-weight: 500; }
     .block-icon { display: flex; align-items: center; gap: 12px; }
     .block-icon[data-more-info] { cursor: pointer; }
     .block-icon .icon { --mdc-icon-size: 32px; display: inline-flex; color: var(--primary-text-color); }
@@ -86,6 +99,7 @@ export class HAAnimCard extends HTMLElement {
         this._title = null;
         this._options = null;
         this._images = {};
+        this._history = {};
         this._showActions = false;
         this._error = null;
         this._unsubscribe = [];
@@ -108,6 +122,7 @@ export class HAAnimCard extends HTMLElement {
             this._blocks = [];
             this._title = null;
             this._options = null;
+            this._history = {};
             this._showActions = false;
             this._start();
         }
@@ -197,6 +212,7 @@ export class HAAnimCard extends HTMLElement {
         this._title = message.title || null;
         this._options = message.options || null;
         this._loadImages();
+        this._loadHistory();
         this._render();
     }
 
@@ -218,20 +234,87 @@ export class HAAnimCard extends HTMLElement {
         }
     }
 
+    /**
+     * Fetch the recorded history of the entities of the card's graphs.
+     *
+     * It is fetched once per graph, and again only if the graph's entities or time span change. From then
+     * on the graph follows the entities' states as Home Assistant reports them.
+     */
+    _loadHistory() {
+        const graphs = this._blocks.filter((block) => block.type === 'graph' && block.entities);
+        const kept = {};
+        for (const block of graphs) {
+            const key = `${block.entities.join(',')}|${block.hours}`;
+            const known = this._history[block.id];
+            if (known && known.key === key) {
+                kept[block.id] = known;
+                continue;
+            }
+            const entry = { key, points: {}, loaded: false };
+            kept[block.id] = entry;
+            const end = new Date();
+            const start = new Date(end.getTime() - block.hours * 3600000);
+            this._hass
+                .callWS({
+                    type: 'history/history_during_period',
+                    start_time: start.toISOString(),
+                    end_time: end.toISOString(),
+                    entity_ids: block.entities,
+                    minimal_response: true,
+                    no_attributes: true,
+                    include_start_time_state: true,
+                    significant_changes_only: false,
+                })
+                .then((result) => {
+                    for (const entityId of block.entities) {
+                        // Changes that arrived while the history was on its way come after it
+                        const live = entry.points[entityId] || [];
+                        entry.points[entityId] = [...historyPoints((result || {})[entityId]), ...live];
+                    }
+                    entry.loaded = true;
+                })
+                .catch((error) => {
+                    entry.error = (error && error.message) || String(error);
+                })
+                .then(() => {
+                    if (this._history[block.id] === entry) this._render();
+                });
+        }
+        this._history = kept;
+    }
+
+    /** Add the current state of every graphed entity to its history, if it is a new one. */
+    _followHistory(states) {
+        for (const block of this._blocks) {
+            const entry = block.type === 'graph' && block.entities ? this._history[block.id] : null;
+            if (!entry) continue;
+            for (const entityId of block.entities) {
+                const state = states[entityId];
+                if (!state) continue;
+                const points = entry.points[entityId] || (entry.points[entityId] = []);
+                const time = Date.parse(state.last_updated) || Date.now();
+                const last = points[points.length - 1];
+                if (!last || time > last[0]) points.push([time, numericState(state.state)]);
+            }
+        }
+    }
+
     /** React to state changes: the automation's own entity, and the entities its card shows. */
     _onStates() {
         if (!this._hass || !this._automationId) return;
         const states = this._hass.states || {};
         const own = states[this._entityId];
-        const ids = this._blocks
-            .filter((block) => block.type === 'entity' || (block.type === 'icon' && block.follow_entity))
-            .map((block) => block.entity_id);
+        const ids = this._blocks.flatMap((block) => {
+            if (block.type === 'entity' || (block.type === 'icon' && block.follow_entity)) return [block.entity_id];
+            return block.type === 'graph' && block.entities ? block.entities : [];
+        });
         const watched = [this._entityId, ...ids]
             .map((id) => `${id}=${states[id] ? `${states[id].state}@${states[id].last_updated}` : ''}`)
             .join('|');
         if (watched === this._watched) return;
         const before = this._ownState;
         this._watched = watched;
+        this._followHistory(states);
         this._ownState = own ? own.state : 'unavailable';
         if (!this._subscribed) {
             this._start();
@@ -306,6 +389,7 @@ export class HAAnimCard extends HTMLElement {
             blocks: this._blocks,
             states: this._hass ? this._hass.states : {},
             images: this._images,
+            history: this._history,
             showActions: this._showActions,
             error: this._config ? this._error : 'No automation configured',
         });

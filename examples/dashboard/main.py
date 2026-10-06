@@ -2,7 +2,8 @@
 
 The card has a title that changes with what the automation does, a heading, a
 logo from the automation's assets, a counter that is kept across restarts, the
-live state of an entity, icons that follow entities, and three buttons, one of which strips the card to a
+live state of an entity, icons that follow entities, two graphs (the history of
+an entity, and numbers the automation keeps itself), and three buttons, one of which strips the card to a
 bare box and back. Add it to a
 dashboard with::
 
@@ -29,6 +30,8 @@ from haanim import (
 )
 
 ENTITY = "sun.sun"
+TEMPERATURE = "sensor.temperature"
+HISTORY = 20
 FAN = "input_boolean.fan"  # a Toggle helper called "Fan"; any entity that is on or off will do
 
 
@@ -38,7 +41,17 @@ def show_count() -> int:
     haa.card.value("count", label="Button presses", value=count)
     # The title of the card follows the count
     haa.card.set_title(f"Dashboard demo: {count} pressed" if count else "Dashboard demo")
+    # A graph of the automation's own numbers: the count after each of the last changes
+    haa.card.graph(
+        "presses", series={"Count": haa.get_variable("history", [])}, kind="bar", title="Recent counts"
+    )
     return count
+
+
+def remember(count: int) -> None:
+    """Store the count, and keep the last twenty for the graph."""
+    haa.set_variable("count", count)
+    haa.set_variable("history", [*haa.get_variable("history", []), count][-HISTORY:])
 
 
 @startup
@@ -49,6 +62,8 @@ def build_card(event: ActionEvent) -> None:
     show_count()
     haa.card.value("uptime", label="Running for", value=0, unit="min")
     haa.card.entity("sun", ENTITY)
+    # A graph of what Home Assistant recorded for an entity; it follows the entity from then on
+    haa.card.graph("temperature", TEMPERATURE, hours=1, kind="area", title="Temperature, last hour")
     # Icons follow their entity: lit and turning while the fan is on, dimmed while it is off
     haa.card.icon("fan", FAN, icon="mdi:fan", spin=True)
     haa.card.icon("sun_icon", ENTITY)  # the entity's own icon, which changes with its state
@@ -62,7 +77,7 @@ def build_card(event: ActionEvent) -> None:
 @action(description="Add to the counter on the card")
 def count(event: ActionEvent) -> int:
     """Add ``step`` (1 if not given) to the counter and show it."""
-    haa.set_variable("count", int(haa.get_variable("count", 0)) + int(event.data.get("step", 1)))
+    remember(int(haa.get_variable("count", 0)) + int(event.data.get("step", 1)))
     total = show_count()
     print(f"Counted to {total}")
     return total
@@ -71,7 +86,7 @@ def count(event: ActionEvent) -> int:
 @action(description="Set the counter on the card back to zero")
 def reset(event: ActionEvent) -> int:
     """Set the counter to zero and show it."""
-    haa.set_variable("count", 0)
+    remember(0)
     haa.set_message("Counter reset")
     return show_count()
 
@@ -98,13 +113,13 @@ def count_event(event: EventTriggerEvent) -> None:
     Events that arrive while one is being counted wait their turn (``QUEUE``);
     with the default mode, ``DROP``, they would be lost.
     """
-    haa.set_variable("count", int(haa.get_variable("count", 0)) + int(event.event_data.get("step", 1)))
+    remember(int(haa.get_variable("count", 0)) + int(event.event_data.get("step", 1)))
     show_count()
 
 
 @on_cron("0 0 * * *")
 def midnight(event: CronEvent) -> None:
     """Start a new day at zero."""
-    haa.set_variable("count", 0)
+    remember(0)
     show_count()
     haa.set_message("New day: counter reset")

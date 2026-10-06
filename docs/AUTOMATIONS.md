@@ -294,6 +294,24 @@ haa.card.icon("fan", "fan.bedroom", icon="mdi:fan-alert", color="error",
               follow_entity=False)                                 # exactly this, whatever the fan does
 ```
 
+A **graph** shows either the history of entities or numbers of the automation's own:
+
+```python
+# What Home Assistant recorded for the entities over the last hours; the graph then follows them
+haa.card.graph("temps", ["sensor.indoor", "sensor.outdoor"], hours=12, title="Temperature")
+
+# The automation's own numbers; set the block again to change them
+haa.card.graph("alerts", series={"Alerts": [3, 0, 1, 4, 2]}, kind="bar", title="Alerts per day")
+haa.card.graph("curve", series={"Target": [(0, 18), (6, 21), (22, 18)]}, unit="°C", min=15, max=25)
+haa.card.graph("power", series={"Power": [("2025-01-06T12:00:00+00:00", 120), ("2025-01-06T13:00:00+00:00", 90)]})
+```
+
+`kind` is `"line"`, `"area"` or `"bar"`. The points of a series are plain numbers (drawn one after the other),
+`(x, y)` pairs, or `(time, y)` pairs with timezone-aware times; `None` as a value leaves a gap. A graph has at
+most 8 entities or series, a series at most 500 points, and history goes back at most 720 hours. Only numeric
+states are drawn. The card keeps nothing for the automation: numbers that should survive a restart belong in
+persistent variables.
+
 The fixed parts can be hidden, each on its own, and shown again at any time:
 
 ```python

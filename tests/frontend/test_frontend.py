@@ -34,6 +34,7 @@ def test_modules_the_integration_serves_exist() -> None:
     """Test the panel, the card and what they import are in the folder the integration serves."""
     assert sorted(path.name for path in UI.glob("*.js")) == [
         "haanim-card.js",
+        "haanim-graph.js",
         "haanim-panel.js",
         "haanim-render.js",
     ]

@@ -12,13 +12,24 @@ import copy
 import json
 import math
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
+from datetime import datetime
 from typing import Any
 
 from haanim.engine.assets import AssetStore
 from haanim.interfaces import CardSink
 
-__all__ = ["CARD_PARTS", "HAAnimCard", "MAX_BLOCKS", "MAX_TEXT_LENGTH", "MAX_TITLE_LENGTH"]
+__all__ = [
+    "CARD_PARTS",
+    "GRAPH_KINDS",
+    "HAAnimCard",
+    "MAX_BLOCKS",
+    "MAX_GRAPH_HOURS",
+    "MAX_GRAPH_POINTS",
+    "MAX_GRAPH_SERIES",
+    "MAX_TEXT_LENGTH",
+    "MAX_TITLE_LENGTH",
+]
 
 MAX_BLOCKS = 50
 """The most blocks a card can have."""
@@ -28,6 +39,18 @@ MAX_TEXT_LENGTH = 10_000
 
 MAX_TITLE_LENGTH = 100
 """The most characters the card's title can have."""
+
+MAX_GRAPH_SERIES = 8
+"""The most lines a graph can have: entities, or series of the automation's own."""
+
+MAX_GRAPH_POINTS = 500
+"""The most points one series of a graph can have."""
+
+MAX_GRAPH_HOURS = 720
+"""The longest entity history a graph can show: 30 days."""
+
+GRAPH_KINDS = ("line", "area", "bar")
+"""How a graph can be drawn."""
 
 CARD_PARTS = ("title", "state", "message", "actions", "log")
 """The fixed parts of the card an automation can hide: all are shown unless it hides them."""
@@ -48,6 +71,90 @@ def _check_entity_id(entity_id: Any) -> str:
     if not dot or not domain or not name or "." in name or entity_id != entity_id.strip():
         raise ValueError(f"Invalid entity ID {entity_id!r}")
     return str(entity_id)
+
+
+def _check_number(value: Any, what: str) -> float:
+    """Return a numeric argument as a float, checked to be a finite number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{what} must be a number, not {type(value).__name__}")
+    if not math.isfinite(value):
+        raise ValueError(f"{what} must be a finite number, not {value!r}")
+    return float(value)
+
+
+def _graph_x(value: Any, where: str) -> tuple[str, float]:
+    """Return what kind of horizontal position a value is (``number`` or ``time``) and its number.
+
+    A time becomes seconds since 1970, which is what the card draws along the axis.
+    """
+    if isinstance(value, datetime):
+        moment = value
+    elif isinstance(value, str):
+        try:
+            moment = datetime.fromisoformat(value)
+        except ValueError:
+            raise ValueError(f"{where}: {value!r} is not a time in ISO 8601 form") from None
+    else:
+        return "number", _check_number(value, where)
+    if moment.tzinfo is None:
+        raise ValueError(f"{where}: the time {value!r} has no time zone")
+    return "time", moment.timestamp()
+
+
+def _graph_entities(entities: Any, hours: Any) -> dict[str, Any]:
+    """Check the entities and the time span of a history graph and return them as the block carries them."""
+    span = _check_number(hours, "hours")
+    if not 0 < span <= MAX_GRAPH_HOURS:
+        raise ValueError(f"hours must be more than 0 and at most {MAX_GRAPH_HOURS}, not {span:g}")
+    if isinstance(entities, (bytes, Mapping)) or not isinstance(entities, (str, Sequence)):
+        raise TypeError(f"entities must be an entity ID or a list of them, not {type(entities).__name__}")
+    names = [entities] if isinstance(entities, str) else list(entities)
+    if not 1 <= len(names) <= MAX_GRAPH_SERIES:
+        raise ValueError(f"A graph shows 1 to {MAX_GRAPH_SERIES} entities, not {len(names)}")
+    checked = [_check_entity_id(name) for name in names]
+    if len(set(checked)) != len(checked):
+        raise ValueError("A graph shows each entity once")
+    return {"entities": checked, "hours": span}
+
+
+def _graph_series(series: Any) -> dict[str, Any]:
+    """Check the series of a graph and return them as the block carries them.
+
+    Returns:
+        ``series`` as ``{name: [[x, y], ...]}`` with numbers only (``y`` may be None),
+        and ``x``: ``index`` if the points were plain numbers, else ``number`` or ``time``.
+    """
+    if not isinstance(series, Mapping):
+        raise TypeError(f"series must be a dictionary of name to points, not {type(series).__name__}")
+    if not 1 <= len(series) <= MAX_GRAPH_SERIES:
+        raise ValueError(f"A graph shows 1 to {MAX_GRAPH_SERIES} series, not {len(series)}")
+    kinds: set[str] = set()
+    checked: dict[str, list[list[float | None]]] = {}
+    for name, points in series.items():
+        where = f"series {_check_str(name, 'a series name', empty=False)!r}"
+        if isinstance(points, (str, bytes, Mapping)) or not isinstance(points, Sequence):
+            raise TypeError(f"{where}: the points must be a list, not {type(points).__name__}")
+        if len(points) > MAX_GRAPH_POINTS:
+            raise ValueError(f"{where} has {len(points)} points; a series has at most {MAX_GRAPH_POINTS}")
+        pairs: list[list[float | None]] = []
+        for index, point in enumerate(points):
+            here = f"{where}, point {index}"
+            if isinstance(point, (list, tuple)):
+                if len(point) != 2:
+                    raise ValueError(f"{here}: a point is a number or an (x, y) pair, not {point!r}")
+                kind, horizontal = _graph_x(point[0], here)
+                value = point[1]
+            else:
+                kind, horizontal, value = "index", float(index), point
+            kinds.add(kind)
+            pairs.append([horizontal, None if value is None else _check_number(value, here)])
+        checked[name] = pairs
+    if len(kinds) > 1:
+        raise ValueError(
+            "The points of a graph are all plain numbers, all (number, y) pairs or all (time, y) pairs; "
+            f"these are mixed: {', '.join(sorted(kinds))}"
+        )
+    return {"series": checked, "x": kinds.pop() if kinds else "index"}
 
 
 # An icon is "<set>:<name>", as in "mdi:fan"; a colour is a name or a hex value
@@ -288,6 +395,60 @@ class HAAnimCard:
                 "follow_entity": follows,
             },
         )
+
+    def graph(
+        self,
+        id: str,  # pylint: disable=redefined-builtin
+        entities: str | Sequence[str] | None = None,
+        series: Mapping[str, Sequence[Any]] | None = None,
+        *,
+        hours: float = 24,
+        kind: str = "line",
+        title: str | None = None,
+        unit: str | None = None,
+        min: float | None = None,  # pylint: disable=redefined-builtin
+        max: float | None = None,  # pylint: disable=redefined-builtin
+    ) -> None:
+        """Show a graph: the history of entities, or series of the automation's own (exactly one of the two).
+
+        With ``entities`` the graph shows what Home Assistant recorded for
+        them over the last ``hours`` and follows them from then on. With
+        ``series`` it shows the numbers given; to change them, set the block
+        again.
+
+        Args:
+            id: ID of the block.
+            entities: One entity ID or up to eight, whose numeric states are drawn over time.
+            series: Up to eight named series, ``{"Name": points}``. The points of a series are
+                numbers (drawn one after the other), or ``(x, y)`` pairs where every ``x`` is a
+                number, or every ``x`` is a time (a timezone-aware datetime or ISO 8601 text). A
+                ``y`` of None leaves a gap. At most 500 points per series.
+            hours: How far back the history of entities goes; at most 720 (30 days).
+            kind: ``"line"``, ``"area"`` or ``"bar"``.
+            title: A heading above the graph.
+            unit: The unit of the values. For entities it defaults to the first entity's own.
+            min: The lowest value of the vertical axis; the lowest value shown if omitted.
+            max: The highest value of the vertical axis; the highest value shown if omitted.
+
+        Raises:
+            ValueError: Unless exactly one of ``entities`` and ``series`` is given,
+                or an argument is not valid.
+        """
+        if (entities is None) == (series is None):
+            raise ValueError("A graph needs exactly one of entities and series")
+        if kind not in GRAPH_KINDS:
+            raise ValueError(f"Invalid kind {kind!r}: a graph is one of {', '.join(GRAPH_KINDS)}")
+        if title is not None:
+            _check_str(title, "title")
+        if unit is not None:
+            _check_str(unit, "unit")
+        low = _check_number(min, "min") if min is not None else None
+        high = _check_number(max, "max") if max is not None else None
+        if low is not None and high is not None and low >= high:
+            raise ValueError(f"min ({low:g}) must be less than max ({high:g})")
+        content: dict[str, Any] = {"kind": kind, "title": title, "unit": unit, "min": low, "max": high}
+        content.update(_graph_entities(entities, hours) if entities is not None else _graph_series(series))
+        self._set(id, "graph", content)
 
     def button(
         self,

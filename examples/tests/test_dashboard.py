@@ -10,14 +10,16 @@ DASHBOARD = Path(__file__).parents[1] / "dashboard"
 
 
 async def test_card_is_built_at_startup() -> None:
-    """The card has its eleven blocks in order, with the logo from the automation's assets."""
+    """The card has its thirteen blocks in order, with the logo from the automation's assets."""
     async with AutomationHarness(DASHBOARD) as automation:
         assert [(block["id"], block["type"]) for block in automation.card.blocks] == [
             ("intro", "text"),
             ("logo", "image"),
             ("count", "value"),
+            ("presses", "graph"),
             ("uptime", "value"),
             ("sun", "entity"),
+            ("temperature", "graph"),
             ("fan", "icon"),
             ("sun_icon", "icon"),
             ("info", "icon"),
@@ -73,7 +75,7 @@ async def test_uptime_is_shown_every_minute() -> None:
     async with AutomationHarness(DASHBOARD) as automation:
         await automation.advance_time(minutes=3)
         assert automation.card.block("uptime")["value"] == 3
-        assert [block["id"] for block in automation.card.blocks][3] == "uptime"
+        assert [block["id"] for block in automation.card.blocks][4] == "uptime"
 
 
 async def test_card_is_empty_when_stopped() -> None:
@@ -108,7 +110,7 @@ async def test_bare_card_and_back() -> None:
         assert all(automation.card.options.values())
         assert await automation.press("frame") is False
         assert not any(automation.card.options.values())
-        assert len(automation.card.blocks) == 11, "the content stays"
+        assert len(automation.card.blocks) == 13, "the content stays"
         assert await automation.press("frame") is True
         assert all(automation.card.options.values())
 
@@ -125,3 +127,32 @@ async def test_icons() -> None:
         )
         assert automation.card.block("sun_icon")["icon"] is None, "the entity's own icon"
         assert automation.card.block("info")["follow_entity"] is False
+
+
+async def test_graphs() -> None:
+    """One graph shows the temperature's history, the other the counts the automation kept."""
+    async with AutomationHarness(DASHBOARD) as automation:
+        temperature = automation.card.block("temperature")
+        assert (temperature["entities"], temperature["hours"], temperature["kind"]) == (
+            ["sensor.temperature"],
+            1.0,
+            "area",
+        )
+        assert automation.card.block("presses")["series"] == {"Count": []}
+
+        await automation.press("add")
+        await automation.call("count", step=4)
+        await automation.press("reset")
+        assert automation.card.block("presses")["series"] == {"Count": [[0.0, 1.0], [1.0, 5.0], [2.0, 0.0]]}
+        assert automation.get_variable("history") == [1, 5, 0]
+
+
+async def test_graph_keeps_the_last_twenty_counts() -> None:
+    """The series the automation keeps does not grow without end."""
+    async with AutomationHarness(DASHBOARD) as automation:
+        for _ in range(25):
+            await automation.press("add")
+        points = automation.card.block("presses")["series"]["Count"]
+        assert len(points) == 20
+        assert points[-1][1] == 25.0
+        assert points[0][1] == 6.0

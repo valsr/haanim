@@ -6,6 +6,8 @@
  * cannot put markup or scripts into the page.
  */
 
+import { renderGraph } from './haanim-graph.js';
+
 /** The controls of the card header: which service, and for which states it is offered. */
 const CONTROLS = [
     { service: 'enable', label: 'Enable', when: (a) => !a.enabled },
@@ -226,7 +228,12 @@ function renderIcon(block, context, open) {
     );
 }
 
-/** Render one content block. `context` has `states` (entity states by ID) and `images` (loaded asset URLs). */
+/**
+ * Render one content block.
+ *
+ * `context` has `states` (entity states by ID), `images` (loaded asset URLs), `history` (fetched entity
+ * history by graph block ID) and `now`.
+ */
 export function renderBlock(block, context = {}) {
     const id = escapeHtml(block.id);
     const open = `<div class="block block-${escapeHtml(block.type)}" data-block="${id}">`;
@@ -262,6 +269,8 @@ export function renderBlock(block, context = {}) {
         }
         case 'icon':
             return renderIcon(block, context, open);
+        case 'graph':
+            return `${open}${renderGraph(block, context)}</div>`;
         case 'button': {
             const confirm = block.confirm ? ` data-confirm="${escapeHtml(block.confirm)}"` : '';
             return (

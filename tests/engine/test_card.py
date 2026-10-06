@@ -7,13 +7,24 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from haanim.engine.assets import AssetStore
-from haanim.engine.card import CARD_PARTS, MAX_BLOCKS, MAX_TEXT_LENGTH, HAAnimCard
+from haanim.engine.card import (
+    CARD_PARTS,
+    GRAPH_KINDS,
+    MAX_BLOCKS,
+    MAX_GRAPH_HOURS,
+    MAX_GRAPH_POINTS,
+    MAX_GRAPH_SERIES,
+    MAX_TEXT_LENGTH,
+    HAAnimCard,
+)
 from haanim.testing import FakeCardSink, FakeClock, FakeFileSystem
 from tests.engine.test_lifecycle import World, world  # noqa: F401  pylint: disable=unused-import
 
@@ -146,6 +157,100 @@ class TestBlocks:
         """Test a colour is a name or a hex value."""
         card.icon("i", icon="mdi:fan", color=color)
         assert card.blocks[0]["color"] == color
+
+    def test_graph_of_entities(self, card: HAAnimCard) -> None:
+        """Test a history graph keeps its entities and time span; one entity can be given as text."""
+        card.graph("temp", "sensor.temperature")
+        assert card.blocks == [
+            {
+                "id": "temp",
+                "type": "graph",
+                "kind": "line",
+                "title": None,
+                "unit": None,
+                "min": None,
+                "max": None,
+                "entities": ["sensor.temperature"],
+                "hours": 24.0,
+            }
+        ]
+        card.graph(
+            "temp", ("sensor.indoor", "sensor.outdoor"), hours=6, kind="area", title="Temperatures", unit="°C"
+        )
+        block = card.blocks[0]
+        assert block["entities"] == ["sensor.indoor", "sensor.outdoor"]
+        assert (block["hours"], block["kind"], block["title"], block["unit"]) == (
+            6.0,
+            "area",
+            "Temperatures",
+            "°C",
+        )
+
+    def test_graph_of_plain_numbers(self, card: HAAnimCard) -> None:
+        """Test numbers are drawn one after the other; None is a gap."""
+        card.graph("g", series={"Alerts": [1, 2.5, None, 4], "Resets": (0, 1)}, kind="bar", min=0, max=10)
+        block = card.blocks[0]
+        assert block["series"] == {
+            "Alerts": [[0.0, 1.0], [1.0, 2.5], [2.0, None], [3.0, 4.0]],
+            "Resets": [[0.0, 0.0], [1.0, 1.0]],
+        }
+        assert (block["x"], block["kind"], block["min"], block["max"]) == ("index", "bar", 0.0, 10.0)
+        assert "entities" not in block
+
+    def test_graph_of_number_pairs(self, card: HAAnimCard) -> None:
+        """Test (x, y) pairs keep their positions."""
+        card.graph("g", series={"Curve": [(0, 0), (2.5, 6), [10, None]]})
+        assert card.blocks[0]["series"] == {"Curve": [[0.0, 0.0], [2.5, 6.0], [10.0, None]]}
+        assert card.blocks[0]["x"] == "number"
+
+    def test_graph_over_time(self, card: HAAnimCard) -> None:
+        """Test times are ISO text or aware datetimes, and become seconds since 1970."""
+        noon = datetime(2025, 1, 6, 12, 0, tzinfo=timezone.utc)
+        card.graph(
+            "g",
+            series={
+                "Power": [(noon, 100), ("2025-01-06T13:00:00+00:00", 150), ("2025-01-06 15:00+01:00", 90)]
+            },
+        )
+        block = card.blocks[0]
+        assert block["x"] == "time"
+        assert block["series"]["Power"] == [
+            [noon.timestamp(), 100.0],
+            [noon.timestamp() + 3600, 150.0],
+            [noon.timestamp() + 7200, 90.0],
+        ]
+
+    def test_graph_values_are_json(self, card: HAAnimCard) -> None:
+        """Test what a graph block carries is plain JSON, whatever was passed in."""
+        card.graph("g", series={"A": [(datetime(2025, 1, 6, tzinfo=timezone.utc), 1)]})
+        assert json.loads(json.dumps(card.blocks)) == card.blocks
+
+    def test_empty_series_is_allowed(self, card: HAAnimCard) -> None:
+        """Test a series can start without points."""
+        card.graph("g", series={"A": []})
+        assert card.blocks[0]["series"] == {"A": []}
+        assert card.blocks[0]["x"] == "index"
+
+    def test_graph_limits(self, card: HAAnimCard) -> None:
+        """Test eight series of 500 points and thirty days of history are accepted."""
+        card.graph(
+            "g", series={f"S{index}": list(range(MAX_GRAPH_POINTS)) for index in range(MAX_GRAPH_SERIES)}
+        )
+        card.graph("h", [f"sensor.s{index}" for index in range(MAX_GRAPH_SERIES)], hours=MAX_GRAPH_HOURS)
+        assert len(card.blocks[0]["series"]) == 8
+        assert (MAX_GRAPH_SERIES, MAX_GRAPH_POINTS, MAX_GRAPH_HOURS, GRAPH_KINDS) == (
+            8,
+            500,
+            720,
+            ("line", "area", "bar"),
+        )
+
+    def test_graph_data_is_copied(self, card: HAAnimCard) -> None:
+        """Test later changes to the list that was passed do not reach the card."""
+        points = [1, 2]
+        card.graph("g", series={"A": points})
+        points.append(3)
+        assert len(card.blocks[0]["series"]["A"]) == 2
 
     def test_button(self, card: HAAnimCard) -> None:
         """Test a button holds its label, action, confirmation and data."""
@@ -513,6 +618,156 @@ INVALID: list[tuple[str, Any, type[Exception], str]] = [
         lambda c: c.icon("i", "fan.a", follow_entity=1),
         TypeError,
         "follow_entity must be True or False",
+    ),
+    ("graph without data", lambda c: c.graph("g"), ValueError, "exactly one of entities and series"),
+    (
+        "graph with both",
+        lambda c: c.graph("g", "sensor.a", {"A": [1]}),
+        ValueError,
+        "exactly one of entities and series",
+    ),
+    (
+        "graph kind",
+        lambda c: c.graph("g", "sensor.a", kind="pie"),
+        ValueError,
+        "a graph is one of line, area, bar",
+    ),
+    ("graph title not a string", lambda c: c.graph("g", "sensor.a", title=1), TypeError, "title must be"),
+    ("graph unit not a string", lambda c: c.graph("g", "sensor.a", unit=1), TypeError, "unit must be"),
+    (
+        "graph min not a number",
+        lambda c: c.graph("g", "sensor.a", min="0"),
+        TypeError,
+        "min must be a number",
+    ),
+    (
+        "graph max is nan",
+        lambda c: c.graph("g", "sensor.a", max=float("nan")),
+        ValueError,
+        "max must be a finite",
+    ),
+    (
+        "graph min above max",
+        lambda c: c.graph("g", "sensor.a", min=5, max=5),
+        ValueError,
+        "must be less than max",
+    ),
+    (
+        "graph hours zero",
+        lambda c: c.graph("g", "sensor.a", hours=0),
+        ValueError,
+        "hours must be more than 0",
+    ),
+    ("graph hours too many", lambda c: c.graph("g", "sensor.a", hours=721), ValueError, "at most 720"),
+    ("graph hours not a number", lambda c: c.graph("g", "sensor.a", hours="24"), TypeError, "hours must be"),
+    (
+        "graph hours a bool",
+        lambda c: c.graph("g", "sensor.a", hours=True),
+        TypeError,
+        "hours must be a number",
+    ),
+    ("graph no entities", lambda c: c.graph("g", []), ValueError, "1 to 8 entities, not 0"),
+    (
+        "graph too many entities",
+        lambda c: c.graph("g", [f"sensor.s{i}" for i in range(9)]),
+        ValueError,
+        "1 to 8 entities, not 9",
+    ),
+    (
+        "graph entity invalid",
+        lambda c: c.graph("g", ["sensor.a", "nodomain"]),
+        ValueError,
+        "Invalid entity ID",
+    ),
+    ("graph entity twice", lambda c: c.graph("g", ["sensor.a", "sensor.a"]), ValueError, "each entity once"),
+    (
+        "graph entities a dict",
+        lambda c: c.graph("g", {"sensor.a": 1}),
+        TypeError,
+        "entities must be an entity ID",
+    ),
+    ("graph entities a number", lambda c: c.graph("g", 5), TypeError, "entities must be an entity ID"),
+    ("graph series a list", lambda c: c.graph("g", series=[1, 2]), TypeError, "series must be a dictionary"),
+    ("graph no series", lambda c: c.graph("g", series={}), ValueError, "1 to 8 series, not 0"),
+    (
+        "graph too many series",
+        lambda c: c.graph("g", series={f"S{i}": [1] for i in range(9)}),
+        ValueError,
+        "1 to 8 series, not 9",
+    ),
+    (
+        "graph series name empty",
+        lambda c: c.graph("g", series={"": [1]}),
+        ValueError,
+        "series name must not be empty",
+    ),
+    ("graph series name a number", lambda c: c.graph("g", series={1: [1]}), TypeError, "series name must be"),
+    (
+        "graph points a string",
+        lambda c: c.graph("g", series={"A": "123"}),
+        TypeError,
+        "points must be a list",
+    ),
+    ("graph points a number", lambda c: c.graph("g", series={"A": 5}), TypeError, "points must be a list"),
+    (
+        "graph too many points",
+        lambda c: c.graph("g", series={"A": list(range(501))}),
+        ValueError,
+        "has 501 points; a series has at most 500",
+    ),
+    (
+        "graph value a string",
+        lambda c: c.graph("g", series={"A": [1, "2"]}),
+        TypeError,
+        "series 'A', point 1",
+    ),
+    (
+        "graph value infinite",
+        lambda c: c.graph("g", series={"A": [float("inf")]}),
+        ValueError,
+        "finite number",
+    ),
+    (
+        "graph value a bool",
+        lambda c: c.graph("g", series={"A": [True]}),
+        TypeError,
+        "must be a number, not bool",
+    ),
+    (
+        "graph triple",
+        lambda c: c.graph("g", series={"A": [(1, 2, 3)]}),
+        ValueError,
+        "a number or an \\(x, y\\) pair",
+    ),
+    (
+        "graph time not iso",
+        lambda c: c.graph("g", series={"A": [("noon", 1)]}),
+        ValueError,
+        "not a time in ISO",
+    ),
+    (
+        "graph time without zone",
+        lambda c: c.graph("g", series={"A": [("2025-01-06 12:00", 1)]}),
+        ValueError,
+        "has no time zone",
+    ),
+    (
+        "graph naive datetime",
+        lambda c: c.graph("g", series={"A": [(datetime(2025, 1, 6), 1)]}),
+        ValueError,
+        "has no time zone",
+    ),
+    (
+        "graph mixed positions",
+        lambda c: c.graph("g", series={"A": [1, 2], "B": [(0, 1)]}),
+        ValueError,
+        "these are mixed: index, number",
+    ),
+    (
+        "graph numbers and times",
+        lambda c: c.graph("g", series={"A": [(0, 1), ("2025-01-06T12:00:00+00:00", 1)]}),
+        ValueError,
+        "these are mixed: number, time",
     ),
     ("button label not a string", lambda c: c.button("b", 1, "reset"), TypeError, "label must be a string"),
     ("button action not a string", lambda c: c.button("b", "Go", None), TypeError, "action must be a string"),
