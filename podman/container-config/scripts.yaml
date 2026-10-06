@@ -1,1 +1,7 @@
-{}
+add gauges/progress bar, badge. Table can be mocked via layout now
+
+for images lets do the followng:
+- Size, alignment and caption options (small).
+- Camera entities: a live picture from a camera.* entity (medium).
+
+finaly add html (allowing raw html to be injected)

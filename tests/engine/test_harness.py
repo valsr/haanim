@@ -33,8 +33,10 @@ seen = []
 def build(event):
     haa.card.set_title("Demo card")
     haa.card.configure(log=False)
-    haa.card.text("intro", "## Demo")
-    haa.card.button("press", label="Press", action="echo", confirm="Sure?", room="hall")
+    haa.card.add_element(haa.card.create_text("intro", "## Demo"))
+    haa.card.layout.split_row(2).add_element(
+        haa.card.create_button("press", label="Press", action="echo", confirm="Sure?", room="hall")
+    )
     haa.set_message("ready")
 
 @shutdown
@@ -635,6 +637,10 @@ class TestCard:
             assert automation.card.block("intro")["markdown"] == "## Demo"
             assert isinstance(automation.card, HarnessCard)
             assert automation.card.title == "Demo card"
+            assert automation.card.layout == [
+                {"cells": 1, "elements": ["intro"]},
+                {"cells": 2, "elements": ["press"]},
+            ]
             assert automation.card.options == {
                 "title": True,
                 "state": True,
@@ -669,6 +675,7 @@ class TestCard:
             await automation.stop()
             assert automation.card.blocks == []
             assert automation.card.title is None
+            assert automation.card.layout == []
             assert all(automation.card.options.values())
             assert automation.card_updates[-1] == []
 

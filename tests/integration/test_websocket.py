@@ -20,14 +20,16 @@ from tests.integration.test_sensor import manager, root, write  # noqa: F401  py
 CLIMATE = """
 from haanim import haa, action, startup
 
+alerts = haa.card.create_value("alerts", label="Alerts today", value=0)
+
 @startup
 def build_card(event):
-    haa.card.text("intro", "## Climate")
-    haa.card.value("alerts", label="Alerts today", value=0)
+    haa.card.add_element(haa.card.create_text("intro", "## Climate"))
+    haa.card.add_element(alerts)
 
 @action(aliases=["bump"], description="Count one alert.")
 def alert(event):
-    haa.card.value("alerts", label="Alerts today", value=1)
+    alerts.set_value(1)
     haa.card.set_title("Climate: 1 alert")
     haa.set_message("alerted")
 
@@ -37,6 +39,8 @@ def strip(event):
 """
 
 ALL_SHOWN = {"title": True, "state": True, "message": True, "actions": True, "log": True}
+
+ROWS = [{"cells": 1, "elements": ["intro"]}, {"cells": 1, "elements": ["alerts"]}]
 
 BLOCKS = [
     {"id": "intro", "type": "text", "markdown": "## Climate"},
@@ -164,7 +168,7 @@ class TestCardSubscription:
         assert event == {
             "id": 1,
             "type": "event",
-            "event": {"blocks": BLOCKS, "title": None, "options": ALL_SHOWN},
+            "event": {"blocks": BLOCKS, "title": None, "options": ALL_SHOWN, "layout": ROWS},
         }
 
     async def test_update_on_change(
@@ -204,7 +208,12 @@ class TestCardSubscription:
         await command(client, 1, "haanim/card/subscribe", automation_id="climate")
         assert (await client.receive_json())["event"]["title"] == "Climate: 1 alert"
         await manager.async_stop_automation("climate")
-        assert (await client.receive_json())["event"] == {"blocks": [], "title": None, "options": ALL_SHOWN}
+        assert (await client.receive_json())["event"] == {
+            "blocks": [],
+            "title": None,
+            "options": ALL_SHOWN,
+            "layout": [],
+        }
 
     async def test_empty_when_stopped(
         self, hass_ws_client: Any, manager: AutomationManager
@@ -215,19 +224,30 @@ class TestCardSubscription:
         await client.receive_json()
 
         await manager.async_stop_automation("climate")
-        assert (await client.receive_json())["event"] == {"blocks": [], "title": None, "options": ALL_SHOWN}
+        assert (await client.receive_json())["event"] == {
+            "blocks": [],
+            "title": None,
+            "options": ALL_SHOWN,
+            "layout": [],
+        }
         await manager.async_start_automation("climate")
         assert (await client.receive_json())["event"] == {
             "blocks": BLOCKS,
             "title": None,
             "options": ALL_SHOWN,
+            "layout": ROWS,
         }
 
     async def test_automation_without_a_card(self, hass_ws_client: Any) -> None:
         """Test an automation that puts nothing on its card has an empty one."""
         client = await hass_ws_client()
         await command(client, 1, "haanim/card/subscribe", automation_id="plain")
-        assert (await client.receive_json())["event"] == {"blocks": [], "title": None, "options": None}
+        assert (await client.receive_json())["event"] == {
+            "blocks": [],
+            "title": None,
+            "options": None,
+            "layout": None,
+        }
 
     async def test_only_the_subscribed_automation(
         self, hass_ws_client: Any, manager: AutomationManager
@@ -274,16 +294,23 @@ class TestCardSink:
         """Test the sink keeps the latest content and tells subscribers until they unsubscribe."""
         sink = HACardSink()
         seen: list[dict[str, Any]] = []
-        assert sink.content("a") == {"blocks": [], "title": None, "options": None}
+        nothing = {"blocks": [], "title": None, "options": None, "layout": None}
+        assert sink.content("a") == nothing
         unsubscribe = sink.subscribe("a", seen.append)
 
-        sink.card_changed("a", [{"id": "x"}], "Title", {"log": False})
-        sink.card_changed("b", [{"id": "y"}])
+        shown = {
+            "blocks": [{"id": "x"}],
+            "title": "Title",
+            "options": {"log": False},
+            "layout": [{"cells": 1}],
+        }
+        sink.card_changed("a", dict(shown))
+        sink.card_changed("b", {"blocks": [{"id": "y"}]})
         unsubscribe()
         unsubscribe()
-        sink.card_changed("a", [])
+        sink.card_changed("a", {"blocks": []})
 
-        assert seen == [{"blocks": [{"id": "x"}], "title": "Title", "options": {"log": False}}]
+        assert seen == [shown]
         assert sink.blocks("a") == []
         assert sink.title("a") is None
-        assert sink.content("b") == {"blocks": [{"id": "y"}], "title": None, "options": None}
+        assert sink.content("b") == {**nothing, "blocks": [{"id": "y"}]}

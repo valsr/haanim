@@ -14,10 +14,14 @@ from typing import Any
 from haanim import const, events
 from haanim.engine import decorators
 from haanim.engine.errors import PUBLIC_ERRORS
+from haanim.engine import card_elements
 from haanim.engine.card import HAAnimCard
 from haanim.engine.haanim_api import HAAnim, HAAnimAutomationProxy, HAAnimServiceCall, HAAnimServiceProxy
 from haanim.entity import HAAnimEntity
 from haanim.engine.logging_wrapper import LoggerWrapper
+
+# The classes of what is on a card, for type hints in automations: every class the elements module offers
+CARD_CLASSES = tuple(name for name in card_elements.__all__ if not name.isupper())
 
 # Decorators of the engine, by the name automations import them under.
 DECORATORS: dict[str, Callable[..., Any]] = {
@@ -133,6 +137,7 @@ def build_haanim_module(
         "HAAnim": HAAnim,
         "HAAnimAutomationProxy": HAAnimAutomationProxy,
         "HAAnimCard": HAAnimCard,
+        **{name: getattr(card_elements, name) for name in CARD_CLASSES},
         "HAAnimEntity": HAAnimEntity,
         "HAAnimServiceCall": HAAnimServiceCall,
         "HAAnimServiceProxy": HAAnimServiceProxy,

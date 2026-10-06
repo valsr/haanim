@@ -98,11 +98,13 @@ class HarnessCard:
         title: The title the automation gave the card; None while it shows the automation's name.
         options: Which fixed parts of the card are shown: ``title``, ``state``,
             ``message``, ``actions`` and ``log``.
+        layout: The rows of the card from the top, each with ``cells`` and the IDs of its ``elements``.
     """
 
     blocks: list[dict[str, Any]] = field(default_factory=list)
     title: str | None = None
     options: dict[str, bool] = field(default_factory=lambda: dict.fromkeys(CARD_PARTS, True))
+    layout: list[dict[str, Any]] = field(default_factory=list)
 
     def block(self, block_id: str) -> dict[str, Any]:
         """Return the block with an ID.
@@ -703,7 +705,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         haa = self._context._haa  # pylint: disable=protected-access
         if haa is None:
             return HarnessCard()
-        return HarnessCard(haa.card.blocks, haa.card.title, haa.card.options)
+        return HarnessCard(haa.card.blocks, haa.card.title, haa.card.options, haa.card.layout.as_list())
 
     @property
     def card_updates(self) -> list[list[dict[str, Any]]]:

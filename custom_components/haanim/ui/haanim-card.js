@@ -40,6 +40,13 @@ const STYLES = `
     .content.bare { margin-top: 0; border-top: none; padding-top: 0; }
     .title .state:only-child { margin-left: auto; }
     .block { margin-bottom: 10px; }
+    /* Cells share the row equally, and wrap onto further lines when the card is too narrow for them */
+    .row {
+        display: grid; gap: 4px 12px; align-items: start;
+        grid-template-columns: repeat(auto-fit, minmax(max(72px, calc(100% / var(--cells) - 12px)), 1fr));
+    }
+    .cell { min-width: 0; }
+    .cell button.card-button { width: 100%; }
     .block-value, .block-entity { display: flex; justify-content: space-between; gap: 12px; }
     .block .label { color: var(--secondary-text-color); }
     .block .value { font-weight: 500; }
@@ -116,6 +123,7 @@ export class HAAnimCard extends HTMLElement {
         this._blocks = [];
         this._title = null;
         this._options = null;
+        this._layout = null;
         this._images = {};
         this._history = {};
         this._showActions = false;
@@ -140,6 +148,7 @@ export class HAAnimCard extends HTMLElement {
             this._blocks = [];
             this._title = null;
             this._options = null;
+            this._layout = null;
             this._history = {};
             this._showActions = false;
             this._start();
@@ -229,6 +238,7 @@ export class HAAnimCard extends HTMLElement {
         this._blocks = message.blocks || [];
         this._title = message.title || null;
         this._options = message.options || null;
+        this._layout = Array.isArray(message.layout) ? message.layout : null;
         this._loadImages();
         this._loadHistory();
         this._render();
@@ -421,6 +431,7 @@ export class HAAnimCard extends HTMLElement {
             title: this._title,
             options: this._options,
             blocks: this._blocks,
+            layout: this._layout,
             states: this._hass ? this._hass.states : {},
             images: this._images,
             history: this._history,

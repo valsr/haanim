@@ -1,11 +1,12 @@
 """A card that shows everything `haa.card` can do.
 
-The card has a title that changes with what the automation does, a heading, a
-logo from the automation's assets, a counter that is kept across restarts, the
-live state of an entity, icons that follow entities, two graphs (the history of
-an entity, and numbers the automation keeps itself), and three buttons, one of which strips the card to a
-bare box and back. Add it to a
-dashboard with::
+Elements are created with ``haa.card.create_*()``, placed with the layout, and
+changed in place with their setters. The card has a title that changes with
+what the automation does, a heading, a logo from the automation's assets, a
+counter that is kept across restarts next to an uptime, two graphs (numbers the
+automation keeps itself, and the history of entities), the live state of an
+entity, a row of icons that follow entities, and a row of three buttons, one of
+which strips the card to a bare box and back. Add it to a dashboard with::
 
     type: custom:haanim-card
     automation_id: dashboard
@@ -35,16 +36,21 @@ HISTORY = 20
 FAN = "input_boolean.fan"  # a Toggle helper called "Fan"; any entity that is on or off will do
 
 
+# Elements are created once and changed in place afterwards. They are created here, each time the
+# automation starts, and put on the card in build_card.
+counter = haa.card.create_value("count", label="Button presses", value=0)
+running = haa.card.create_value("uptime", label="Running for", value=0, unit="min")
+# A graph of the automation's own numbers: the count after each of the last changes
+presses = haa.card.create_graph("presses", series={"Count": []}, kind="bar", title="Recent counts")
+
+
 def show_count() -> int:
     """Put the stored count on the card and in its title, and return it."""
     count = int(haa.get_variable("count", 0))
-    haa.card.value("count", label="Button presses", value=count)
+    counter.set_value(count)
+    presses.set_series({"Count": haa.get_variable("history", [])})
     # The title of the card follows the count
     haa.card.set_title(f"Dashboard demo: {count} pressed" if count else "Dashboard demo")
-    # A graph of the automation's own numbers: the count after each of the last changes
-    haa.card.graph(
-        "presses", series={"Count": haa.get_variable("history", [])}, kind="bar", title="Recent counts"
-    )
     return count
 
 
@@ -56,32 +62,54 @@ def remember(count: int) -> None:
 
 @startup
 def build_card(event: ActionEvent) -> None:
-    """Build the card. Card content is not kept across restarts, so it is built here."""
-    haa.card.text("intro", "## Dashboard demo\nA card filled by an automation with **`haa.card`**.")
-    haa.card.image("logo", asset="logo.svg", alt="HAAnim logo")
-    show_count()
-    haa.card.value("uptime", label="Running for", value=0, unit="min")
-    haa.card.entity("sun", ENTITY)
+    """Lay the card out. Card content is not kept across restarts, so it is built here."""
+    card = haa.card
+    layout = card.layout
+
+    # An element added to the card, or to the layout, gets a row of its own
+    card.add_element(
+        card.create_text("intro", "## Dashboard demo\nA card filled by an automation with **`haa.card`**.")
+    )
+    layout.add_element(card.create_image("logo", asset="logo.svg", alt="HAAnim logo"))
+
+    # A row split into cells puts elements side by side
+    layout.split_row(2).add_element(counter).add_element(running)
+    layout.add_element(presses)
+    layout.add_element(card.create_entity("sun", ENTITY))
+
     # A graph of what Home Assistant recorded for entities; it follows them from then on. The
     # temperature is numbers and is drawn as an area; the fan is on or off and becomes a timeline.
     # Hover over it to read a single value. The time axis is labelled every quarter of an hour, with a
     # small mark every five minutes; without x_major and x_minor the card picks round distances itself.
-    haa.card.graph(
-        "temperature",
-        [TEMPERATURE, FAN],
-        hours=1,
-        kind="area",
-        title="Temperature and fan, last hour",
-        x_major="00:15:00",
-        x_minor="00:05:00",
+    layout.add_element(
+        card.create_graph(
+            "temperature",
+            [TEMPERATURE, FAN],
+            hours=1,
+            kind="area",
+            title="Temperature and fan, last hour",
+            x_major="00:15:00",
+            x_minor="00:05:00",
+        )
     )
+
     # Icons follow their entity: lit and turning while the fan is on, dimmed while it is off
-    haa.card.icon("fan", FAN, icon="mdi:fan", spin=True)
-    haa.card.icon("sun_icon", ENTITY)  # the entity's own icon, which changes with its state
-    haa.card.icon("info", icon="mdi:information-outline", label="An icon no entity drives", color="accent")
-    haa.card.button("add", label="Count", action="count", step=1)
-    haa.card.button("reset", label="Reset", action="reset", confirm="Reset the counter to zero?")
-    haa.card.button("frame", label="Bare card on/off", action="toggle_frame")
+    icons = layout.split_row(3)
+    icons.add_element(card.create_icon("fan", FAN, icon="mdi:fan", spin=True))
+    icons.add_element(card.create_icon("sun_icon", ENTITY))  # the entity's own icon
+    icons.add_element(
+        card.create_icon("info", icon="mdi:information-outline", label="No entity", color="accent")
+    )
+
+    # Buttons name actions, so they are created once the actions exist: in @startup, not above
+    buttons = layout.split_row(3)
+    buttons.add_element(card.create_button("add", label="Count", action="count", step=1))
+    buttons.add_element(
+        card.create_button("reset", label="Reset", action="reset", confirm="Reset the counter to zero?")
+    )
+    buttons.add_element(card.create_button("frame", label="Bare card", action="toggle_frame"))
+
+    show_count()
     haa.set_message("Card ready")
 
 
@@ -113,7 +141,7 @@ def toggle_frame(event: ActionEvent) -> bool:
 @on_interval("00:01:00")
 def uptime(event: IntervalEvent) -> None:
     """Show for how long the automation has been running."""
-    haa.card.value("uptime", label="Running for", value=event.execution_count, unit="min")
+    running.set_value(event.execution_count)
 
 
 @on_event("dashboard_count")

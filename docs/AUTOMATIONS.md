@@ -263,73 +263,87 @@ message, then whatever the automation puts there, and two buttons:
 **Actions** opens a popup with all of the automation's actions, and **Log** goes to the automation's log in
 the HAAnim panel. Enabling, stopping and restarting are done on the automation's page in the panel.
 
+The automation fills its card in two steps: it **creates elements**, and it **adds them to the card**. An
+element it keeps in a variable can be changed later with its setters, and only that element changes on the
+card.
+
 ```python
+alerts = haa.card.create_value("alerts", label="Alerts today", value=0)
+
+
 @startup
 def build_card(event: ActionEvent):
     haa.card.set_title("Climate")                 # the automation's name if never set
-    haa.card.text("intro", "## Climate\nKeeps the house between **19** and **23** °C.")
-    haa.card.image("logo", asset="logo.png", alt="Logo")
-    haa.card.value("alerts", label="Alerts today", value=0)
-    haa.card.entity("temp", "sensor.temperature")
-    haa.card.icon("fan", "fan.bedroom", icon="mdi:fan", spin=True)
-    haa.card.button("reset", label="Reset", action="reset_alerts", confirm="Reset the counter?")
+    haa.card.add_element(haa.card.create_text("intro", "## Climate\nKeeps the house between **19** and **23** °C."))
+    haa.card.add_element(alerts)
+    haa.card.add_element(haa.card.create_button("reset", label="Reset", action="reset_alerts"))
+
+
+@on_state("sensor.temperature > 30")
+def alert(event: StateEvent):
+    alerts.set_value(alerts.value + 1)            # only this element changes on the card
 
 
 @action
 def reset_alerts(event: ActionEvent):
-    haa.card.value("alerts", label="Alerts today", value=0)     # replaces the block in place
+    alerts.set_value(0)
 ```
+
+Every element has an ID, unique on the card. The card is emptied when the automation stops and `main.py`
+runs again at every start, so elements are created at the top of the file or in `@startup`. Buttons name
+actions, which exist only once the file has run: create buttons in `@startup`.
+
+| Create it with                                              | It shows                                   | Change it with                                  |
+| ----------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------- |
+| `create_text(id, markdown)`                                 | Markdown text                              | `set_text`                                      |
+| `create_image(id, asset=None, url=None, alt="")`            | An image from `assets/` or from a URL      | `set_asset`, `set_url`, `set_alt`               |
+| `create_value(id, label, value, unit="")`                   | A labelled value                           | `set_value`, `set_label`, `set_unit`            |
+| `create_entity(id, entity_id)`                              | The live state of an entity                | `set_entity`                                    |
+| `create_icon(id, entity_id=None, icon=None, ...)`           | An icon, driven by an entity by default    | `set_icon`, `set_color`, `set_spin`, `set_label`, `set_entity`, `set_follow_entity` |
+| `create_graph(id, entities=None, series=None, ...)`         | A graph of history or of your own numbers  | `set_series`, `set_entities`, `set_hours`, `set_kind`, `set_title`, `set_unit`, `set_range`, `set_marks` |
+| `create_button(id, label, action, confirm=None, **data)`    | A button that runs an action               | `set_label`, `set_action`, `set_confirm`, `set_data` |
+
+A setter that is given something invalid raises and leaves the element as it was. Markdown is sanitised:
+raw HTML is removed. A button calls its action with its extra keyword arguments as `event.data`.
+
+### Layout
+
+`haa.card.layout` says where the elements are: rows, from the top. `add_element()` gives an element a row of
+its own, and `split_row(n)` adds a row of `n` cells of equal width that is filled from the left:
+
+```python
+@startup
+def build_card(event: ActionEvent):
+    layout = haa.card.layout
+    layout.add_element(haa.card.create_text("title", "## Pumps"))            # a row of its own
+
+    buttons = layout.split_row(3)                                            # three side by side
+    buttons.add_element(haa.card.create_button("on", label="On", action="pump", state="on"))
+    buttons.add_element(haa.card.create_button("off", label="Off", action="pump", state="off"))
+    buttons.add_element(haa.card.create_button("auto", label="Auto", action="pump", state="auto"))
+
+    layout.add_element(haa.card.create_image("logo", asset="logo.png"))      # the next row
+
+
+@action
+def pump(event: ActionEvent):
+    haa.set_message(f"Pump: {event.data['state']}")
+```
+
+- `haa.card.add_element()` is the layout's `add_element()`. Both, and a row's, return what they were called
+  on, so calls can be chained: `layout.split_row(2).add_element(a).add_element(b)`.
+- A row has 1 to 6 cells. Fewer elements leave cells empty; elements beyond the last cell are ignored.
+- Adding an element that is already on the card moves it.
+- `layout.remove_element(element)` (or its ID) takes an element off the card, `layout.clear()` everything;
+  `haa.card.element(id)` finds an element by its ID.
+- On a narrow card the cells of a row wrap onto further lines.
+- A card has at most 50 elements.
+
+### Title and fixed parts
 
 `haa.card.set_title()` can be called at any time, so the title can say what is going on
-(`haa.card.set_title(f"Climate: {count} alerts")`); `None` goes back to the automation's name.
-
-An **icon** is driven by its entity unless told otherwise: it is lit while the entity is active (on, open,
-home, ...) and dimmed while it is not, turns only while it is active if `spin=True`, and shows the entity's
-name and state. Without `icon=` it is the entity's own icon. A click opens the entity's dialog.
-
-```python
-haa.card.icon("fan", "fan.bedroom", icon="mdi:fan", spin=True)     # follows fan.bedroom
-haa.card.icon("door", "binary_sensor.front_door")                  # the entity's own icon
-haa.card.icon("mode", icon="mdi:snowflake", label="Cooling", color="primary")    # no entity
-haa.card.icon("fan", "fan.bedroom", icon="mdi:fan-alert", color="error",
-              follow_entity=False)                                 # exactly this, whatever the fan does
-```
-
-A **graph** shows either the history of entities or numbers of the automation's own:
-
-```python
-# What Home Assistant recorded for the entities over the last hours; the graph then follows them
-haa.card.graph("temps", ["sensor.indoor", "sensor.outdoor"], hours=12, title="Temperature")
-
-# The automation's own numbers; set the block again to change them
-haa.card.graph("alerts", series={"Alerts": [3, 0, 1, 4, 2]}, kind="bar", title="Alerts per day")
-haa.card.graph("curve", series={"Target": [(0, 18), (6, 21), (22, 18)]}, unit="°C", min=15, max=25)
-haa.card.graph("power", series={"Power": [("2025-01-06T12:00:00+00:00", 120), ("2025-01-06T13:00:00+00:00", 90)]})
-```
-
-Numbers are drawn against a value axis marked with round numbers; `kind` is `"line"`, `"area"` or `"bar"`.
-An entity or series whose values are states rather than numbers (`on`, `off`, `heat`, ...) is drawn as a
-timeline instead: a row with a coloured segment for every state it was in. One graph can have both:
-
-```python
-haa.card.graph("climate", ["sensor.temperature", "climate.living_room", "binary_sensor.window"], hours=24)
-haa.card.graph("pump", series={"Pump": [(0, "on"), (6, "off"), (8, "on"), (10, "on")]})
-```
-
-Hovering over a graph shows the values of all its series at that position. The horizontal axis has labelled
-marks with smaller ones between them, at round distances the card picks; `x_major` and `x_minor` set the
-distances instead, as durations on a time axis and as numbers otherwise:
-
-```python
-haa.card.graph("temps", "sensor.indoor", hours=6, x_major="01:00:00", x_minor="00:15:00")
-haa.card.graph("curve", series={"Target": [(0, 18), (6, 21), (22, 18)]}, x_major=6, x_minor=1)
-```
-
-The points of a series are plain values (drawn one after the other), `(x, y)` pairs, or `(time, y)` pairs
-with timezone-aware times; the values of one series are all numbers or all states, and `None` leaves a gap. A
-state holds until the next point. A graph has at most 8 entities or series, a series at most 500 points, and
-history goes back at most 720 hours. The card keeps nothing for the automation: what should survive a restart
-belongs in persistent variables.
+(`haa.card.set_title(f"Climate: {count} alerts")`); `None` goes back to the automation's name. A title has at
+most 100 characters.
 
 The fixed parts can be hidden, each on its own, and shown again at any time:
 
@@ -338,11 +352,67 @@ haa.card.configure(state=False, log=False)       # no state badge, no Log button
 haa.card.configure(title=False, state=False, message=False, actions=False, log=False)   # only the content
 ```
 
-Each block has an ID. Setting an ID again replaces that block in place, which is how a value is updated;
-`haa.card.remove(id)` and `haa.card.clear()` take blocks away. A button calls one of the automation's actions,
-with its extra keyword arguments as `event.data`. The card is emptied when the automation stops, so build it
-in `@startup`. A card has at most 50 blocks, a text block at most 10 000 characters and a title at most 100. Markdown is
-sanitised: raw HTML is removed.
+### Icons
+
+An icon is driven by its entity unless told otherwise: it is lit while the entity is active (on, open,
+home, ...) and dimmed while it is not, turns only while it is active if `spin=True`, and shows the entity's
+name and state. Without `icon=` it is the entity's own icon. A click opens the entity's dialog.
+
+```python
+fan = haa.card.create_icon("fan", "fan.bedroom", icon="mdi:fan", spin=True)     # follows fan.bedroom
+door = haa.card.create_icon("door", "binary_sensor.front_door")                 # the entity's own icon
+mode = haa.card.create_icon("mode", icon="mdi:snowflake", label="Cooling", color="primary")    # no entity
+alarm = haa.card.create_icon("alarm", "fan.bedroom", icon="mdi:fan-alert", color="error",
+                             follow_entity=False)                               # exactly this, whatever the fan does
+icons = haa.card.layout.split_row(4)
+icons.add_element(fan).add_element(door).add_element(mode).add_element(alarm)
+mode.set_icon("mdi:fire")
+mode.set_label("Heating")
+```
+
+### Graphs
+
+A graph shows either the history of entities or numbers of the automation's own:
+
+```python
+# What Home Assistant recorded for the entities over the last hours; the graph then follows them
+temps = haa.card.create_graph("temps", ["sensor.indoor", "sensor.outdoor"], hours=12, title="Temperature")
+
+# The automation's own numbers; set_series() replaces them
+alerts = haa.card.create_graph("alerts", series={"Alerts": [3, 0, 1, 4, 2]}, kind="bar", title="Alerts per day")
+curve = haa.card.create_graph("curve", series={"Target": [(0, 18), (6, 21), (22, 18)]}, unit="°C", min=15, max=25)
+power = haa.card.create_graph("power", series={"Power": [("2025-01-06T12:00:00+00:00", 120), ("2025-01-06T13:00:00+00:00", 90)]})
+for graph in (temps, alerts, curve, power):
+    haa.card.add_element(graph)
+alerts.set_series({"Alerts": [3, 0, 1, 4, 2, 6]})
+```
+
+Numbers are drawn against a value axis marked with round numbers; `kind` is `"line"`, `"area"` or `"bar"`.
+An entity or series whose values are states rather than numbers (`on`, `off`, `heat`, ...) is drawn as a
+timeline instead: a row with a coloured segment for every state it was in. One graph can have both:
+
+```python
+haa.card.add_element(
+    haa.card.create_graph("climate", ["sensor.temperature", "climate.living_room", "binary_sensor.window"], hours=24)
+)
+haa.card.add_element(haa.card.create_graph("pump", series={"Pump": [(0, "on"), (6, "off"), (8, "on"), (10, "on")]}))
+```
+
+Hovering over a graph shows the values of all its series at that position. The horizontal axis has labelled
+marks with smaller ones between them, at round distances the card picks; `x_major` and `x_minor` set the
+distances instead, as durations on a time axis and as numbers otherwise:
+
+```python
+temps = haa.card.create_graph("temps", "sensor.indoor", hours=6, x_major="01:00:00", x_minor="00:15:00")
+curve = haa.card.create_graph("curve", series={"Target": [(0, 18), (6, 21), (22, 18)]}, x_major=6, x_minor=1)
+curve.set_marks(x_major=4)
+```
+
+The points of a series are plain values (drawn one after the other), `(x, y)` pairs, or `(time, y)` pairs
+with timezone-aware times; the values of one series are all numbers or all states, and `None` leaves a gap. A
+state holds until the next point. A graph has at most 8 entities or series, a series at most 500 points, and
+history goes back at most 720 hours. The card keeps nothing for the automation: what should survive a restart
+belongs in persistent variables.
 
 ## Testing
 
@@ -379,7 +449,7 @@ async def test_morning_routine_only_when_home():
 | See what it did                             | `service_calls()`, `events()`, `logs()`, `message`, `state`, `variables`, `last_error` |
 | Decide what services do                     | `stub_service("weather.get_forecasts", response={...})`, `success=False`, `remove_service` |
 | Stand in for other automations              | `stub_automation("notifications", send_message="sent")`, `automation_calls()` |
-| Check the card and press its buttons        | `card.title`, `card.blocks`, `card.block(id)`, `await press(id)` |
+| Check the card and press its buttons        | `card.title`, `card.blocks`, `card.block(id)`, `card.layout`, `await press(id)` |
 | Drive the lifecycle                         | `start=False`, then `load()`, `start()`, `stop()`, `reload()`   |
 | Provide assets and stored variables         | `assets={"logo.png": b"..."}`, `variables={"count": 3}`         |
 

@@ -264,24 +264,22 @@ class AssetSigner(Protocol):
 class CardSink(Protocol):
     """Receives the card content of automations, to show it."""
 
-    def card_changed(
-        self,
-        automation_id: str,
-        blocks: list[dict[str, Any]],
-        title: str | None = None,
-        options: dict[str, bool] | None = None,
-    ) -> None:
+    def card_changed(self, automation_id: str, content: dict[str, Any]) -> None:
         """Take the new content of an automation's card.
 
         Args:
             automation_id: ID of the automation.
-            blocks: Every block of the card in order, each a dictionary of JSON
-                values with ``id``, ``type`` and the block's content. Empty when
-                the card was cleared or the automation stopped. The receiver owns it.
-            title: The title the automation gave its card; None if it gave none,
-                and when the automation stopped.
-            options: Which fixed parts of the card are shown, by name (``title``,
-                ``state``, ``message``, ``actions``, ``log``). None means all of them.
+            content: What the card shows, as JSON values. The receiver owns it. It has
+
+                - ``blocks``: every element of the card in order, each a dictionary with
+                  ``id``, ``type`` and the element's content; empty when the card was
+                  cleared or the automation stopped;
+                - ``title``: the title the automation gave its card, or None;
+                - ``options``: which fixed parts of the card are shown, by name (``title``,
+                  ``state``, ``message``, ``actions``, ``log``);
+                - ``layout``: the rows of the card from the top, each with ``cells`` (how
+                  many cells of equal width it has) and ``elements`` (the IDs of the
+                  blocks in them, from the left).
         """
         ...
 

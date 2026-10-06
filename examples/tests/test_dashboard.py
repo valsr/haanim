@@ -10,14 +10,14 @@ DASHBOARD = Path(__file__).parents[1] / "dashboard"
 
 
 async def test_card_is_built_at_startup() -> None:
-    """The card has its thirteen blocks in order, with the logo from the automation's assets."""
+    """The card has its thirteen elements in eight rows, with the logo from the automation's assets."""
     async with AutomationHarness(DASHBOARD) as automation:
         assert [(block["id"], block["type"]) for block in automation.card.blocks] == [
             ("intro", "text"),
             ("logo", "image"),
             ("count", "value"),
-            ("presses", "graph"),
             ("uptime", "value"),
+            ("presses", "graph"),
             ("sun", "entity"),
             ("temperature", "graph"),
             ("fan", "icon"),
@@ -26,6 +26,16 @@ async def test_card_is_built_at_startup() -> None:
             ("add", "button"),
             ("reset", "button"),
             ("frame", "button"),
+        ]
+        assert automation.card.layout == [
+            {"cells": 1, "elements": ["intro"]},
+            {"cells": 1, "elements": ["logo"]},
+            {"cells": 2, "elements": ["count", "uptime"]},
+            {"cells": 1, "elements": ["presses"]},
+            {"cells": 1, "elements": ["sun"]},
+            {"cells": 1, "elements": ["temperature"]},
+            {"cells": 3, "elements": ["fan", "sun_icon", "info"]},
+            {"cells": 3, "elements": ["add", "reset", "frame"]},
         ]
         assert automation.card.block("logo")["url"] == "/api/haanim/assets/dashboard/logo.svg"
         assert automation.card.block("count")["value"] == 0
@@ -75,7 +85,7 @@ async def test_uptime_is_shown_every_minute() -> None:
     async with AutomationHarness(DASHBOARD) as automation:
         await automation.advance_time(minutes=3)
         assert automation.card.block("uptime")["value"] == 3
-        assert [block["id"] for block in automation.card.blocks][4] == "uptime"
+        assert [block["id"] for block in automation.card.blocks][3] == "uptime"
 
 
 async def test_card_is_empty_when_stopped() -> None:

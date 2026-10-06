@@ -69,8 +69,8 @@ from haanim import ActionEvent, action, haa, startup
 
 @startup
 def ready(event: ActionEvent):
-    haa.card.text("hello", "## Hello\nPress the button.")
-    haa.card.button("greet", label="Greet", action="greet")
+    haa.card.add_element(haa.card.create_text("hello", "## Hello\nPress the button."))
+    haa.card.add_element(haa.card.create_button("greet", label="Greet", action="greet"))
 
 
 @action

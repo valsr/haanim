@@ -267,40 +267,38 @@ class HACardSink:
 
     def __init__(self) -> None:
         """Initialize with no cards."""
-        self._cards: dict[str, list[dict[str, Any]]] = {}
-        self._titles: dict[str, str | None] = {}
-        self._options: dict[str, dict[str, bool] | None] = {}
+        self._contents: dict[str, dict[str, Any]] = {}
         self._listeners: dict[str, list[CardListener]] = {}
 
-    def card_changed(
-        self,
-        automation_id: str,
-        blocks: list[dict[str, Any]],
-        title: str | None = None,
-        options: dict[str, bool] | None = None,
-    ) -> None:
-        """Take the new content, title and options of an automation's card and tell its subscribers."""
-        self._cards[automation_id] = blocks
-        self._titles[automation_id] = title
-        self._options[automation_id] = options
+    def card_changed(self, automation_id: str, content: dict[str, Any]) -> None:
+        """Take what an automation's card shows now and tell its subscribers."""
+        self._contents[automation_id] = content
         for listener in list(self._listeners.get(automation_id, ())):
             listener(self.content(automation_id))
 
     def content(self, automation_id: str) -> dict[str, Any]:
-        """Return what the frontend draws of an automation's card: ``blocks``, ``title`` and ``options``."""
+        """Return what the frontend draws of an automation's card.
+
+        That is its ``blocks``, ``title``, ``options`` and ``layout``; an
+        automation that never touched its card has no blocks and nothing else set.
+        """
+        known = self._contents.get(automation_id, {})
         return {
-            "blocks": self.blocks(automation_id),
-            "title": self.title(automation_id),
-            "options": self._options.get(automation_id),
+            "blocks": known.get("blocks", []),
+            "title": known.get("title"),
+            "options": known.get("options"),
+            "layout": known.get("layout"),
         }
 
     def blocks(self, automation_id: str) -> list[dict[str, Any]]:
-        """Return the current content of an automation's card; empty if it has none."""
-        return self._cards.get(automation_id, [])
+        """Return the elements of an automation's card; empty if it has none."""
+        blocks: list[dict[str, Any]] = self.content(automation_id)["blocks"]
+        return blocks
 
     def title(self, automation_id: str) -> str | None:
         """Return the title an automation gave its card; None if it gave none."""
-        return self._titles.get(automation_id)
+        title: str | None = self.content(automation_id)["title"]
+        return title
 
     def subscribe(self, automation_id: str, listener: CardListener) -> Callable[[], None]:
         """Call ``listener(content)`` whenever the card of an automation changes.

@@ -198,8 +198,8 @@ async def run(base: str) -> None:
                 "intro",
                 "logo",
                 "count",
-                "presses",
                 "uptime",
+                "presses",
                 "sun",
                 "temperature",
                 "fan",
@@ -214,6 +214,8 @@ async def run(base: str) -> None:
         check(
             first["title"] == "Dashboard demo", f"the card has the title the automation set: {first['title']}"
         )
+        rows = [(row["cells"], len(row["elements"])) for row in first["layout"]]
+        check(rows[2] == (2, 2) and rows[-1] == (3, 3), f"the card has its layout: {rows}")
 
         logs, _ = await smoke.command("haanim/logs/subscribe", automation_id="dashboard")
         await smoke.event(logs, lambda event: "records" in event, "the recent log records")

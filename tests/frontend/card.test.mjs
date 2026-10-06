@@ -77,6 +77,18 @@ describe('haanim-card', () => {
         assert.match(card.shadowRoot.innerHTML, /<span class="name">Climate<\/span>/);
     });
 
+    test('places the elements as the layout says, and follows it', async () => {
+        const { card, hass } = await mounted();
+        const blocks = [{ id: 'a', type: 'text', markdown: 'A' }, { id: 'b', type: 'text', markdown: 'B' }];
+        hass.push('haanim/card/subscribe', { blocks, layout: [{ cells: 2, elements: ['a', 'b'] }] });
+        assert.match(card.shadowRoot.innerHTML, /<div class="row" style="--cells: 2">/);
+        hass.push('haanim/card/subscribe', { blocks, layout: [{ cells: 1, elements: ['b'] }, { cells: 1, elements: ['a'] }] });
+        assert.doesNotMatch(card.shadowRoot.innerHTML, /class="row"/);
+        assert.ok(card.shadowRoot.innerHTML.indexOf('data-block="b"') < card.shadowRoot.innerHTML.indexOf('data-block="a"'));
+        hass.push('haanim/card/subscribe', { blocks });
+        assert.ok(card.shadowRoot.innerHTML.indexOf('data-block="a"') < card.shadowRoot.innerHTML.indexOf('data-block="b"'));
+    });
+
     test('hides the parts the automation hides, and shows them again', async () => {
         const { card, hass } = await mounted();
         const bare = { title: false, state: false, message: false, actions: false, log: false };

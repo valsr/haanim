@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import {
     MAX_LOG_RECORDS,
     CARD_PARTS,
+    MAX_ROW_CELLS,
     PANEL_PATH,
     automationPath,
     escapeHtml,
@@ -274,6 +275,61 @@ describe('renderContent', () => {
     test('no blocks', () => {
         assert.equal(renderContent([]), '');
         assert.equal(renderContent(undefined), '');
+    });
+});
+
+describe('layout', () => {
+    const blocks = [
+        { id: 'a', type: 'text', markdown: 'A' },
+        { id: 'b', type: 'text', markdown: 'B' },
+        { id: 'c', type: 'text', markdown: 'C' },
+        { id: 'd', type: 'text', markdown: 'D' },
+    ];
+    const ids = (html) => [...html.matchAll(/data-block="(\w+)"/g)].map((match) => match[1]);
+
+    test('a row of one cell is the block itself', () => {
+        const html = renderContent(blocks, {}, [{ cells: 1, elements: ['b'] }, { cells: 1, elements: ['a'] }]);
+        assert.deepEqual(ids(html), ['b', 'a']);
+        assert.doesNotMatch(html, /class="row"|class="cell"/);
+    });
+    test('a split row is a grid with a cell per element', () => {
+        const html = renderContent(blocks, {}, [{ cells: 3, elements: ['a', 'b', 'c'] }, { cells: 1, elements: ['d'] }]);
+        assert.match(html, /^<div class="row" style="--cells: 3"><div class="cell"><div class="block block-text" data-block="a">/);
+        assert.equal((html.match(/class="cell"/g) || []).length, 3);
+        assert.deepEqual(ids(html), ['a', 'b', 'c', 'd']);
+        assert.match(html, /<\/div><\/div><div class="block block-text" data-block="d">/);
+    });
+    test('cells nobody filled stay empty', () => {
+        const html = renderContent(blocks, {}, [{ cells: 3, elements: ['a'] }]);
+        assert.equal((html.match(/<div class="cell"><\/div>/g) || []).length, 2);
+        assert.deepEqual(ids(html), ['a']);
+    });
+    test('more elements than cells: the extra ones are not drawn', () => {
+        const html = renderContent(blocks, {}, [{ cells: 2, elements: ['a', 'b', 'c'] }]);
+        assert.deepEqual(ids(html), ['a', 'b']);
+    });
+    test('the order is the layout\'s, and a block it does not name is not drawn', () => {
+        assert.deepEqual(ids(renderContent(blocks, {}, [{ cells: 2, elements: ['d', 'a'] }])), ['d', 'a']);
+        assert.equal(renderContent(blocks, {}, []), '');
+    });
+    test('a row without anything to draw is left out', () => {
+        assert.equal(renderContent(blocks, {}, [{ cells: 3, elements: [] }, { cells: 2, elements: ['missing'] }, { cells: 1 }]), '');
+    });
+    test('the number of cells is kept within one to six', () => {
+        assert.equal(MAX_ROW_CELLS, 6);
+        assert.match(renderContent(blocks, {}, [{ cells: 40, elements: ['a', 'b'] }]), /--cells: 6"/);
+        assert.match(renderContent(blocks, {}, [{ cells: '3; color: red', elements: ['a', 'b'] }]), /^<div class="block/);
+        assert.doesNotMatch(renderContent(blocks, {}, [{ cells: -2, elements: ['a'] }]), /class="row"/);
+    });
+    test('without a layout every block has a row of its own', () => {
+        assert.deepEqual(ids(renderContent(blocks, {}, null)), ['a', 'b', 'c', 'd']);
+        assert.deepEqual(ids(renderContent(blocks)), ['a', 'b', 'c', 'd']);
+    });
+    test('the card draws its content by the layout', () => {
+        const automation = { id: 'x', name: 'X', state: 'on', enabled: true, actions: [] };
+        const html = renderCard({ automation, blocks, layout: [{ cells: 2, elements: ['c', 'a'] }] });
+        assert.match(html, /<div class="content"><div class="row" style="--cells: 2">/);
+        assert.deepEqual(ids(html), ['c', 'a']);
     });
 });
 

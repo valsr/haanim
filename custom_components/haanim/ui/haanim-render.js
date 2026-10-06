@@ -296,9 +296,34 @@ export function renderBlock(block, context = {}) {
     }
 }
 
-/** Render the content area: the automation's blocks in order. */
-export function renderContent(blocks, context = {}) {
-    return (blocks || []).map((block) => renderBlock(block, context)).join('');
+/** The most cells a row of the layout can have. */
+export const MAX_ROW_CELLS = 6;
+
+/**
+ * Render the content area: the automation's elements, placed as its layout says.
+ *
+ * `layout` is a list of rows from the top, each with `cells` (how many cells of equal width the row has) and
+ * `elements` (the IDs of the blocks in them, from the left). A row of one cell is the block itself; a row of
+ * several is a grid, in which cells nobody filled stay empty. Without a layout every block has a row of its
+ * own. A block the layout does not name is not drawn, and neither is a name without a block.
+ */
+export function renderContent(blocks, context = {}, layout = null) {
+    const all = blocks || [];
+    if (!Array.isArray(layout)) return all.map((block) => renderBlock(block, context)).join('');
+    const byId = new Map(all.map((block) => [block.id, block]));
+    return layout
+        .map((row) => {
+            const cells = Math.min(Math.max(Math.floor(Number(row.cells)) || 1, 1), MAX_ROW_CELLS);
+            const drawn = (row.elements || [])
+                .slice(0, cells)
+                .map((id) => (byId.has(id) ? renderBlock(byId.get(id), context) : ''));
+            if (drawn.every((html) => html === '')) return '';
+            if (cells === 1) return drawn[0];
+            const filled = drawn.map((html) => `<div class="cell">${html}</div>`).join('');
+            const empty = '<div class="cell"></div>'.repeat(cells - drawn.length);
+            return `<div class="row" style="--cells: ${cells}">${filled}${empty}</div>`;
+        })
+        .join('');
 }
 
 /** The path of the HAAnim panel, and of the pages in it. */
@@ -435,14 +460,14 @@ export function renderLog(records) {
  *
  * `view` has `automation` (the detail of the automation, or null while it is unknown), `title` (the one the
  * automation set, or null), `options` (which fixed parts the automation shows, or null for all), `blocks`,
- * `states`, `images`, `showActions` (whether the actions popup is open) and `error` (a message shown instead
+ * `layout` (the rows the blocks are placed in, or null for one below the other), `states`, `images`, `showActions` (whether the actions popup is open) and `error` (a message shown instead
  * of the card).
  */
 export function renderCard(view) {
     if (view.error) return `<div class="card-error">${escapeHtml(view.error)}</div>`;
     if (!view.automation) return '<div class="card-loading">Loading…</div>';
     const header = renderHeader(view.automation, view.title, view.options);
-    const content = renderContent(view.blocks, view);
+    const content = renderContent(view.blocks, view, view.layout);
     // The line between header and content is only drawn when there is a header
     const contentClass = header ? 'content' : 'content bare';
     return (

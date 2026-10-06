@@ -753,21 +753,21 @@ class FakeCardSink:
         """``(automation_id, blocks)`` for every update, oldest first."""
         self.options: dict[str, dict[str, bool] | None] = {}
         """Which fixed parts of each automation's card are shown, as last sent; None for all."""
+        self.contents: dict[str, dict[str, Any]] = {}
+        """Everything each automation's card shows, as last sent: blocks, title, options and layout."""
+        self.layouts: dict[str, list[dict[str, Any]] | None] = {}
+        """The rows of each automation's card, as last sent."""
         self.titles: dict[str, str | None] = {}
         """The latest title of each automation's card, by automation ID; None for the automation's name."""
 
-    def card_changed(
-        self,
-        automation_id: str,
-        blocks: list[dict[str, Any]],
-        title: str | None = None,
-        options: dict[str, bool] | None = None,
-    ) -> None:
+    def card_changed(self, automation_id: str, content: dict[str, Any]) -> None:
         """Record an update."""
-        self.cards[automation_id] = blocks
-        self.titles[automation_id] = title
-        self.options[automation_id] = options
-        self.updates.append((automation_id, blocks))
+        self.contents[automation_id] = content
+        self.cards[automation_id] = content["blocks"]
+        self.titles[automation_id] = content.get("title")
+        self.options[automation_id] = content.get("options")
+        self.layouts[automation_id] = content.get("layout")
+        self.updates.append((automation_id, content["blocks"]))
 
 
 class FakeIssueReporter:
