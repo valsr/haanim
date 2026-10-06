@@ -668,7 +668,9 @@ class TestTimeTrigger:
         assert automation.state is AutomationState.ON
         assert automation.message is None
         records = [
-            record for record in caplog.records if record.name == "haanim.engine.automation_context.christmas"
+            record
+            for record in caplog.records
+            if record.name == "custom_components.haanim.automation.christmas"
         ]
         assert [record.levelno for record in records] == [logging.WARNING]
         assert "'2024-12-25 09:00:00' of at_time is in the past and will not fire" in records[0].getMessage()

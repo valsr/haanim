@@ -7,7 +7,6 @@ instance, decorators that register to that automation, and its logger.
 
 from __future__ import annotations
 
-import logging
 import types
 from collections.abc import Callable
 from typing import Any
@@ -109,7 +108,6 @@ def build_haanim_module(
     haa: Any,
     registry: DecoratorRegistry,
     logging_wrapper: LoggerWrapper,
-    logger: logging.Logger,
     hass: Any,
     helpers: dict[str, Any] | None = None,
 ) -> types.ModuleType:
@@ -119,7 +117,6 @@ def build_haanim_module(
         haa: The automation's ``HAAnim`` instance.
         registry: Where the automation's decorated functions are recorded.
         logging_wrapper: What ``from haanim import logging`` gives.
-        logger: The automation's logger.
         hass: What ``from haanim import hass`` gives; None if the host has none.
         helpers: Further names to put in the module.
 
@@ -131,7 +128,6 @@ def build_haanim_module(
         "haa": haa,
         "hass": hass,
         "logging": logging_wrapper,
-        "log": logger,
         "ActionMode": const.ActionMode,
         "HAAnimEntity": HAAnimEntity,
         "HAAnimServiceCall": HAAnimServiceCall,

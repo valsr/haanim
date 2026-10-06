@@ -133,6 +133,7 @@ class ActionDispatcher:
         self._handlers: set[_Request] = set()
         self._failure_handlers: dict[str, FailureHandler] = {}
         self._last_started: dict[str, datetime] = {}
+        self._loggers: dict[str, logging.Logger] = {}
         # Set each time a request ends or is removed; lets wait_idle() wake up and re-check.
         self._changed = asyncio.Event()
         self._shutting_down = False
@@ -241,6 +242,10 @@ class ActionDispatcher:
 
         slot.waiting.append(request)
         return await self._outcome(request)
+
+    def set_logger(self, automation_id: str, logger: logging.Logger) -> None:
+        """Set where exceptions that escape an automation's actions are logged: the automation's logger."""
+        self._loggers[automation_id] = logger
 
     def set_failure_handler(self, automation_id: str, handler: FailureHandler | None) -> None:
         """Set who is told when an action of an automation fails with no caller to raise to.
@@ -422,7 +427,14 @@ class ActionDispatcher:
                 error = ActionCancelledError(request.action_name, request.cancel_reason or "cancelled")
             request.outcome.set_exception(error)
         elif (raised := task.exception()) is not None:
-            # The caller receives the action's own exception object
+            # Logged with its traceback, and raised to the caller as the same object
+            self._loggers.get(request.automation_id, _LOGGER).error(
+                "Automation '%s': %s raised %s",
+                request.automation_id,
+                request.action_name,
+                type(raised).__name__,
+                exc_info=raised,
+            )
             request.outcome.set_exception(raised)
         else:
             request.outcome.set_result(task.result())

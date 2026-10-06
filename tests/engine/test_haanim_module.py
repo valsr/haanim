@@ -35,13 +35,7 @@ FORMERLY_INJECTED = [
     "on_event",
     "haa",
     "ActionMode",
-    "set_status",
     "logging",
-    "log_debug",
-    "log_info",
-    "log_warning",
-    "log_error",
-    "log",
     "sleep",
 ]
 
@@ -116,7 +110,9 @@ class TestPerAutomationInstance:
 
     async def test_logger_is_the_automations(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
         """Records logged through the imported names reach the automation's own logger."""
-        source = "from haanim import logging, log, log_info\nlogging.warning('one')\nlog.warning('two')\nlog_info('x')\n"
+        source = (
+            "from haanim import logging\nlogging.warning('one')\nlogging.warning('two')\nlogging.info('x')\n"
+        )
 
         with caplog.at_level("WARNING"):
             lights = await loaded(automation_file(tmp_path, "lights"), source)
@@ -189,7 +185,6 @@ class TestModuleContents:
             "haa": object(),
             "registry": registry or DecoratorRegistry(),
             "logging_wrapper": object(),
-            "logger": object(),
             "hass": None,
         }
         defaults.update(kwargs)
@@ -213,12 +208,14 @@ class TestModuleContents:
             assert getattr(module, event_class.__name__) is event_class
 
     def test_supplied_objects(self) -> None:
-        """``haa``, ``hass``, ``logging`` and ``log`` are the objects given."""
-        haa, hass, wrapper, logger = object(), object(), object(), object()
+        """``haa``, ``hass`` and ``logging`` are the objects given."""
+        haa, hass, wrapper = object(), object(), object()
 
-        module = self.module(haa=haa, hass=hass, logging_wrapper=wrapper, logger=logger)
+        module = self.module(haa=haa, hass=hass, logging_wrapper=wrapper)
 
-        assert (module.haa, module.hass, module.logging, module.log) == (haa, hass, wrapper, logger)
+        assert (module.haa, module.hass, module.logging) == (haa, hass, wrapper)
+        for removed in ("log", "log_info", "log_debug", "log_warning", "log_error", "set_status"):
+            assert not hasattr(module, removed)
 
     def test_helpers(self) -> None:
         """Extra names are added and listed."""

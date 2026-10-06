@@ -174,6 +174,7 @@ class Automation:
         self._message: str | None = None
         self._last_error: ActionFailure | None = None
         self._load_time: datetime | None = None
+        dispatcher.set_logger(self.automation_id, context.logger)
         self._run_time: datetime | None = None
         # Whether @startup or @shutdown is running; it may call the automation's own actions.
         self._handler_running = False

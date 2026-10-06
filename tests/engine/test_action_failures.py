@@ -218,7 +218,7 @@ async def calls_failing():
     await haa.call("raises")
 """
 
-AUTOMATION_LOGGER = "haanim.engine.automation_context.lights"
+AUTOMATION_LOGGER = "custom_components.haanim.automation.lights"
 
 
 class TriggerWorld(World):

@@ -535,14 +535,6 @@ def shutdown(func: F) -> F:
 # Status and logging
 # =============================================================================
 
-def set_status(message: str | None) -> None:
-    """Set a status message for the current automation.
-
-    Args:
-        message: Status message to display, or None to clear.
-    """
-    ...
-
 async def sleep(seconds: float) -> None:
     """Sleep for the specified number of seconds.
 
@@ -567,10 +559,3 @@ class Logger:
 
 # Logging interface
 logging: Logger
-log: Logger  # Alias for the automation's logger
-
-# Convenience logging functions
-def log_debug(msg: str, *args: Any) -> None: ...
-def log_info(msg: str, *args: Any) -> None: ...
-def log_warning(msg: str, *args: Any) -> None: ...
-def log_error(msg: str, *args: Any) -> None: ...

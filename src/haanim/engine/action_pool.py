@@ -295,7 +295,7 @@ class ActionWorkerPool:
             execution.state = ActionState.FAILED
             execution.error = err
             execution.completed_at = self._clock.now()
-            _LOGGER.error(
+            _LOGGER.debug(
                 "Action '%s' for automation '%s' failed: %s",
                 execution.action_name,
                 execution.automation_id,

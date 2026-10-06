@@ -34,7 +34,7 @@ from haanim.engine.errors import (
 from haanim.engine.expression_eval import parse_expression
 from haanim.events import SOURCE_TRIGGER, ActionEvent, AutomationEvent, ManualEvent
 from haanim.engine.haanim_module import DecoratorRegistry, build_haanim_module
-from haanim.engine.logging_wrapper import create_logger_wrapper
+from haanim.engine.logging_wrapper import automation_logger, create_logger_wrapper
 from haanim.engine.metadata import DEFAULT_VERSION, load_metadata
 from haanim.engine.validation import validate_files
 from haanim.engine.variables import VariableStore
@@ -193,14 +193,17 @@ class AutomationContext:
             raise HAAnimError(f"Folder name '{self.folder.name}' gives no automation ID")
 
         # Create logger for this automation
-        self._logger = logging.getLogger(f"{__name__}.{self.automation_id}")
+        self._logger = automation_logger(self.automation_id)
 
         # Initialize components
         self._import_controller = ImportController(
             additional=additional_imports,
             allow_all=allow_all_imports,
         )
-        self._safe_builtins = SafeBuiltins()
+        # print writes to the automation's logger at INFO level
+        self._safe_builtins = SafeBuiltins(
+            additional_allowed={"print": create_logger_wrapper(self._logger).print}
+        )
         self._global_symbols = SymbolTable()
         self._evaluator: AstEvaluator | None = None
 
@@ -239,34 +242,12 @@ class AutomationContext:
         self._haa = HAAnim(self.host, self.automation_id, self._registry)
         self.variables = self._haa.variables
         logging_module = create_logger_wrapper(self._logger)
-        automation_id = self.automation_id
-        status_manager = self._status_manager
-
-        def set_status(message: str | None) -> None:
-            """Set a status message for this automation.
-
-            This message is displayed in the UI when the automation is running.
-            The status message is automatically cleared when the action completes.
-
-            Args:
-                message: The status message to display, or None to clear.
-            """
-            status_manager.set_status_message(automation_id, message)
-
         haanim_module = build_haanim_module(
             haa=self._haa,
             registry=self._decorators,
             logging_wrapper=logging_module,
-            logger=self._logger,
             hass=self.host.hass,
-            helpers={
-                "set_status": set_status,
-                "sleep": self._haa.sleep,
-                "log_debug": self._logger.debug,
-                "log_info": self._logger.info,
-                "log_warning": self._logger.warning,
-                "log_error": self._logger.error,
-            },
+            helpers={"sleep": self._haa.sleep},
         )
 
         # Register what the engine supplies for these imports
@@ -405,7 +386,7 @@ class AutomationContext:
         self._metadata.has_startup = self._startup_func is not None
         self._metadata.has_shutdown = self._shutdown_func is not None
 
-        self._logger.info(
+        _LOGGER.info(
             "Automation executed: %s (%d actions, %d triggers, startup=%s, shutdown=%s)",
             self.automation_id,
             len(self._actions),
@@ -585,7 +566,7 @@ class AutomationContext:
             raise ActionNotFoundError(self.automation_id, action_name)
 
         event = self.make_event(caller=caller, data=data)
-        self._logger.info("Running action '%s' (%s)", action.name, event.source)
+        _LOGGER.debug("Running action '%s' (%s)", action.name, event.source)
         return await as_coroutine_function(action.func)(*event_arguments(action.func, event))
 
     def get_action(self, name: str) -> ActionDefinition | None:

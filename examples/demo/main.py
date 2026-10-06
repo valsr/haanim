@@ -22,7 +22,7 @@ from haanim import (
     startup,
     shutdown,
     haa,
-    log,
+    logging,
 )
 
 # =============================================================================
@@ -33,11 +33,11 @@ from haanim import (
 @startup
 async def on_startup():
     """Run when script is loaded."""
-    log.info("Demo script loaded!")
+    logging.info("Demo script loaded!")
 
     # Initialize storage
     counter = haa.get_variable("counter", "0")
-    log.info(f"Counter initialized at: {counter}")
+    logging.info(f"Counter initialized at: {counter}")
 
     # Set script status
     haa.set_message("Demo script ready")
@@ -46,7 +46,7 @@ async def on_startup():
 @shutdown
 async def on_shutdown():
     """Run when script is unloaded."""
-    log.info("Demo script unloading...")
+    logging.info("Demo script unloading...")
     haa.set_message("Shutting down")
 
 
@@ -59,7 +59,7 @@ async def on_shutdown():
 @on_time("sunrise - 15 minutes")
 async def morning_routine():
     """Morning automation."""
-    log.info("Good morning!")
+    logging.info("Good morning!")
 
     # Turn on lights gradually
     await haa.service.light.turn_on(entity_id="light.bedroom", brightness=50, transition=60)
@@ -71,7 +71,7 @@ async def morning_routine():
 @on_time("sunset", when="binary_sensor.presence == 'on'")
 async def evening_routine():
     """Evening automation - only when someone is home."""
-    log.info("Evening routine starting")
+    logging.info("Evening routine starting")
 
     await haa.service.light.turn_on(entity_id="light.living_room", brightness=200)
 
@@ -85,7 +85,7 @@ async def evening_routine():
 async def temperature_high(event):
     """Triggered when temperature exceeds 25°C."""
     temp = event.new_state.state
-    log.warning(f"Temperature is high: {temp}°C")
+    logging.warning(f"Temperature is high: {temp}°C")
 
     # Turn on AC
     await haa.service.climate.set_temperature(entity_id="climate.ac", temperature=22)
@@ -94,7 +94,7 @@ async def temperature_high(event):
 @on_state("binary_sensor.motion == 'on'", start_time="sunset", end_time="sunrise")  # Only at night
 async def motion_at_night(event):
     """Motion detected at night."""
-    log.info(f"Motion detected in {event.entity_id}")
+    logging.info(f"Motion detected in {event.entity_id}")
 
     # Turn on lights
     await haa.service.light.turn_on(entity_id="light.hallway")
@@ -113,12 +113,12 @@ async def periodic_check():
     counter += 1
     haa.set_variable("counter", str(counter))
 
-    log.info(f"Periodic check #{counter}")
+    logging.info(f"Periodic check #{counter}")
 
     # Check entities
     temp = haa.entity.sensor.temperature
     humidity = haa.entity.sensor.humidity
-    log.debug(f"Temp: {temp}°C, Humidity: {humidity}%")
+    logging.debug(f"Temp: {temp}°C, Humidity: {humidity}%")
 
 
 # =============================================================================
@@ -129,7 +129,7 @@ async def periodic_check():
 @on_cron("0 */2 * * *")  # Every 2 hours
 async def hourly_cleanup():
     """Clean up old data every 2 hours."""
-    log.info("Running cleanup task")
+    logging.info("Running cleanup task")
 
     # Clear old storage values
     old_runs = int(haa.get_variable("cleanup_runs", "0"))
@@ -144,7 +144,7 @@ async def hourly_cleanup():
 @on_event("custom_event", data={"source": "automation"})
 async def handle_custom_event(event):
     """Handle custom Home Assistant events."""
-    log.info(f"Received custom event: {event.event_data}")
+    logging.info(f"Received custom event: {event.event_data}")
 
 
 # =============================================================================
@@ -155,25 +155,25 @@ async def handle_custom_event(event):
 @action(name="Quick Action", execution_mode=ActionMode.DROP)
 async def quick_action():
     """Drop new executions if already running."""
-    log.info("Quick action started")
+    logging.info("Quick action started")
     await haa.service.script.turn_on(entity_id="script.quick_task")
 
 
 @action(name="Queued Task", execution_mode=ActionMode.QUEUE)
 async def queued_task():
     """Queue up to 10 executions."""
-    log.info("Processing queued task")
+    logging.info("Processing queued task")
     # Simulate work
     import asyncio
 
     await asyncio.sleep(2)
-    log.info("Queued task complete")
+    logging.info("Queued task complete")
 
 
 @action(name="Emergency Stop", execution_mode=ActionMode.CANCEL)
 async def emergency_stop():
     """Cancel current execution and start new one."""
-    log.warning("EMERGENCY STOP ACTIVATED")
+    logging.warning("EMERGENCY STOP ACTIVATED")
 
     # Turn off all lights
     await haa.service.light.turn_off(entity_id="all")
@@ -198,9 +198,9 @@ async def call_other_script():
     if other_script.is_enabled():
         # Call an action in the other script
         result = await other_script.call("some_action", param1="value")
-        log.info(f"Other script returned: {result}")
+        logging.info(f"Other script returned: {result}")
     else:
-        log.warning("Other script is disabled")
+        logging.warning("Other script is disabled")
 
 
 # =============================================================================
@@ -216,9 +216,9 @@ async def entity_demo():
     motion = haa.entity.binary_sensor.motion
     light_state = haa.state("light.living_room")
 
-    log.info(f"Temperature: {temp}")
-    log.info(f"Motion: {motion}")
-    log.info(f"Light state: {light_state}")
+    logging.info(f"Temperature: {temp}")
+    logging.info(f"Motion: {motion}")
+    logging.info(f"Light state: {light_state}")
 
     # Conditional logic based on state
     if temp > 23:
@@ -232,11 +232,11 @@ async def service_demo():
     result = await haa.service.light.turn_on(entity_id="light.bedroom", brightness=255, rgb_color=[255, 0, 0])
 
     if result.success:
-        log.info("Light turned on successfully")
+        logging.info("Light turned on successfully")
         if result.response_data:
-            log.debug(f"Service response: {result.response_data}")
+            logging.debug(f"Service response: {result.response_data}")
     else:
-        log.error(f"Failed to turn on light: {result.error}")
+        logging.error(f"Failed to turn on light: {result.error}")
 
 
 # =============================================================================
@@ -255,7 +255,7 @@ async def storage_demo():
     last_run = haa.get_variable("last_run", "never")
     run_count = haa.get_variable("run_count", "0")
 
-    log.info(f"Last run: {last_run}, Count: {run_count}")
+    logging.info(f"Last run: {last_run}, Count: {run_count}")
 
     # Remove a value
     haa.unset_variable("temp_value")
@@ -272,7 +272,7 @@ async def storage_demo():
 @action(name="Test Button", description="A simple test action for UI")
 async def test_button():
     """Manual action for testing."""
-    log.info("Test button pressed!")
+    logging.info("Test button pressed!")
     haa.set_message("Test executed")
 
     # Do something simple
