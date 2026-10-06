@@ -30,6 +30,9 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]  # One enum sensor per automation
 
 from .config import get_config_manager
 
+CARD_URL = f"/{DOMAIN}/ui/haanim-card.js?v={VERSION}"
+"""Where the frontend loads ``custom:haanim-card`` from."""
+
 
 async def async_setup(hass: HomeAssistant, _: ConfigType) -> bool:  # noqa: ARG001
     """Set up the HAAnim component from yaml configuration.
@@ -147,7 +150,7 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     )
 
     # Register as a custom panel using Web Component
-    # The haanim-panel.js file defines the 'haanim-panel' custom element
+    # haanim-panel.js is an ES module that defines the 'haanim-panel' custom element
     frontend.async_register_built_in_panel(
         hass,
         component_name="custom",
@@ -157,13 +160,16 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
         config={
             "_panel_custom": {
                 "name": "haanim-panel",
-                "js_url": f"/{DOMAIN}/ui/haanim-panel.js?v={VERSION}",
+                "module_url": f"/{DOMAIN}/ui/haanim-panel.js?v={VERSION}",
                 "embed_iframe": False,
                 "trust_external": False,
             }
         },
         require_admin=False,
     )
+
+    # Dashboards load the card with the rest of the frontend
+    frontend.add_extra_js_url(hass, CARD_URL)
 
     _LOGGER.info("HAAnim panel registered successfully")
 
@@ -177,6 +183,7 @@ async def _async_unregister_panel(hass: HomeAssistant) -> None:
     # Remove the panel if it exists
     if DOMAIN in hass.data.get("frontend_panels", {}):
         frontend.async_remove_panel(hass, DOMAIN)
+        frontend.remove_extra_js_url(hass, CARD_URL)
         _LOGGER.debug("HAAnim panel unregistered")
 
 

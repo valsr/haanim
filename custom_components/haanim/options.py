@@ -15,6 +15,9 @@ import voluptuous as vol
 
 from custom_components.haanim.const import (
     CONFIG_ACTION_QUEUE_SIZE,
+    CONFIG_ALLOW_ALL_IMPORTS,
+    CONFIG_AUTOMATION_PATH,
+    CONFIG_IMPORT_ALLOWLIST,
     CONFIG_AUTOMATION_REFRESH_INTERVAL,
     CONFIG_DEFAULT_ACTION_TIMEOUT,
     CONFIG_MAX_CONCURRENT_ACTIONS,
@@ -23,6 +26,8 @@ from custom_components.haanim.const import (
     CONFIG_STOP_GRACE_PERIOD,
     DEFAULT_ACTION_QUEUE_SIZE,
     DEFAULT_ACTION_TIMEOUT,
+    DEFAULT_ALLOW_ALL_IMPORTS,
+    DEFAULT_AUTOMATION_PATH,
     DEFAULT_AUTOMATION_REFRESH_INTERVAL,
     DEFAULT_MAX_CONCURRENT_ACTIONS,
     DEFAULT_SHUTDOWN_TIMEOUT,
@@ -89,3 +94,19 @@ def engine_options(values: Mapping[str, Any]) -> EngineOptions:
         shutdown_timeout=numeric_option(values, CONFIG_SHUTDOWN_TIMEOUT),
         stop_grace_period=numeric_option(values, CONFIG_STOP_GRACE_PERIOD),
     )
+
+
+def option_values(entry: Any) -> dict[str, Any]:
+    """Return the ten options of a config entry as they are in effect, defaults filled in.
+
+    Args:
+        entry: The config entry.
+    """
+    stored = {**entry.data, **entry.options}
+    allowlist = stored.get(CONFIG_IMPORT_ALLOWLIST, [])
+    return {
+        CONFIG_AUTOMATION_PATH: str(stored.get(CONFIG_AUTOMATION_PATH, DEFAULT_AUTOMATION_PATH)),
+        **{key: numeric_option(stored, key) for key in NUMERIC_OPTIONS},
+        CONFIG_IMPORT_ALLOWLIST: [str(item) for item in allowlist] if isinstance(allowlist, list) else [],
+        CONFIG_ALLOW_ALL_IMPORTS: bool(stored.get(CONFIG_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS)),
+    }

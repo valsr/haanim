@@ -112,3 +112,37 @@ async def test_async_reload_entry(
     # Entry should still be loaded
     assert mock_config_entry.state == ConfigEntryState.LOADED
     assert mock_config_entry.entry_id in hass.data[DOMAIN]
+
+
+class TestPanelRegistration:
+    """The panel and the card are served as ES modules."""
+
+    async def test_register_and_unregister(self, hass: HomeAssistant) -> None:
+        """Test the panel is a module panel and the card is loaded with the frontend, both removed again."""
+        from unittest.mock import AsyncMock, MagicMock, patch  # pylint: disable=import-outside-toplevel
+
+        import custom_components.haanim as integration  # pylint: disable=import-outside-toplevel
+
+        http = MagicMock()
+        http.async_register_static_paths = AsyncMock()
+        hass.http = http
+        with patch.object(integration, "frontend") as frontend:
+            await integration._async_register_panel(hass)  # pylint: disable=protected-access
+
+            ((paths,), _) = http.async_register_static_paths.call_args
+            assert paths[0].url_path == "/haanim/ui"
+            assert paths[0].path.endswith("custom_components/haanim/ui")
+            config = frontend.async_register_built_in_panel.call_args.kwargs["config"]["_panel_custom"]
+            assert config["name"] == "haanim-panel"
+            assert config["module_url"].startswith("/haanim/ui/haanim-panel.js?v=")
+            assert "js_url" not in config
+            frontend.add_extra_js_url.assert_called_once_with(hass, integration.CARD_URL)
+            assert integration.CARD_URL.startswith("/haanim/ui/haanim-card.js?v=")
+
+            hass.data["frontend_panels"] = {"haanim": object()}
+            await integration._async_register_panel(hass)  # pylint: disable=protected-access
+            assert frontend.async_register_built_in_panel.call_count == 1
+
+            await integration._async_unregister_panel(hass)  # pylint: disable=protected-access
+            frontend.async_remove_panel.assert_called_once_with(hass, "haanim")
+            frontend.remove_extra_js_url.assert_called_once_with(hass, integration.CARD_URL)

@@ -4,6 +4,7 @@
 - ``haanim/automations/get``: the details of one automation.
 - ``haanim/card/subscribe``: the card content of one automation, now and whenever it changes.
 - ``haanim/logs/subscribe``: the recent log records of one automation, then each new one.
+- ``haanim/config/get``: the integration's version and options.
 """
 
 from __future__ import annotations
@@ -15,9 +16,10 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
 from custom_components.haanim.automation_manager import AutomationManager, async_get_manager
-from custom_components.haanim.const import DOMAIN
+from custom_components.haanim.const import DOMAIN, VERSION
 from custom_components.haanim.ha.host import HACardSink
 from custom_components.haanim.log_buffer import AutomationLogBuffer
+from custom_components.haanim.options import option_values
 
 ERR_NOT_FOUND = "not_found"
 ERR_NOT_READY = "not_ready"
@@ -31,9 +33,12 @@ def _summary(manager: AutomationManager, automation_id: str) -> dict[str, Any]:
         if state == "error"
         else manager.automation_status_message(automation_id)
     )
+    context = manager.get_context_by_name(automation_id)
+    metadata = context.get_metadata() if context else None
     return {
         "id": automation_id,
         "name": manager.automation_name(automation_id),
+        "version": metadata.version if metadata else "",
         "state": state,
         "enabled": manager.is_automation_enabled(automation_id),
         "message": message,
@@ -51,7 +56,6 @@ def _detail(manager: AutomationManager, automation_id: str) -> dict[str, Any]:
         **_summary(manager, automation_id),
         "description": metadata.description if metadata else "",
         "author": metadata.author if metadata else "",
-        "version": metadata.version if metadata else "",
         "last_run": times.run_time.isoformat() if times.run_time else None,
         "running_actions": list(status.running_actions.values()),
         "last_action": status.last_action,
@@ -140,7 +144,7 @@ async def ws_subscribe_card(
 async def ws_subscribe_logs(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Answer with the recent log records of an automation, then send each new one."""
+    """Send the recent log records of an automation as one event, then each new one."""
     if await _manager_for(hass, connection, msg) is None:
         return
     buffer = next(
@@ -160,7 +164,22 @@ async def ws_subscribe_logs(
         connection.send_message(websocket_api.event_message(msg["id"], {"record": record}))
 
     connection.subscriptions[msg["id"]] = buffer.subscribe(msg["automation_id"], forward)
-    connection.send_result(msg["id"], {"records": buffer.records(msg["automation_id"])})
+    connection.send_result(msg["id"])
+    # The frontend's subscription helper only passes events on, so the kept records go as the first event
+    connection.send_message(
+        websocket_api.event_message(msg["id"], {"records": buffer.records(msg["automation_id"])})
+    )
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/config/get"})
+@websocket_api.async_response
+async def ws_get_config(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Answer with the integration's version and its options as they are in effect."""
+    manager = await _manager_for(hass, connection, msg)
+    if manager is not None:
+        connection.send_result(msg["id"], {"version": VERSION, "options": option_values(manager.entry)})
 
 
 @callback
@@ -170,3 +189,4 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_automation)
     websocket_api.async_register_command(hass, ws_subscribe_card)
     websocket_api.async_register_command(hass, ws_subscribe_logs)
+    websocket_api.async_register_command(hass, ws_get_config)

@@ -12,6 +12,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.haanim.automation_manager import AutomationManager
+from custom_components.haanim.const import VERSION
 from custom_components.haanim.ha.host import HACardSink
 from custom_components.haanim.websocket import async_register_websocket
 from tests.integration.test_sensor import manager, root, write  # noqa: F401  pylint: disable=unused-import
@@ -70,6 +71,7 @@ class TestList:
         assert automations[1] == {
             "id": "climate",
             "name": "Climate",
+            "version": "1.2.0",
             "state": "on",
             "enabled": True,
             "message": None,
@@ -89,12 +91,12 @@ class TestDetail:
         assert answer["result"] == {
             "id": "climate",
             "name": "Climate",
+            "version": "1.2.0",
             "state": "on",
             "enabled": True,
             "message": None,
             "description": "Keeps it cool",
             "author": "Ada",
-            "version": "1.2.0",
             "last_run": manager.automation_times("climate").run_time.isoformat(),
             "running_actions": [],
             "last_action": None,
@@ -205,6 +207,8 @@ class TestWithoutIntegration:
             ("haanim/automations/list", {}),
             ("haanim/automations/get", {"automation_id": "climate"}),
             ("haanim/card/subscribe", {"automation_id": "climate"}),
+            ("haanim/logs/subscribe", {"automation_id": "climate"}),
+            ("haanim/config/get", {}),
         ],
     )
     async def test_not_ready(
@@ -237,3 +241,29 @@ class TestCardSink:
         assert seen == [[{"id": "x"}]]
         assert sink.blocks("a") == []
         assert sink.blocks("b") == [{"id": "y"}]
+
+
+@pytest.mark.usefixtures("manager")
+class TestConfig:
+    """haanim/config/get."""
+
+    async def test_config(self, hass_ws_client: Any, root: Path) -> None:  # noqa: F811
+        """Test the answer has the version and the ten options, defaults filled in."""
+        client = await hass_ws_client()
+        result = (await command(client, 1, "haanim/config/get"))["result"]
+        assert result["version"] == VERSION
+        assert list(result["options"]) == [
+            "automation_path",
+            "automation_refresh_interval",
+            "max_concurrent_actions",
+            "action_queue_size",
+            "default_action_timeout",
+            "startup_timeout",
+            "shutdown_timeout",
+            "stop_grace_period",
+            "import_allowlist",
+            "allow_all_imports",
+        ]
+        assert result["options"]["max_concurrent_actions"] == 20
+        assert result["options"]["import_allowlist"] == []
+        assert result["options"]["allow_all_imports"] is False

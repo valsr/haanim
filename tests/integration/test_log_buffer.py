@@ -129,14 +129,15 @@ class TestSubscription:
     async def test_recent_records_then_new_ones(
         self, hass_ws_client: Any, manager: AutomationManager  # noqa: F811
     ) -> None:
-        """Test the answer has what the automation logged so far, and new records follow as events."""
+        """Test the first event has what the automation logged so far, and new records follow one by one."""
         log("chatty").setLevel(logging.INFO)
         await manager.async_call_action("chatty", "talk")
         client = await hass_ws_client()
         await client.send_json({"id": 1, "type": "haanim/logs/subscribe", "automation_id": "chatty"})
-        answer = await client.receive_json()
-        assert answer["success"] is True
-        assert [(record["level"], record["message"]) for record in answer["result"]["records"]] == [
+        assert (await client.receive_json())["success"] is True
+        first = await client.receive_json()
+        assert first["type"] == "event"
+        assert [(record["level"], record["message"]) for record in first["event"]["records"]] == [
             ("INFO", "hello there"),
             ("WARNING", "careful"),
             ("INFO", "printed"),
@@ -155,7 +156,8 @@ class TestSubscription:
             await manager.async_call_action("chatty", "fail")
         client = await hass_ws_client()
         await client.send_json({"id": 1, "type": "haanim/logs/subscribe", "automation_id": "chatty"})
-        records = (await client.receive_json())["result"]["records"]
+        assert (await client.receive_json())["success"] is True
+        records = (await client.receive_json())["event"]["records"]
         assert records[-1]["level"] == "ERROR"
         assert "ValueError" in records[-1]["traceback"]
 
@@ -166,7 +168,8 @@ class TestSubscription:
         await manager.async_call_action("chatty", "talk")
         client = await hass_ws_client()
         await client.send_json({"id": 1, "type": "haanim/logs/subscribe", "automation_id": "plain"})
-        assert (await client.receive_json())["result"] == {"records": []}
+        assert (await client.receive_json())["result"] is None
+        assert (await client.receive_json())["event"] == {"records": []}
 
     async def test_unknown_automation(self, hass_ws_client: Any) -> None:
         """Test an unknown automation is answered with not_found."""
