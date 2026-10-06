@@ -95,6 +95,58 @@ class TestBlocks:
         card.entity("temp", "sensor.temperature")
         assert card.blocks == [{"id": "temp", "type": "entity", "entity_id": "sensor.temperature"}]
 
+    def test_icon_following_an_entity(self, card: HAAnimCard) -> None:
+        """Test an icon with an entity follows it by default."""
+        card.icon("fan", "fan.bedroom")
+        assert card.blocks == [
+            {
+                "id": "fan",
+                "type": "icon",
+                "entity_id": "fan.bedroom",
+                "icon": None,
+                "label": None,
+                "color": None,
+                "spin": False,
+                "follow_entity": True,
+            }
+        ]
+
+    def test_icon_with_everything(self, card: HAAnimCard) -> None:
+        """Test an icon keeps its icon, label, colour and spin."""
+        card.icon("fan", "fan.bedroom", icon="mdi:fan", label="Fan", color="success", spin=True)
+        block = card.blocks[0]
+        assert (block["icon"], block["label"], block["color"], block["spin"]) == (
+            "mdi:fan",
+            "Fan",
+            "success",
+            True,
+        )
+        assert block["follow_entity"] is True
+
+    def test_icon_not_following(self, card: HAAnimCard) -> None:
+        """Test follow_entity=False keeps the entity but does not follow it."""
+        card.icon("fan", "fan.bedroom", icon="mdi:fan", follow_entity=False)
+        assert card.blocks[0]["follow_entity"] is False
+        assert card.blocks[0]["entity_id"] == "fan.bedroom"
+
+    def test_icon_without_an_entity(self, card: HAAnimCard) -> None:
+        """Test an icon without an entity has nothing to follow."""
+        card.icon("home", icon="mdi:home-outline", color="#03a9f4")
+        assert card.blocks[0]["entity_id"] is None
+        assert card.blocks[0]["follow_entity"] is False
+
+    @pytest.mark.parametrize("icon", ["mdi:fan", "mdi:fan-off", "hass:water-percent", "mdi:numeric-1-box"])
+    def test_icon_names(self, card: HAAnimCard, icon: str) -> None:
+        """Test icons are named set:name."""
+        card.icon("i", icon=icon)
+        assert card.blocks[0]["icon"] == icon
+
+    @pytest.mark.parametrize("color", ["primary", "red", "dark-orange", "#fff", "#03a9f4", "#03a9f480"])
+    def test_icon_colors(self, card: HAAnimCard, color: str) -> None:
+        """Test a colour is a name or a hex value."""
+        card.icon("i", icon="mdi:fan", color=color)
+        assert card.blocks[0]["color"] == color
+
     def test_button(self, card: HAAnimCard) -> None:
         """Test a button holds its label, action, confirmation and data."""
         card.button("reset", label="Reset", action="reset_alerts", confirm="Sure?", room="hall", level=2)
@@ -414,6 +466,54 @@ INVALID: list[tuple[str, Any, type[Exception], str]] = [
         ValueError,
         "Automation 'climate' has no action 'nothing'",
     ),
+    (
+        "icon without icon or entity",
+        lambda c: c.icon("i"),
+        ValueError,
+        "needs an icon, or an entity to follow",
+    ),
+    (
+        "icon not following without icon",
+        lambda c: c.icon("i", "fan.a", follow_entity=False),
+        ValueError,
+        "needs an icon, or an entity to follow",
+    ),
+    (
+        "icon name without set",
+        lambda c: c.icon("i", icon="fan"),
+        ValueError,
+        "an icon is named like 'mdi:fan'",
+    ),
+    ("icon name with markup", lambda c: c.icon("i", icon='mdi:fan"><b'), ValueError, "Invalid icon"),
+    ("icon name in capitals", lambda c: c.icon("i", icon="MDI:Fan"), ValueError, "Invalid icon"),
+    ("icon not a string", lambda c: c.icon("i", icon=5), TypeError, "icon must be a string"),
+    (
+        "icon color with css",
+        lambda c: c.icon("i", icon="mdi:fan", color="red; x: y"),
+        ValueError,
+        "Invalid color",
+    ),
+    (
+        "icon color function",
+        lambda c: c.icon("i", icon="mdi:fan", color="rgb(1,2,3)"),
+        ValueError,
+        "Invalid color",
+    ),
+    ("icon color not a string", lambda c: c.icon("i", icon="mdi:fan", color=3), TypeError, "color must be"),
+    ("icon entity invalid", lambda c: c.icon("i", "fan"), ValueError, "Invalid entity ID"),
+    ("icon label not a string", lambda c: c.icon("i", icon="mdi:fan", label=1), TypeError, "label must be"),
+    (
+        "icon spin not a bool",
+        lambda c: c.icon("i", icon="mdi:fan", spin="yes"),
+        TypeError,
+        "spin must be True",
+    ),
+    (
+        "icon follow not a bool",
+        lambda c: c.icon("i", "fan.a", follow_entity=1),
+        TypeError,
+        "follow_entity must be True or False",
+    ),
     ("button label not a string", lambda c: c.button("b", 1, "reset"), TypeError, "label must be a string"),
     ("button action not a string", lambda c: c.button("b", "Go", None), TypeError, "action must be a string"),
     (
@@ -488,7 +588,9 @@ class TestValidation:
 class TestSynchronous:
     """Rule: all card methods return immediately and are not awaited."""
 
-    @pytest.mark.parametrize("name", ["text", "image", "value", "entity", "button", "remove", "clear"])
+    @pytest.mark.parametrize(
+        "name", ["text", "image", "value", "entity", "icon", "button", "remove", "clear"]
+    )
     def test_methods_are_plain_functions(self, name: str) -> None:
         """Test no card method is a coroutine function."""
         assert not inspect.iscoroutinefunction(getattr(HAAnimCard, name))

@@ -193,7 +193,20 @@ async def run(base: str) -> None:
         first = await smoke.event(card, lambda event: "blocks" in event, "the card of the dashboard example")
         ids = [block["id"] for block in first["blocks"]]
         check(
-            ids == ["intro", "logo", "count", "uptime", "sun", "add", "reset", "frame"],
+            ids
+            == [
+                "intro",
+                "logo",
+                "count",
+                "uptime",
+                "sun",
+                "fan",
+                "sun_icon",
+                "info",
+                "add",
+                "reset",
+                "frame",
+            ],
             f"the card has its blocks: {ids}",
         )
         check(

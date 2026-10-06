@@ -258,6 +258,55 @@ describe('haanim-card', () => {
         assert.match(card.shadowRoot.innerHTML, /<span class="name">Climate<\/span>/);
     });
 
+    test('an icon follows its entity', async () => {
+        const fan = (state, updated) => ({ state, last_updated: updated, attributes: { friendly_name: 'Fan' } });
+        const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'fan.bedroom': fan('off', '1') });
+        hass.push('haanim/card/subscribe', {
+            blocks: [{ id: 'fan', type: 'icon', entity_id: 'fan.bedroom', icon: 'mdi:fan', spin: true, follow_entity: true }],
+        });
+        card.hass = hass;
+        await settle();
+        assert.match(card.shadowRoot.innerHTML, /class="icon inactive"/);
+
+        hass.states = { ...hass.states, 'fan.bedroom': fan('on', '2') };
+        card.hass = hass;
+        await settle();
+        assert.match(card.shadowRoot.innerHTML, /class="icon active spin"/);
+        assert.match(card.shadowRoot.innerHTML, /<span class="value">on<\/span>/);
+    });
+
+    test('an icon that does not follow its entity is not redrawn when the entity changes', async () => {
+        const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'fan.bedroom': { state: 'off', last_updated: '1' } });
+        hass.push('haanim/card/subscribe', {
+            blocks: [{ id: 'fan', type: 'icon', entity_id: 'fan.bedroom', icon: 'mdi:fan', follow_entity: false }],
+        });
+        card.hass = hass;
+        await settle();
+        const calls = hass.calls.length;
+        hass.states = { ...hass.states, 'fan.bedroom': { state: 'on', last_updated: '2' } };
+        card.hass = hass;
+        await settle();
+        assert.equal(hass.calls.length, calls);
+        assert.match(card.shadowRoot.innerHTML, /class="icon active"/);
+    });
+
+    test("hands Home Assistant's state icon the entity it stands for", async () => {
+        const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'fan.bedroom': { state: 'on', last_updated: '1' } });
+        const element = { dataset: { stateIcon: 'fan.bedroom' } };
+        card.shadowRoot.found = { '[data-state-icon]': [element] };
+        hass.push('haanim/card/subscribe', { blocks: [{ id: 'fan', type: 'icon', entity_id: 'fan.bedroom', follow_entity: true }] });
+        assert.equal(element.hass, hass);
+        assert.equal(element.stateObj, hass.states['fan.bedroom']);
+    });
+
+    test("a click on an entity's icon opens the entity's own dialog", async () => {
+        const { card, hass } = await mounted();
+        card.shadowRoot.fire('click', clicked({ 'more-info': 'fan.bedroom' }));
+        assert.equal(card.dispatched[0].type, 'hass-more-info');
+        assert.deepEqual(card.dispatched[0].detail, { entityId: 'fan.bedroom' });
+        assert.equal(hass.services.length, 0);
+    });
+
     test('loads asset images with the session and shows them when they arrive', async () => {
         const { card, hass } = await mounted();
         const url = '/api/haanim/assets/climate/logo.png';

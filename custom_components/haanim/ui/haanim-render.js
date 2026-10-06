@@ -163,6 +163,69 @@ export function formatTime(iso, withDate = false) {
     return withDate ? date.toLocaleString() : date.toLocaleTimeString();
 }
 
+/** States in which an entity is not doing anything: its icon is then dimmed and does not turn. */
+const INACTIVE_STATES = new Set([
+    'off', 'closed', 'idle', 'standby', 'not_home', 'locked', 'docked', 'below_horizon', 'paused', 'disarmed',
+    'unavailable', 'unknown', '', '0',
+]);
+
+/** Theme colours an icon can be given by name; any other colour is a CSS colour name or a hex value. */
+const THEME_COLORS = {
+    primary: 'var(--primary-color)',
+    accent: 'var(--accent-color)',
+    success: 'var(--success-color, #4caf50)',
+    warning: 'var(--warning-color, #ff9800)',
+    error: 'var(--error-color, #f44336)',
+    disabled: 'var(--disabled-color, #9e9e9e)',
+};
+
+/** Whether an entity is active (on, open, home, playing, ...), going by its state. */
+export function isActive(state) {
+    return Boolean(state) && !INACTIVE_STATES.has(String(state.state).toLowerCase());
+}
+
+/** Return the CSS value of an icon colour, or null if it is not a colour that may be put into a style. */
+export function iconColor(color) {
+    const value = String(color ?? '');
+    if (Object.hasOwn(THEME_COLORS, value)) return THEME_COLORS[value];
+    return /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+(-[a-zA-Z]+)*)$/.test(value) ? value : null;
+}
+
+/**
+ * Render an icon block.
+ *
+ * Following an entity, the icon is the entity's own (drawn by Home Assistant's `ha-state-icon`, which the
+ * card hands the entity's state) unless the block names one; it is lit and may turn while the entity is
+ * active and is dimmed otherwise; the label is the entity's name and its state is shown. Not following, the
+ * icon is what the block says.
+ */
+function renderIcon(block, context, open) {
+    const state = block.entity_id ? (context.states || {})[block.entity_id] : null;
+    const follows = Boolean(block.follow_entity && block.entity_id);
+    const active = follows ? isActive(state) : true;
+    const named = /^[a-z0-9-]+:[a-z0-9-]+$/.test(String(block.icon ?? '')) ? block.icon : null;
+    const color = iconColor(block.color) || (follows ? 'var(--state-active-color, var(--primary-color))' : null);
+    const classes = ['icon', active ? 'active' : 'inactive'];
+    if (block.spin && active) classes.push('spin');
+    const style = active && color ? ` style="color: ${color}"` : '';
+    let picture = '';
+    if (named) {
+        picture = `<ha-icon icon="${escapeHtml(named)}"></ha-icon>`;
+    } else if (follows) {
+        picture = `<ha-state-icon data-state-icon="${escapeHtml(block.entity_id)}"></ha-state-icon>`;
+    }
+    const attributes = (state && state.attributes) || {};
+    const label = block.label ?? (follows ? attributes.friendly_name || block.entity_id : '');
+    const value = follows ? `<span class="value">${state ? escapeHtml(state.state) : 'unavailable'}</span>` : '';
+    // A click on an icon that belongs to an entity opens the entity's own dialog
+    const more = block.entity_id ? ` data-more-info="${escapeHtml(block.entity_id)}"` : '';
+    return (
+        `${open.slice(0, -1)}${more}><span class="${classes.join(' ')}"${style}>${picture}</span>` +
+        (label ? `<span class="label">${escapeHtml(label)}</span>` : '') +
+        `${value}</div>`
+    );
+}
+
 /** Render one content block. `context` has `states` (entity states by ID) and `images` (loaded asset URLs). */
 export function renderBlock(block, context = {}) {
     const id = escapeHtml(block.id);
@@ -197,6 +260,8 @@ export function renderBlock(block, context = {}) {
                 `<span class="value" data-entity="${escapeHtml(block.entity_id)}">${value}</span></div>`
             );
         }
+        case 'icon':
+            return renderIcon(block, context, open);
         case 'button': {
             const confirm = block.confirm ? ` data-confirm="${escapeHtml(block.confirm)}"` : '';
             return (

@@ -12,6 +12,7 @@ views:
       - type: entities
         title: Try the examples
         entities:
+          - input_boolean.fan
           - input_number.temperature
           - input_number.outdoor_temp
           - input_boolean.hallway_motion

@@ -42,6 +42,14 @@ const STYLES = `
     .block .label { color: var(--secondary-text-color); }
     .block .value { font-weight: 500; }
     .block img { max-width: 100%; border-radius: 4px; }
+    .block-icon { display: flex; align-items: center; gap: 12px; }
+    .block-icon[data-more-info] { cursor: pointer; }
+    .block-icon .icon { --mdc-icon-size: 32px; display: inline-flex; color: var(--primary-text-color); }
+    .block-icon .icon.inactive { color: var(--state-inactive-color, var(--disabled-color, #9e9e9e)); }
+    .block-icon .icon.spin { animation: haanim-spin 1.5s linear infinite; }
+    .block-icon .value { margin-left: auto; }
+    @keyframes haanim-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .block-icon .icon.spin { animation: none; } }
     .block-text p, .block-text h1, .block-text h2, .block-text h3 { margin: 0 0 6px 0; }
     ul { list-style: none; margin: 8px 0 0 0; padding: 0; }
     .block-text ul { list-style: disc; padding-left: 20px; }
@@ -215,7 +223,9 @@ export class HAAnimCard extends HTMLElement {
         if (!this._hass || !this._automationId) return;
         const states = this._hass.states || {};
         const own = states[this._entityId];
-        const ids = this._blocks.filter((block) => block.type === 'entity').map((block) => block.entity_id);
+        const ids = this._blocks
+            .filter((block) => block.type === 'entity' || (block.type === 'icon' && block.follow_entity))
+            .map((block) => block.entity_id);
         const watched = [this._entityId, ...ids]
             .map((id) => `${id}=${states[id] ? `${states[id].state}@${states[id].last_updated}` : ''}`)
             .join('|');
@@ -242,6 +252,17 @@ export class HAAnimCard extends HTMLElement {
         const control = target.closest('[data-haanim]');
         if (control) {
             this._call(control.dataset);
+            return;
+        }
+        const more = target.closest('[data-more-info]');
+        if (more) {
+            this.dispatchEvent(
+                new CustomEvent('hass-more-info', {
+                    detail: { entityId: more.dataset.moreInfo },
+                    bubbles: true,
+                    composed: true,
+                })
+            );
             return;
         }
         const own = target.closest('[data-haanim-ui]');
@@ -289,6 +310,13 @@ export class HAAnimCard extends HTMLElement {
             error: this._config ? this._error : 'No automation configured',
         });
         this.shadowRoot.innerHTML = `<style>${STYLES}</style><ha-card><div class="card">${body}</div></ha-card>`;
+        // Home Assistant's own state icons take the entity's state as a property, not as markup
+        const states = this._hass ? this._hass.states || {} : {};
+        const icons = this.shadowRoot.querySelectorAll ? this.shadowRoot.querySelectorAll('[data-state-icon]') : [];
+        for (const icon of icons) {
+            icon.hass = this._hass;
+            icon.stateObj = states[icon.dataset.stateIcon];
+        }
     }
 }
 

@@ -270,6 +270,7 @@ def build_card(event: ActionEvent):
     haa.card.image("logo", asset="logo.png", alt="Logo")
     haa.card.value("alerts", label="Alerts today", value=0)
     haa.card.entity("temp", "sensor.temperature")
+    haa.card.icon("fan", "fan.bedroom", icon="mdi:fan", spin=True)
     haa.card.button("reset", label="Reset", action="reset_alerts", confirm="Reset the counter?")
 
 
@@ -280,6 +281,18 @@ def reset_alerts(event: ActionEvent):
 
 `haa.card.set_title()` can be called at any time, so the title can say what is going on
 (`haa.card.set_title(f"Climate: {count} alerts")`); `None` goes back to the automation's name.
+
+An **icon** is driven by its entity unless told otherwise: it is lit while the entity is active (on, open,
+home, ...) and dimmed while it is not, turns only while it is active if `spin=True`, and shows the entity's
+name and state. Without `icon=` it is the entity's own icon. A click opens the entity's dialog.
+
+```python
+haa.card.icon("fan", "fan.bedroom", icon="mdi:fan", spin=True)     # follows fan.bedroom
+haa.card.icon("door", "binary_sensor.front_door")                  # the entity's own icon
+haa.card.icon("mode", icon="mdi:snowflake", label="Cooling", color="primary")    # no entity
+haa.card.icon("fan", "fan.bedroom", icon="mdi:fan-alert", color="error",
+              follow_entity=False)                                 # exactly this, whatever the fan does
+```
 
 The fixed parts can be hidden, each on its own, and shown again at any time:
 

@@ -20,6 +20,11 @@ export class FakeShadowRoot {
         return this.byId[id] || null;
     }
 
+    /** Elements a test wants found by a selector: put them into `found[selector]`. */
+    querySelectorAll(selector) {
+        return (this.found && this.found[selector]) || [];
+    }
+
     /** Put a stand-in element under an ID, so the element under test finds it. */
     stub(id, extra = {}) {
         this.byId[id] = {

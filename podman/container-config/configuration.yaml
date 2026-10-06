@@ -38,6 +38,9 @@ lovelace:
 # Entities the example automations use. The helpers can be changed on the "Examples" dashboard or in
 # Developer tools; the template entities turn them into the sensors and lights the automations expect.
 input_boolean:
+  fan:
+    name: Fan
+    icon: mdi:fan
   hallway_motion:
     name: Hallway motion switch
   hallway_light:

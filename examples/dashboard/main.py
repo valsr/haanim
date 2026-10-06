@@ -2,7 +2,7 @@
 
 The card has a title that changes with what the automation does, a heading, a
 logo from the automation's assets, a counter that is kept across restarts, the
-live state of an entity and three buttons, one of which strips the card to a
+live state of an entity, icons that follow entities, and three buttons, one of which strips the card to a
 bare box and back. Add it to a
 dashboard with::
 
@@ -29,6 +29,7 @@ from haanim import (
 )
 
 ENTITY = "sun.sun"
+FAN = "input_boolean.fan"  # a Toggle helper called "Fan"; any entity that is on or off will do
 
 
 def show_count() -> int:
@@ -48,6 +49,10 @@ def build_card(event: ActionEvent) -> None:
     show_count()
     haa.card.value("uptime", label="Running for", value=0, unit="min")
     haa.card.entity("sun", ENTITY)
+    # Icons follow their entity: lit and turning while the fan is on, dimmed while it is off
+    haa.card.icon("fan", FAN, icon="mdi:fan", spin=True)
+    haa.card.icon("sun_icon", ENTITY)  # the entity's own icon, which changes with its state
+    haa.card.icon("info", icon="mdi:information-outline", label="An icon no entity drives", color="accent")
     haa.card.button("add", label="Count", action="count", step=1)
     haa.card.button("reset", label="Reset", action="reset", confirm="Reset the counter to zero?")
     haa.card.button("frame", label="Bare card on/off", action="toggle_frame")

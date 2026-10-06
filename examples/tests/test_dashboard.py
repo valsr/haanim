@@ -10,7 +10,7 @@ DASHBOARD = Path(__file__).parents[1] / "dashboard"
 
 
 async def test_card_is_built_at_startup() -> None:
-    """The card has its eight blocks in order, with the logo from the automation's assets."""
+    """The card has its eleven blocks in order, with the logo from the automation's assets."""
     async with AutomationHarness(DASHBOARD) as automation:
         assert [(block["id"], block["type"]) for block in automation.card.blocks] == [
             ("intro", "text"),
@@ -18,6 +18,9 @@ async def test_card_is_built_at_startup() -> None:
             ("count", "value"),
             ("uptime", "value"),
             ("sun", "entity"),
+            ("fan", "icon"),
+            ("sun_icon", "icon"),
+            ("info", "icon"),
             ("add", "button"),
             ("reset", "button"),
             ("frame", "button"),
@@ -105,6 +108,20 @@ async def test_bare_card_and_back() -> None:
         assert all(automation.card.options.values())
         assert await automation.press("frame") is False
         assert not any(automation.card.options.values())
-        assert len(automation.card.blocks) == 8, "the content stays"
+        assert len(automation.card.blocks) == 11, "the content stays"
         assert await automation.press("frame") is True
         assert all(automation.card.options.values())
+
+
+async def test_icons() -> None:
+    """The fan icon follows its entity and turns; the last icon is driven by nothing."""
+    async with AutomationHarness(DASHBOARD) as automation:
+        fan = automation.card.block("fan")
+        assert (fan["entity_id"], fan["icon"], fan["spin"], fan["follow_entity"]) == (
+            "input_boolean.fan",
+            "mdi:fan",
+            True,
+            True,
+        )
+        assert automation.card.block("sun_icon")["icon"] is None, "the entity's own icon"
+        assert automation.card.block("info")["follow_entity"] is False

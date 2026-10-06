@@ -8,6 +8,8 @@ import {
     automationPath,
     escapeHtml,
     formatTime,
+    iconColor,
+    isActive,
     parseRoute,
     renderActionList,
     renderActionsDialog,
@@ -183,6 +185,81 @@ describe('renderBlock', () => {
     });
     test('the id is escaped', () => {
         assert.match(renderBlock({ id: '"><b>', type: 'text', markdown: 'x' }), /data-block="&quot;&gt;&lt;b&gt;"/);
+    });
+});
+
+describe('icon block', () => {
+    const fan = (state, attributes = {}) => ({ 'fan.bedroom': { state, attributes: { friendly_name: 'Bedroom fan', ...attributes } } });
+    const block = (extra = {}) => ({ id: 'fan', type: 'icon', entity_id: 'fan.bedroom', icon: null, label: null, color: null, spin: false, follow_entity: true, ...extra });
+
+    test('following an entity: its own icon, its name and its state', () => {
+        const html = renderBlock(block(), { states: fan('on') });
+        assert.match(html, /^<div class="block block-icon" data-block="fan" data-more-info="fan.bedroom">/);
+        assert.match(html, /<ha-state-icon data-state-icon="fan.bedroom"><\/ha-state-icon>/);
+        assert.match(html, /<span class="label">Bedroom fan<\/span>/);
+        assert.match(html, /<span class="value">on<\/span>/);
+    });
+    test('following an entity: lit while it is active, dimmed while it is not', () => {
+        assert.match(renderBlock(block(), { states: fan('on') }), /class="icon active" style="color: var\(--state-active-color, var\(--primary-color\)\)"/);
+        const off = renderBlock(block(), { states: fan('off') });
+        assert.match(off, /class="icon inactive">/);
+        assert.doesNotMatch(off, /style=/);
+    });
+    test('following an entity: it turns only while the entity is active', () => {
+        assert.match(renderBlock(block({ spin: true }), { states: fan('on') }), /class="icon active spin"/);
+        assert.match(renderBlock(block({ spin: true }), { states: fan('off') }), /class="icon inactive">/);
+        assert.doesNotMatch(renderBlock(block(), { states: fan('on') }), /spin/);
+    });
+    test('following an entity with an icon and a colour of the automation', () => {
+        const html = renderBlock(block({ icon: 'mdi:fan', color: 'success', label: 'Fan' }), { states: fan('on') });
+        assert.match(html, /<ha-icon icon="mdi:fan"><\/ha-icon>/);
+        assert.doesNotMatch(html, /ha-state-icon/);
+        assert.match(html, /style="color: var\(--success-color, #4caf50\)"/);
+        assert.match(html, /<span class="label">Fan<\/span>/);
+        assert.doesNotMatch(renderBlock(block({ color: 'success' }), { states: fan('off') }), /style=/, 'the colour is for the active state');
+    });
+    test('an entity that is not there is inactive and unavailable', () => {
+        const html = renderBlock(block({ spin: true }), { states: {} });
+        assert.match(html, /class="icon inactive">/);
+        assert.match(html, /<span class="label">fan.bedroom<\/span><span class="value">unavailable<\/span>/);
+        assert.match(renderBlock(block()), /unavailable/);
+    });
+    test('not following: exactly what the block says, whatever the entity does', () => {
+        const fixed = block({ follow_entity: false, icon: 'mdi:fan', color: '#ff0000', spin: true, label: 'Always on' });
+        for (const state of ['on', 'off']) {
+            const html = renderBlock(fixed, { states: fan(state) });
+            assert.match(html, /class="icon active spin" style="color: #ff0000"><ha-icon icon="mdi:fan">/);
+            assert.match(html, /<span class="label">Always on<\/span><\/div>$/);
+            assert.doesNotMatch(html, /class="value"/);
+        }
+    });
+    test('without an entity: an icon, with or without label and colour', () => {
+        const html = renderBlock({ id: 'i', type: 'icon', entity_id: null, icon: 'mdi:home', label: null, color: null, spin: false, follow_entity: false });
+        assert.equal(html, '<div class="block block-icon" data-block="i"><span class="icon active"><ha-icon icon="mdi:home"></ha-icon></span></div>');
+    });
+    test('an icon or colour that is not one draws nothing harmful', () => {
+        const html = renderBlock(block({ follow_entity: false, icon: 'x" onload="alert(1)', color: 'red; background: url(x)' }), { states: fan('on') });
+        assert.doesNotMatch(html, /onload|background|style=|<ha-icon/);
+        assert.match(renderBlock(block({ label: '<b>x</b>' }), { states: fan('on') }), /&lt;b&gt;x&lt;\/b&gt;/);
+    });
+    test('which states are active', () => {
+        for (const state of ['on', 'open', 'home', 'playing', 'heat', 'above_horizon', '42']) assert.equal(isActive({ state }), true, state);
+        for (const state of ['off', 'OFF', 'closed', 'idle', 'standby', 'not_home', 'locked', 'docked', 'below_horizon', 'paused', 'disarmed', 'unavailable', 'unknown', '', '0']) {
+            assert.equal(isActive({ state }), false, state);
+        }
+        assert.equal(isActive(undefined), false);
+        assert.equal(isActive(null), false);
+    });
+    test('colours', () => {
+        assert.equal(iconColor('primary'), 'var(--primary-color)');
+        assert.equal(iconColor('error'), 'var(--error-color, #f44336)');
+        assert.equal(iconColor('red'), 'red');
+        assert.equal(iconColor('dark-orange'), 'dark-orange');
+        assert.equal(iconColor('#0af'), '#0af');
+        for (const bad of ['', null, undefined, 'red;x', 'url(x)', '#12', 'rgb(1,2,3)']) {
+            assert.equal(iconColor(bad), null, String(bad));
+        }
+        assert.equal(iconColor('constructor'), 'constructor', 'a word that is no theme colour is passed on as a colour name');
     });
 });
 

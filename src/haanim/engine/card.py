@@ -11,6 +11,7 @@ import asyncio
 import copy
 import json
 import math
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -39,6 +40,19 @@ def _check_str(value: Any, what: str, *, empty: bool = True) -> str:
     if not empty and not value.strip():
         raise ValueError(f"{what} must not be empty")
     return value
+
+
+def _check_entity_id(entity_id: Any) -> str:
+    """Return an entity ID argument, checked to have the form ``domain.name``."""
+    domain, dot, name = _check_str(entity_id, "entity_id").partition(".")
+    if not dot or not domain or not name or "." in name or entity_id != entity_id.strip():
+        raise ValueError(f"Invalid entity ID {entity_id!r}")
+    return str(entity_id)
+
+
+# An icon is "<set>:<name>", as in "mdi:fan"; a colour is a name or a hex value
+_ICON = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*:[a-z0-9]+(-[a-z0-9]+)*")
+_COLOR = re.compile(r"#[0-9a-fA-F]{3,8}|[a-zA-Z]+(-[a-zA-Z]+)*")
 
 
 class HAAnimCard:
@@ -209,10 +223,71 @@ class HAAnimCard:
 
     def entity(self, id: str, entity_id: str) -> None:  # pylint: disable=redefined-builtin
         """Show the live state of a Home Assistant entity."""
-        domain, dot, name = _check_str(entity_id, "entity_id").partition(".")
-        if not dot or not domain or not name or "." in name or entity_id != entity_id.strip():
-            raise ValueError(f"Invalid entity ID {entity_id!r}")
+        _check_entity_id(entity_id)
         self._set(id, "entity", {"entity_id": entity_id})
+
+    def icon(  # pylint: disable=too-many-positional-arguments
+        self,
+        id: str,  # pylint: disable=redefined-builtin
+        entity_id: str | None = None,
+        icon: str | None = None,
+        label: str | None = None,
+        color: str | None = None,
+        spin: bool = False,
+        follow_entity: bool = True,
+    ) -> None:
+        """Show an icon, by default driven by an entity.
+
+        With an entity, the icon follows it: it is the entity's own icon
+        unless ``icon`` names another, it is lit while the entity is active
+        (on, open, home, ...) and dimmed while it is not, it spins only while
+        the entity is active, and the entity's name and state are shown next
+        to it. ``follow_entity=False`` turns all of that off: the icon is then
+        exactly what the arguments say, and changes only when the automation
+        sets the block again.
+
+        Args:
+            id: ID of the block.
+            entity_id: The entity that drives the icon.
+            icon: The icon, as ``"mdi:fan"``. Needed without an entity, and with ``follow_entity=False``.
+            label: Text next to the icon. The entity's name if the icon follows an entity.
+            color: Colour of the icon: a theme colour (``primary``, ``accent``, ``success``,
+                ``warning``, ``error``, ``disabled``), a colour name or ``#rrggbb``. Following an
+                entity, it is the colour while the entity is active.
+            spin: Whether the icon turns. Following an entity, only while the entity is active.
+            follow_entity: Whether the entity drives the icon.
+
+        Raises:
+            ValueError: If there is neither an entity to follow nor an icon, or the icon,
+                the colour or the entity ID is not valid.
+        """
+        if entity_id is not None:
+            _check_entity_id(entity_id)
+        if not isinstance(follow_entity, bool):
+            raise TypeError(f"follow_entity must be True or False, not {type(follow_entity).__name__}")
+        if not isinstance(spin, bool):
+            raise TypeError(f"spin must be True or False, not {type(spin).__name__}")
+        follows = follow_entity and entity_id is not None
+        if icon is None and not follows:
+            raise ValueError("An icon block needs an icon, or an entity to follow")
+        if icon is not None and not _ICON.fullmatch(_check_str(icon, "icon")):
+            raise ValueError(f"Invalid icon {icon!r}: an icon is named like 'mdi:fan'")
+        if color is not None and not _COLOR.fullmatch(_check_str(color, "color")):
+            raise ValueError(f"Invalid color {color!r}: use a colour name or '#rrggbb'")
+        if label is not None:
+            _check_str(label, "label")
+        self._set(
+            id,
+            "icon",
+            {
+                "entity_id": entity_id,
+                "icon": icon,
+                "label": label,
+                "color": color,
+                "spin": spin,
+                "follow_entity": follows,
+            },
+        )
 
     def button(
         self,
