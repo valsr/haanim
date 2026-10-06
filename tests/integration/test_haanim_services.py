@@ -1,4 +1,4 @@
-"""Tests for the nine HAAnim services.
+"""Tests for the HAAnim services.
 
 See "Home Assistant Services" in the design.
 """
@@ -33,6 +33,8 @@ DESIGN_TABLE: dict[str, list[str]] = {
     "reload": ["automation_id"],
     "list_automations": [],
     "list_actions": ["automation_id"],
+    "clear_log": ["automation_id"],
+    "set_log_level": ["automation_id", "level"],
 }
 
 ECHO = """
@@ -70,7 +72,7 @@ def state(hass: HomeAssistant, automation_id: str) -> str:
 class TestTable:
     """The services, their fields and their texts match the design's table."""
 
-    def test_the_nine_services(self) -> None:
+    def test_the_services(self) -> None:
         """Test the registered services are exactly the table's."""
         assert sorted(SERVICES) == sorted(DESIGN_TABLE)
 
@@ -85,6 +87,8 @@ class TestTable:
             name: list((body or {}).get("fields", {})) for name, body in described.items()
         } == DESIGN_TABLE
         assert described["reload"]["fields"]["automation_id"]["required"] is False
+        assert described["clear_log"]["fields"]["automation_id"]["required"] is False
+        assert described["set_log_level"]["fields"]["level"]["required"] is True
         assert described["run_action"]["fields"]["data"]["required"] is False
         assert described["run_action"]["fields"]["action"]["required"] is True
 

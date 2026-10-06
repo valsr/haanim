@@ -22,7 +22,9 @@ from custom_components.haanim.const import (
     ATTRIBUTE_ACTION,
     ATTRIBUTE_AUTOMATION_ID,
     ATTRIBUTE_DATA,
+    ATTRIBUTE_LEVEL,
     DOMAIN,
+    SERVICE_CLEAR_LOG,
     SERVICE_DISABLE,
     SERVICE_ENABLE,
     SERVICE_LIST_ACTIONS,
@@ -30,9 +32,12 @@ from custom_components.haanim.const import (
     SERVICE_RELOAD,
     SERVICE_RESTART,
     SERVICE_RUN_ACTION,
+    SERVICE_SET_LOG_LEVEL,
     SERVICE_START,
     SERVICE_STOP,
 )
+from custom_components.haanim.log_buffer import AutomationLogBuffer, entry_item
+from custom_components.haanim.log_levels import DEFAULT_LEVEL, LOG_LEVELS, AutomationLogLevels
 from haanim.engine.callables import as_coroutine_function
 from haanim.engine.errors import HAAnimError
 
@@ -45,8 +50,10 @@ SERVICES = (
     SERVICE_RELOAD,
     SERVICE_LIST_AUTOMATIONS,
     SERVICE_LIST_ACTIONS,
+    SERVICE_CLEAR_LOG,
+    SERVICE_SET_LOG_LEVEL,
 )
-"""The nine services of the design's table."""
+"""The services of the design's table."""
 
 
 @contextmanager
@@ -115,6 +122,24 @@ class ServiceManager:
             supports_response=SupportsResponse.ONLY,
         )
 
+        register(
+            DOMAIN,
+            SERVICE_CLEAR_LOG,
+            self._handle_clear_log,
+            schema=vol.Schema({vol.Optional(ATTRIBUTE_AUTOMATION_ID): cv.string}),
+        )
+        register(
+            DOMAIN,
+            SERVICE_SET_LOG_LEVEL,
+            self._handle_set_log_level,
+            schema=vol.Schema(
+                {
+                    vol.Required(ATTRIBUTE_AUTOMATION_ID): cv.string,
+                    vol.Required(ATTRIBUTE_LEVEL): vol.In([*LOG_LEVELS, DEFAULT_LEVEL]),
+                }
+            ),
+        )
+
         _LOGGER.debug("Service manager set up")
 
     async def async_teardown(self) -> None:
@@ -166,6 +191,37 @@ class ServiceManager:
         manager = await self._manager()
         with service_errors():
             await manager.async_reload(call.data.get(ATTRIBUTE_AUTOMATION_ID))
+
+    async def _known(self, automation_id: str) -> str:
+        """Return an automation ID given to a service, checked to be an automation's.
+
+        Raises:
+            HomeAssistantError: If there is no such automation.
+        """
+        manager = await self._manager()
+        if automation_id not in manager.automation_ids():
+            raise HomeAssistantError(
+                f"NonExistingAutomationError: Automation '{automation_id}' does not exist"
+            )
+        return automation_id
+
+    async def _handle_clear_log(self, call: ServiceCall) -> None:
+        """Forget the kept log records of one automation, or of all without an ID."""
+        automation_id = call.data.get(ATTRIBUTE_AUTOMATION_ID)
+        if automation_id is not None:
+            await self._known(automation_id)
+        buffer = entry_item(self.hass, "log_buffer", AutomationLogBuffer)
+        if buffer is None:
+            raise HomeAssistantError("HAAnim is not set up")
+        buffer.clear(automation_id)
+
+    async def _handle_set_log_level(self, call: ServiceCall) -> None:
+        """Set the log level of an automation, or take it away with ``default``."""
+        automation_id = await self._known(call.data[ATTRIBUTE_AUTOMATION_ID])
+        levels = entry_item(self.hass, "log_levels", AutomationLogLevels)
+        if levels is None:
+            raise HomeAssistantError("HAAnim is not set up")
+        await levels.async_set(automation_id, call.data[ATTRIBUTE_LEVEL])
 
     async def _handle_list_automations(self, _: ServiceCall) -> ServiceResponse:
         """Return ID, name, state and enabled flag of every automation."""

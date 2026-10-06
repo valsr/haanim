@@ -4,7 +4,9 @@ import { describe, test } from 'node:test';
 import {
     MAX_LOG_RECORDS,
     CARD_PARTS,
+    DEFAULT_LOG_LEVEL,
     DETAIL_TABS,
+    LOG_LEVELS,
     MAX_ROW_CELLS,
     PANEL_PATH,
     automationPath,
@@ -27,6 +29,7 @@ import {
     renderHeader,
     renderList,
     renderLog,
+    renderLogTools,
     renderMarkdown,
     renderTabs,
     renderToolbar,
@@ -740,6 +743,31 @@ describe('renderLog', () => {
         assert.match(renderLog([]), /No log records/);
         assert.match(renderLog(undefined), /No log records/);
         assert.match(renderLog([{ message: 'm' }]), /level-info/);
+    });
+});
+
+describe('renderLogTools', () => {
+    const chosen = (html) => [...html.matchAll(/<option value="(\w+)"( selected)?>([^<]*)</g)].map((match) => `${match[1]}${match[2] ? '*' : ''}=${match[3]}`);
+    test('without a level of its own the automation follows the default, which is named', () => {
+        const html = renderLogTools({ id: 'climate', log_level: null, effective_log_level: 'info' });
+        assert.deepEqual(chosen(html), ['default*=Default (info)', 'debug=Debug', 'info=Info', 'warning=Warning', 'error=Error', 'critical=Critical']);
+        assert.deepEqual(LOG_LEVELS, ['debug', 'info', 'warning', 'error', 'critical']);
+        assert.equal(DEFAULT_LOG_LEVEL, 'default');
+    });
+    test('the level set for the automation is the one chosen', () => {
+        const html = renderLogTools({ id: 'climate', log_level: 'error', effective_log_level: 'error' });
+        assert.deepEqual(chosen(html).filter((item) => item.includes('*')), ['error*=Error']);
+        assert.match(html, /<option value="default">Default<\/option>/);
+    });
+    test('a level that is none, or none at all, is the default', () => {
+        assert.match(renderLogTools({ id: 'a', log_level: 'loud' }), /<option value="default" selected>Default<\/option>/);
+        assert.match(renderLogTools({ id: 'a' }), /<option value="default" selected>Default<\/option>/);
+    });
+    test('the select and the clear button name their automation', () => {
+        const html = renderLogTools({ id: 'a"b', log_level: null });
+        assert.match(html, /<select data-log-level="a&quot;b">/);
+        assert.match(html, /<button class="control" data-haanim="clear_log" data-automation="a&quot;b">Clear<\/button>/);
+        assert.deepEqual(serviceCall({ haanim: 'clear_log' }, 'climate'), { service: 'clear_log', data: { automation_id: 'climate' }, confirm: null });
     });
 });
 

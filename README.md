@@ -124,6 +124,8 @@ Assistant.
 | `haanim.reload`           | `automation_id` (optional)        | Rescans now and reloads one automation, or all           |
 | `haanim.list_automations` | -                                 | Returns ID, name, state and enabled flag of every one    |
 | `haanim.list_actions`     | `automation_id`                   | Returns the automation's actions                         |
+| `haanim.clear_log`        | `automation_id` (optional)        | Empties the log HAAnim keeps for one automation, or all  |
+| `haanim.set_log_level`    | `automation_id`, `level`          | Sets the automation's log level; `default` takes it away |
 
 ## Development
 

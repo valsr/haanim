@@ -45,7 +45,7 @@ class TestServiceManager:
 
         registered = [call[0][1] for call in mock_hass.services.async_register.call_args_list]
         assert sorted(registered) == sorted(SERVICES)
-        assert len(SERVICES) == 9
+        assert len(SERVICES) == 11
 
     async def test_async_teardown_removes_services(
         self, service_manager: ServiceManager, mock_hass: MagicMock

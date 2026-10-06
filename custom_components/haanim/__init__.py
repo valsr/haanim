@@ -21,6 +21,7 @@ from custom_components.haanim.ha.services import ServiceManager
 from custom_components.haanim.ha.state import StateManager
 from custom_components.haanim.automation_manager import AutomationManager
 from custom_components.haanim.log_buffer import AutomationLogBuffer
+from custom_components.haanim.log_levels import AutomationLogLevels
 from custom_components.haanim.options import engine_options
 from custom_components.haanim.websocket import async_register_websocket
 from haanim.engine.triggers import TriggerManager
@@ -74,6 +75,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     log_buffer = AutomationLogBuffer()
     log_buffer.install()
     entry.async_on_unload(log_buffer.remove)
+    # The level set for an automation in the panel is on its logger before the automation starts
+    log_levels = AutomationLogLevels(host.storage)
+    await log_levels.async_load()
+    entry.async_on_unload(log_levels.remove)
 
     automation_manager = AutomationManager(
         hass, entry, host, options=engine_options({**entry.data, **entry.options})
@@ -94,6 +99,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "entry": entry,
         "manager": automation_manager,
         "log_buffer": log_buffer,
+        "log_levels": log_levels,
         "state_manager": state_manager,
         "event_manager": event_manager,
         "service_manager": service_manager,

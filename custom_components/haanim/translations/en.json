@@ -152,6 +152,30 @@
                     "description": "ID of the automation"
                 }
             }
+        },
+        "clear_log": {
+            "name": "Clear log",
+            "description": "Forgets the log records HAAnim keeps for one automation, or for all if no ID is given. Home Assistant's own log is not touched.",
+            "fields": {
+                "automation_id": {
+                    "name": "Automation ID",
+                    "description": "ID of the automation whose log to clear; all automations if left out"
+                }
+            }
+        },
+        "set_log_level": {
+            "name": "Set log level",
+            "description": "Sets what an automation's logger lets through, and keeps it across restarts.",
+            "fields": {
+                "automation_id": {
+                    "name": "Automation ID",
+                    "description": "ID of the automation"
+                },
+                "level": {
+                    "name": "Level",
+                    "description": "debug, info, warning, error or critical; default follows Home Assistant's logger configuration"
+                }
+            }
         }
     },
     "issues": {

@@ -111,7 +111,41 @@ class TestBuffer:
         unsubscribe()
         unsubscribe()
         log("a").info("two")
-        assert [record["message"] for record in seen] == ["one"]
+        assert [change["record"]["message"] for change in seen] == ["one"]
+
+    def test_clear_one(self, buffer: AutomationLogBuffer) -> None:
+        """Test clearing an automation's log forgets its records, tells its subscribers, and leaves the others."""
+        seen: list[dict[str, Any]] = []
+        other: list[dict[str, Any]] = []
+        buffer.subscribe("a", seen.append)
+        buffer.subscribe("b", other.append)
+        log("a").info("one")
+        log("b").info("other")
+        buffer.clear("a")
+        assert buffer.records("a") == []
+        assert [record["message"] for record in buffer.records("b")] == ["other"]
+        assert seen[-1] == {"records": []}
+        assert other == [{"record": buffer.records("b")[0]}]
+
+        log("a").info("two")
+        assert [record["message"] for record in buffer.records("a")] == ["two"], "the log goes on"
+        assert seen[-1]["record"]["message"] == "two"
+
+    def test_clear_all(self, buffer: AutomationLogBuffer) -> None:
+        """Test clearing without an ID forgets every record and tells every subscriber, also of an empty log."""
+        seen: dict[str, list[dict[str, Any]]] = {"a": [], "b": [], "quiet": []}
+        for name, changes in seen.items():
+            buffer.subscribe(name, changes.append)
+        log("a").info("one")
+        log("b").info("other")
+        buffer.clear()
+        assert (buffer.records("a"), buffer.records("b")) == ([], [])
+        assert [changes[-1] for changes in seen.values()] == [{"records": []}] * 3
+
+    def test_clear_of_an_automation_without_records(self, buffer: AutomationLogBuffer) -> None:
+        """Test clearing a log that has nothing does nothing."""
+        buffer.clear("nobody")
+        assert buffer.records("nobody") == []
 
     def test_removed_buffer_gets_nothing(self) -> None:
         """Test a removed buffer no longer receives records."""

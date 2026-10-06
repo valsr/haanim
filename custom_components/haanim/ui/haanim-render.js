@@ -17,7 +17,13 @@ const CONTROLS = [
     { service: 'restart', label: 'Restart', when: (a) => a.state === 'on' },
 ];
 
-const CONTROL_SERVICES = new Set(['enable', 'disable', 'start', 'stop', 'restart', 'reload']);
+const CONTROL_SERVICES = new Set(['enable', 'disable', 'start', 'stop', 'restart', 'reload', 'clear_log']);
+
+/** The levels an automation's log can be set to, from the most to the least it lets through. */
+export const LOG_LEVELS = ['debug', 'info', 'warning', 'error', 'critical'];
+
+/** Stands for no level of HAAnim's own: the automation follows Home Assistant's logger configuration. */
+export const DEFAULT_LOG_LEVEL = 'default';
 
 /** How many log records are shown. */
 export const MAX_LOG_RECORDS = 200;
@@ -617,6 +623,28 @@ export function renderActionsDialog(automation) {
         renderActionList(automation.actions) +
         '<div class="dialog-buttons"><button class="tool" data-haanim-ui="close">Close</button></div>' +
         '</div></div>'
+    );
+}
+
+/**
+ * Render what stands above the log of an automation: its log level, and a button that clears the log.
+ *
+ * The level is the one set for the automation in HAAnim. Without one, the first choice says which level is
+ * in effect, which then comes from Home Assistant's logger configuration.
+ */
+export function renderLogTools(automation) {
+    const chosen = LOG_LEVELS.includes(automation.log_level) ? automation.log_level : DEFAULT_LOG_LEVEL;
+    const inEffect = automation.effective_log_level ? ` (${escapeHtml(automation.effective_log_level)})` : '';
+    const option = (value, label) =>
+        `<option value="${value}"${value === chosen ? ' selected' : ''}>${label}</option>`;
+    const options =
+        option(DEFAULT_LOG_LEVEL, `Default${chosen === DEFAULT_LOG_LEVEL ? inEffect : ''}`) +
+        LOG_LEVELS.map((level) => option(level, level[0].toUpperCase() + level.slice(1))).join('');
+    return (
+        '<div class="log-tools"><label>Log level ' +
+        `<select data-log-level="${escapeHtml(automation.id)}">${options}</select></label>` +
+        `<button class="control" data-haanim="clear_log" data-automation="${escapeHtml(automation.id)}">` +
+        'Clear</button></div>'
     );
 }
 

@@ -21,7 +21,8 @@ from homeassistant.core import HomeAssistant, callback
 from custom_components.haanim.automation_manager import AutomationManager, async_get_manager
 from custom_components.haanim.const import DOMAIN, VERSION
 from custom_components.haanim.ha.host import HACardSink
-from custom_components.haanim.log_buffer import AutomationLogBuffer
+from custom_components.haanim.log_buffer import AutomationLogBuffer, entry_item
+from custom_components.haanim.log_levels import AutomationLogLevels
 from custom_components.haanim.options import option_values
 
 ERR_NOT_FOUND = "not_found"
@@ -49,7 +50,9 @@ def _summary(manager: AutomationManager, automation_id: str) -> dict[str, Any]:
     }
 
 
-def _detail(manager: AutomationManager, automation_id: str) -> dict[str, Any]:
+def _detail(
+    manager: AutomationManager, automation_id: str, levels: AutomationLogLevels | None = None
+) -> dict[str, Any]:
     """Return what the detail page shows of an automation."""
     context = manager.get_context_by_name(automation_id)
     metadata = context.get_metadata() if context else None
@@ -64,6 +67,9 @@ def _detail(manager: AutomationManager, automation_id: str) -> dict[str, Any]:
         "last_action": status.last_action,
         "last_action_time": times.last_action_time.isoformat() if times.last_action_time else None,
         "last_error": failure.as_dict() if failure else None,
+        # The level set for the automation in HAAnim, if any, and the level its logger lets through
+        "log_level": levels.level(automation_id) if levels else None,
+        "effective_log_level": levels.effective(automation_id) if levels else None,
         "actions": [
             {"name": action.name, "aliases": list(action.aliases), "description": action.description or ""}
             for action in manager.automation_actions(automation_id)
@@ -106,7 +112,8 @@ async def ws_get_automation(hass: HomeAssistant, connection: ActiveConnection, m
     """Answer with the details of one automation."""
     manager = await _manager_for(hass, connection, msg)
     if manager is not None:
-        connection.send_result(msg["id"], _detail(manager, msg["automation_id"]))
+        levels = entry_item(hass, "log_levels", AutomationLogLevels)
+        connection.send_result(msg["id"], _detail(manager, msg["automation_id"], levels))
 
 
 @websocket_command({vol.Required("type"): f"{DOMAIN}/card/subscribe", vol.Required("automation_id"): str})
@@ -136,21 +143,14 @@ async def ws_subscribe_logs(hass: HomeAssistant, connection: ActiveConnection, m
     """Send the recent log records of an automation as one event, then each new one."""
     if await _manager_for(hass, connection, msg) is None:
         return
-    buffer = next(
-        (
-            data["log_buffer"]
-            for data in hass.data.get(DOMAIN, {}).values()
-            if isinstance(data, dict) and isinstance(data.get("log_buffer"), AutomationLogBuffer)
-        ),
-        None,
-    )
+    buffer = entry_item(hass, "log_buffer", AutomationLogBuffer)
     if buffer is None:
         connection.send_error(msg["id"], ERR_NOT_READY, "Log records are not available")
         return
 
     @callback
-    def forward(record: dict[str, Any]) -> None:
-        connection.send_message(event_message(msg["id"], {"record": record}))
+    def forward(change: dict[str, Any]) -> None:
+        connection.send_message(event_message(msg["id"], change))
 
     connection.subscriptions[msg["id"]] = buffer.subscribe(msg["automation_id"], forward)
     connection.send_result(msg["id"])

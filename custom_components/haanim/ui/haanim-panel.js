@@ -25,6 +25,7 @@ import {
     renderHeader,
     renderList,
     renderLog,
+    renderLogTools,
     renderTabs,
     serviceCall,
 } from './haanim-render.js';
@@ -54,6 +55,14 @@ const STYLES = `
     .tabs button.tab { padding: 10px 20px; margin-bottom: -1px; border-bottom: 2px solid transparent; }
     .tabs button.tab.active { border-bottom-color: var(--primary-color); }
     [hidden] { display: none !important; }
+    .log-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .log-tools label { color: var(--secondary-text-color); }
+    .log-tools select {
+        font: inherit; padding: 4px 8px; margin-left: 6px; border-radius: 4px;
+        color: var(--primary-text-color); background: var(--card-background-color);
+        border: 1px solid var(--divider-color);
+    }
+    .log-tools button.control { padding: 4px 12px; }
     .page { padding: 24px; max-width: 1000px; margin: 0 auto; color: var(--primary-text-color); }
     table { width: 100%; border-collapse: collapse; background: var(--card-background-color); }
     th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--divider-color); }
@@ -106,6 +115,7 @@ export class HAAnimPanel extends HTMLElement {
         this._error = null;
         this._seen = null;
         this.shadowRoot.addEventListener('click', (event) => this._onClick(event));
+        this.shadowRoot.addEventListener('change', (event) => this._onChange(event));
     }
 
     /** Called by Home Assistant whenever anything in it changes. */
@@ -261,6 +271,13 @@ export class HAAnimPanel extends HTMLElement {
         }
     }
 
+    /** A choice was made in a select: the log level of an automation. */
+    _onChange(event) {
+        const target = event.target && event.target.closest ? event.target.closest('[data-log-level]') : null;
+        if (!target || !this._hass) return;
+        this._callService('set_log_level', { automation_id: target.dataset.logLevel, level: target.value });
+    }
+
     _callService(service, data) {
         this._hass.callService(DOMAIN, service, data).then(
             () => this._load(),
@@ -278,7 +295,8 @@ export class HAAnimPanel extends HTMLElement {
     /** Put HTML into an element of the page; returns whether the element is there. */
     _fill(id, html) {
         const element = this.shadowRoot.getElementById(id);
-        if (element) element.innerHTML = html;
+        // What is there already is left alone: an open select or a scrolled log would lose its place
+        if (element && element.innerHTML !== html) element.innerHTML = html;
         return Boolean(element);
     }
 
@@ -304,6 +322,7 @@ export class HAAnimPanel extends HTMLElement {
         this._fill('detail-controls', automation ? renderControls(automation) : '');
         this._fill('detail-meta', automation ? renderDetail(automation) : '');
         this._fill('detail-actions', automation ? renderActionList(automation.actions) : '');
+        this._fill('detail-log-tools', automation ? renderLogTools(automation) : '');
         this._fill('detail-log', renderLog(this._records));
         this._showSection();
     }
@@ -325,7 +344,7 @@ export class HAAnimPanel extends HTMLElement {
                 '<div id="detail-tabs"></div>' +
                 '<div id="tab-preview" role="tabpanel"><haanim-card id="detail-card"></haanim-card></div>' +
                 '<div id="tab-actions" role="tabpanel" hidden><div id="detail-actions"></div></div>' +
-                '<div id="tab-logs" role="tabpanel" hidden><div id="detail-log"></div></div>';
+                '<div id="tab-logs" role="tabpanel" hidden><div id="detail-log-tools"></div><div id="detail-log"></div></div>';
         } else if (page === 'config') {
             body = renderConfig(this._configuration);
         } else {

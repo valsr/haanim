@@ -75,3 +75,31 @@ list_actions:
       example: 'my_automation'
       selector:
         text:
+
+clear_log:
+  fields:
+    automation_id:
+      required: false
+      example: 'my_automation'
+      selector:
+        text:
+
+set_log_level:
+  fields:
+    automation_id:
+      required: true
+      example: 'my_automation'
+      selector:
+        text:
+    level:
+      required: true
+      example: 'debug'
+      selector:
+        select:
+          options:
+            - 'debug'
+            - 'info'
+            - 'warning'
+            - 'error'
+            - 'critical'
+            - 'default'

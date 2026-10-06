@@ -5,6 +5,7 @@ See "GUI" in the design.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -114,6 +115,10 @@ class TestDetail:
             "last_action": None,
             "last_action_time": None,
             "last_error": None,
+            "log_level": None,
+            "effective_log_level": logging.getLevelName(
+                logging.getLogger("custom_components.haanim.automation.climate").getEffectiveLevel()
+            ).lower(),
             "actions": [
                 {"name": "alert", "aliases": ["bump"], "description": "Count one alert."},
                 {"name": "strip", "aliases": [], "description": ""},

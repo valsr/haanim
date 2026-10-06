@@ -12,7 +12,7 @@ const LIST = {
         { id: 'broken', name: 'broken', version: '', state: 'error', enabled: true, message: 'main.py:1' },
     ],
 };
-const DETAIL_IDS = ['detail-header', 'detail-controls', 'detail-meta', 'detail-tabs', 'detail-actions', 'detail-log', 'tab-preview', 'tab-actions', 'tab-logs', 'page-error'];
+const DETAIL_IDS = ['detail-header', 'detail-controls', 'detail-meta', 'detail-tabs', 'detail-actions', 'detail-log-tools', 'detail-log', 'tab-preview', 'tab-actions', 'tab-logs', 'page-error'];
 
 /** Which tab of the page is open: the one whose pane is not hidden. */
 function openTab(parts) {
@@ -33,6 +33,8 @@ function detail(message) {
         description: 'Keeps it cool',
         author: 'Ada',
         actions: [{ name: 'alert', aliases: [], description: 'Count one alert' }],
+        log_level: null,
+        effective_log_level: 'info',
     };
 }
 
@@ -179,7 +181,7 @@ describe('haanim-panel', () => {
         assert.deepEqual([...order].sort((a, b) => a - b), order, 'in this order');
         assert.match(html, /<div id="tab-preview" role="tabpanel"><haanim-card id="detail-card"><\/haanim-card><\/div>/);
         assert.match(html, /<div id="tab-actions" role="tabpanel" hidden><div id="detail-actions">/);
-        assert.match(html, /<div id="tab-logs" role="tabpanel" hidden><div id="detail-log">/);
+        assert.match(html, /<div id="tab-logs" role="tabpanel" hidden><div id="detail-log-tools"><\/div><div id="detail-log">/);
         assert.doesNotMatch(html, /<h2/);
 
         assert.deepEqual(openTab(parts), ['preview']);
@@ -246,6 +248,57 @@ describe('haanim-panel', () => {
         dom.visited.length = 0;
         panel.shadowRoot.fire('click', clicked({ section: 'logs' }));
         assert.deepEqual(dom.visited, []);
+    });
+
+    test('the log tab has the log level of the automation and a button that clears the log', async () => {
+        const { panel, hass, parts } = await opened('/automation/climate/logs');
+        const tools = parts['detail-log-tools'].innerHTML;
+        assert.match(tools, /<select data-log-level="climate"><option value="default" selected>Default \(info\)<\/option>/);
+        assert.match(tools, /data-haanim="clear_log" data-automation="climate">Clear</);
+
+        // Choosing a level sets it, and the page is read again
+        hass.answers['haanim/automations/get'] = (message) => ({ ...detail(message), log_level: 'debug', effective_log_level: 'debug' });
+        const select = { dataset: { logLevel: 'climate' }, value: 'debug', closest: () => select };
+        panel.shadowRoot.fire('change', { target: select });
+        await settle();
+        assert.deepEqual(hass.services, [{ domain: 'haanim', service: 'set_log_level', data: { automation_id: 'climate', level: 'debug' } }]);
+        assert.match(parts['detail-log-tools'].innerHTML, /<option value="debug" selected>Debug<\/option>/);
+        assert.match(parts['detail-log-tools'].innerHTML, /<option value="default">Default<\/option>/);
+
+        // Clearing calls the service; the server then sends the empty log to everybody who follows it
+        hass.push('haanim/logs/subscribe', { record: { time: '', level: 'INFO', message: 'old' } });
+        panel.shadowRoot.fire('click', clicked({ haanim: 'clear_log', automation: 'climate' }));
+        await settle();
+        assert.deepEqual(hass.services.at(-1), { domain: 'haanim', service: 'clear_log', data: { automation_id: 'climate' } });
+        assert.match(parts['detail-log'].innerHTML, /old/);
+        hass.push('haanim/logs/subscribe', { records: [] });
+        assert.match(parts['detail-log'].innerHTML, /No log records/);
+    });
+
+    test('a change of something that is no log level does nothing', async () => {
+        const { panel, hass } = await opened('/automation/climate/logs');
+        panel.shadowRoot.fire('change', { target: { closest: () => null } });
+        panel.shadowRoot.fire('change', { target: null });
+        await settle();
+        assert.deepEqual(hass.services, []);
+    });
+
+    test('a part of the page that has not changed is left as it is', async () => {
+        const { panel, hass, parts } = await opened('/automation/climate/logs');
+        let written = 0;
+        const tools = parts['detail-log-tools'];
+        let html = tools.innerHTML;
+        Object.defineProperty(tools, 'innerHTML', {
+            get: () => html,
+            set: (value) => {
+                html = value;
+                written += 1;
+            },
+        });
+        hass.states = states('off');
+        panel.hass = hass;
+        await settle();
+        assert.equal(written, 0, 'an open select keeps its place');
     });
 
     test('leaving the page of an automation stops following its log', async () => {

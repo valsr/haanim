@@ -84,12 +84,15 @@ SERVICE_RESTART: Final = "restart"
 SERVICE_RELOAD: Final = "reload"
 SERVICE_LIST_AUTOMATIONS: Final = "list_automations"
 SERVICE_LIST_ACTIONS: Final = "list_actions"
+SERVICE_CLEAR_LOG: Final = "clear_log"
+SERVICE_SET_LOG_LEVEL: Final = "set_log_level"
 
 # Attributes for automation metadata
 ATTRIBUTE_AUTOMATION_ID: Final = "automation_id"
 ATTRIBUTE_AUTOMATION_PATH: Final = "automation_path"
 ATTRIBUTE_ACTION: Final = "action"
 ATTRIBUTE_DATA: Final = "data"
+ATTRIBUTE_LEVEL: Final = "level"
 ATTRIBUTE_MANUAL: Final = "manual"
 
 # Configuration keys

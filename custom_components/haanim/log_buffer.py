@@ -6,7 +6,13 @@ import logging
 from collections import deque
 from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TypeVar
+
+from homeassistant.core import HomeAssistant
+
+from custom_components.haanim.const import DOMAIN
+
+Kind = TypeVar("Kind")
 
 LOGGER_PREFIX = "custom_components.haanim.automation"
 """The logger above every automation's logger."""
@@ -15,6 +21,16 @@ MAX_RECORDS = 200
 """How many records are kept per automation."""
 
 LogListener = Callable[[dict[str, Any]], None]
+"""Called with ``{"record": <record>}`` for a new record, and ``{"records": []}`` when the log was cleared."""
+
+
+def entry_item(hass: HomeAssistant, key: str, kind: type[Kind]) -> Kind | None:
+    """Return what the set-up integration keeps under a key in ``hass.data``, or None if it is not set up."""
+    for data in hass.data.get(DOMAIN, {}).values():
+        if isinstance(data, dict) and isinstance(data.get(key), kind):
+            found: Kind = data[key]
+            return found
+    return None
 
 
 class AutomationLogBuffer(logging.Handler):
@@ -53,14 +69,28 @@ class AutomationLogBuffer(logging.Handler):
             entry["traceback"] = logging.Formatter().formatException(record.exc_info)
         self._records.setdefault(automation_id, deque(maxlen=self._max_records)).append(entry)
         for listener in list(self._listeners.get(automation_id, ())):
-            listener(entry)
+            listener({"record": entry})
+
+    def clear(self, automation_id: str | None = None) -> None:
+        """Forget the kept records of an automation, or of all without an ID, and tell their subscribers."""
+        cleared = (
+            [automation_id]
+            if automation_id is not None
+            else sorted(set(self._records) | set(self._listeners))
+        )
+        for name in cleared:
+            self._records.pop(name, None)
+            for listener in list(self._listeners.get(name, ())):
+                listener({"records": []})
 
     def records(self, automation_id: str) -> list[dict[str, Any]]:
         """Return the kept records of an automation, oldest first."""
         return list(self._records.get(automation_id, ()))
 
     def subscribe(self, automation_id: str, listener: LogListener) -> Callable[[], None]:
-        """Call ``listener(record)`` for every new record of an automation.
+        """Call ``listener({"record": record})`` for every new record of an automation.
+
+        The listener is also called with ``{"records": []}`` when the automation's log is cleared.
 
         Returns:
             A function that ends the subscription.

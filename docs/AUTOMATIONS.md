@@ -243,8 +243,12 @@ logging.info("Zone %s done", 2)          # debug, info, warning, error, critical
 print("Also logged, at INFO")
 ```
 
-Each automation logs under `custom_components.haanim.automation.<id>`, so its level can be set in Home
-Assistant's `logger` configuration.
+Each automation has a log level of its own: set it on the Logs tab of the automation's page in the HAAnim
+panel, or with the `haanim.set_log_level` service (`debug` while you write the automation, `error` once it
+runs). The level is kept across restarts. With `Default` the automation follows Home Assistant's `logger`
+configuration, where it logs under `custom_components.haanim.automation.<id>`. `print()` logs at `INFO`, so
+it is silent from `warning` up. The Clear button next to the level, or `haanim.clear_log`, empties the log
+the panel shows.
 
 ### Assets
 
