@@ -16,6 +16,7 @@ from haanim.events import SOURCE_TRIGGER, ActionEvent
 from haanim.interfaces import EventBus, Host, StateProvider
 
 if TYPE_CHECKING:
+    from haanim.engine.action_dispatcher import ActionDispatcher
     from haanim.engine.automation_context import TriggerDefinition
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,15 +37,19 @@ class BaseTrigger(ABC):
         self,
         host: Host,
         trigger_def: TriggerDefinition,
+        dispatcher: ActionDispatcher | None = None,
     ) -> None:
         """Initialize the trigger.
 
         Args:
             host: The host the engine runs in.
             trigger_def: The trigger definition from the automation.
+            dispatcher: Where the action is requested when the trigger fires.
+                Without one the function is called directly.
         """
         self.host = host
         self.trigger_def = trigger_def
+        self._dispatcher = dispatcher
         self.state_manager: StateProvider = host.states
         self.event_manager: EventBus = host.events
 
@@ -268,6 +273,18 @@ class BaseTrigger(ABC):
             Return value from the function.
         """
         func = self.trigger_def.func
+
+        if self._dispatcher is not None:
+            # A trigger function is an action: its mode and timeout apply, and a
+            # failure is recorded on the automation; there is no caller to raise to
+            return await self._dispatcher.fire(
+                self.trigger_def.automation_id or "",
+                self.trigger_def.action_name or self.trigger_def.func_name,
+                func,
+                *event_arguments(func, event),
+                mode=self.trigger_def.execution_mode,
+                timeout=self.trigger_def.timeout,
+            )
 
         try:
             return await as_coroutine_function(func)(*event_arguments(func, event))

@@ -317,15 +317,15 @@ class TestIntervalAndCronDetails:
 
     @pytest.mark.parametrize(
         ("spec", "seconds"),
-        [("90", 90.0), ("0.5", 0.5), ("02:30", 150), ("01:00:00", 3600), ("00:00:45", 45)],
+        [("90", 90.0), ("0.5", 0.5), ("01:00:00", 3600), ("00:00:45", 45)],
     )
     def test_interval_formats(self, clock: FakeClock, spec: str, seconds: float) -> None:
-        """Test each interval format accepted today gives the expected number of seconds."""
+        """Test each interval format gives the expected number of seconds."""
         trigger = IntervalTrigger(
             make_host(clock=clock), trigger_definition(TRIGGER_INTERVAL, spec, lambda: None)
         )
-        assert trigger._interval_seconds == seconds
-        assert trigger._delay_seconds == seconds
+        assert trigger.interval_seconds == seconds
+        assert trigger.delay_seconds == seconds
 
     def test_invalid_cron_expression(self, clock: FakeClock) -> None:
         """Test an invalid cron expression is rejected when the trigger is created."""

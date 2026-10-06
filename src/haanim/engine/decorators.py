@@ -17,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar, overload
 
+from haanim.engine.durations import parse_duration
 from haanim.const import (
     TRIGGER_CRON,
     TRIGGER_EVENT,
@@ -330,9 +331,13 @@ def _trigger(
 
 
 def _require_duration(decorator: str, argument: str, value: Any) -> None:
-    """Raise if a duration is neither a number of seconds nor a string."""
+    """Raise if a value is not a duration, naming the decorator and the value."""
     if isinstance(value, bool) or not isinstance(value, (int, float, str)):
         raise TypeError(f"@{decorator}: {argument} must be seconds or 'HH:MM:SS', not {type(value).__name__}")
+    try:
+        parse_duration(value)
+    except ValueError as err:
+        raise ValueError(f"@{decorator}: {argument} {value!r} is not valid: {err}") from None
 
 
 def on_time(

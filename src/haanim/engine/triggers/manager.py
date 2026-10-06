@@ -18,6 +18,8 @@ from haanim import const
 from haanim.engine.action_dispatcher import ActionDispatcher
 from haanim.engine.callables import event_arguments
 from haanim.engine.constraints import ConstraintChecker
+from haanim.engine.triggers.base import BaseTrigger
+from haanim.engine.triggers.interval_trigger import IntervalTrigger
 from haanim.interfaces import EventBus, Host, StateProvider
 from haanim.events import SOURCE_TRIGGER, ActionEvent, StateEvent, TimeEvent
 from haanim.types import StateChangedEvent
@@ -77,6 +79,9 @@ class TriggerManager:
         self._state_watch_task: asyncio.Task[Any] | None = None
         self._time_watch_task: asyncio.Task[Any] | None = None
 
+        # Triggers that run their own schedule, by trigger ID
+        self._running: dict[str, BaseTrigger] = {}
+
         # Hold tasks for state triggers
         self._hold_tasks: dict[str, asyncio.Task[None]] = {}  # trigger_id -> task
 
@@ -129,6 +134,10 @@ class TriggerManager:
             for entity_id in self._entity_triggers.keys():
                 self.state_manager.unsubscribe(self._state_queue, entity_id)
 
+        for running in self._running.values():
+            await running.async_stop()
+        self._running.clear()
+
         self._triggers.clear()
         self._trigger_metadata.clear()
         self._entity_triggers.clear()
@@ -165,6 +174,11 @@ class TriggerManager:
             self._register_time_trigger(trigger_id, trigger_def, metadata)
         elif trigger_def.trigger_type == const.TRIGGER_EVENT:
             self._register_event_trigger(trigger_id, trigger_def, metadata)
+        elif trigger_def.trigger_type == const.TRIGGER_INTERVAL:
+            # Scheduled from now: the automation's @startup has completed
+            interval = IntervalTrigger(self.host, trigger_def, self.dispatcher)
+            self._running[trigger_id] = interval
+            await interval.async_start()
         else:
             _LOGGER.error("Unknown trigger type: %s", trigger_def.trigger_type)
             del self._triggers[trigger_id]
@@ -290,6 +304,11 @@ class TriggerManager:
 
         trigger_def = self._triggers.pop(trigger_id)
         metadata = self._trigger_metadata.pop(trigger_id, {})
+
+        # Stop a trigger that runs its own schedule
+        running = self._running.pop(trigger_id, None)
+        if running is not None:
+            await running.async_stop()
 
         # Cancel any pending hold task
         if trigger_id in self._hold_tasks:
