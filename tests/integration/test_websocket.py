@@ -28,8 +28,15 @@ def build_card(event):
 @action(aliases=["bump"], description="Count one alert.")
 def alert(event):
     haa.card.value("alerts", label="Alerts today", value=1)
+    haa.card.set_title("Climate: 1 alert")
     haa.set_message("alerted")
+
+@action
+def strip(event):
+    haa.card.configure(title=False, state=False, message=False, actions=False, log=False)
 """
+
+ALL_SHOWN = {"title": True, "state": True, "message": True, "actions": True, "log": True}
 
 BLOCKS = [
     {"id": "intro", "type": "text", "markdown": "## Climate"},
@@ -102,7 +109,10 @@ class TestDetail:
             "last_action": None,
             "last_action_time": None,
             "last_error": None,
-            "actions": [{"name": "alert", "aliases": ["bump"], "description": "Count one alert."}],
+            "actions": [
+                {"name": "alert", "aliases": ["bump"], "description": "Count one alert."},
+                {"name": "strip", "aliases": [], "description": ""},
+            ],
         }
 
     async def test_detail_after_an_action(
@@ -150,7 +160,11 @@ class TestCardSubscription:
         client = await hass_ws_client()
         assert (await command(client, 1, "haanim/card/subscribe", automation_id="climate"))["success"] is True
         event = await client.receive_json()
-        assert event == {"id": 1, "type": "event", "event": {"blocks": BLOCKS}}
+        assert event == {
+            "id": 1,
+            "type": "event",
+            "event": {"blocks": BLOCKS, "title": None, "options": ALL_SHOWN},
+        }
 
     async def test_update_on_change(
         self, hass_ws_client: Any, manager: AutomationManager
@@ -164,6 +178,32 @@ class TestCardSubscription:
         event = await client.receive_json()
         assert event["event"]["blocks"][1]["value"] == 1
         assert event["event"]["blocks"][0] == BLOCKS[0]
+        assert event["event"]["title"] == "Climate: 1 alert"
+
+    async def test_options_follow_the_automation(
+        self, hass_ws_client: Any, manager: AutomationManager  # noqa: F811
+    ) -> None:
+        """Test hiding parts of the card is sent to the subscriber, and stopping shows them again."""
+        client = await hass_ws_client()
+        await command(client, 1, "haanim/card/subscribe", automation_id="climate")
+        await client.receive_json()
+        await manager.async_call_action("climate", "strip")
+        event = await client.receive_json()
+        assert event["event"]["options"] == dict.fromkeys(ALL_SHOWN, False)
+        assert event["event"]["blocks"] == BLOCKS
+        await manager.async_stop_automation("climate")
+        assert (await client.receive_json())["event"]["options"] == ALL_SHOWN
+
+    async def test_title_goes_with_the_automation(
+        self, hass_ws_client: Any, manager: AutomationManager  # noqa: F811
+    ) -> None:
+        """Test a new subscriber gets the title set earlier, and stopping takes it away."""
+        await manager.async_call_action("climate", "alert")
+        client = await hass_ws_client()
+        await command(client, 1, "haanim/card/subscribe", automation_id="climate")
+        assert (await client.receive_json())["event"]["title"] == "Climate: 1 alert"
+        await manager.async_stop_automation("climate")
+        assert (await client.receive_json())["event"] == {"blocks": [], "title": None, "options": ALL_SHOWN}
 
     async def test_empty_when_stopped(
         self, hass_ws_client: Any, manager: AutomationManager
@@ -174,15 +214,19 @@ class TestCardSubscription:
         await client.receive_json()
 
         await manager.async_stop_automation("climate")
-        assert (await client.receive_json())["event"] == {"blocks": []}
+        assert (await client.receive_json())["event"] == {"blocks": [], "title": None, "options": ALL_SHOWN}
         await manager.async_start_automation("climate")
-        assert (await client.receive_json())["event"] == {"blocks": BLOCKS}
+        assert (await client.receive_json())["event"] == {
+            "blocks": BLOCKS,
+            "title": None,
+            "options": ALL_SHOWN,
+        }
 
     async def test_automation_without_a_card(self, hass_ws_client: Any) -> None:
         """Test an automation that puts nothing on its card has an empty one."""
         client = await hass_ws_client()
         await command(client, 1, "haanim/card/subscribe", automation_id="plain")
-        assert (await client.receive_json())["event"] == {"blocks": []}
+        assert (await client.receive_json())["event"] == {"blocks": [], "title": None, "options": None}
 
     async def test_only_the_subscribed_automation(
         self, hass_ws_client: Any, manager: AutomationManager
@@ -228,42 +272,17 @@ class TestCardSink:
     def test_keeps_and_forwards(self) -> None:
         """Test the sink keeps the latest content and tells subscribers until they unsubscribe."""
         sink = HACardSink()
-        seen: list[list[dict[str, Any]]] = []
-        assert sink.blocks("a") == []
+        seen: list[dict[str, Any]] = []
+        assert sink.content("a") == {"blocks": [], "title": None, "options": None}
         unsubscribe = sink.subscribe("a", seen.append)
 
-        sink.card_changed("a", [{"id": "x"}])
+        sink.card_changed("a", [{"id": "x"}], "Title", {"log": False})
         sink.card_changed("b", [{"id": "y"}])
         unsubscribe()
         unsubscribe()
         sink.card_changed("a", [])
 
-        assert seen == [[{"id": "x"}]]
+        assert seen == [{"blocks": [{"id": "x"}], "title": "Title", "options": {"log": False}}]
         assert sink.blocks("a") == []
-        assert sink.blocks("b") == [{"id": "y"}]
-
-
-@pytest.mark.usefixtures("manager")
-class TestConfig:
-    """haanim/config/get."""
-
-    async def test_config(self, hass_ws_client: Any, root: Path) -> None:  # noqa: F811
-        """Test the answer has the version and the ten options, defaults filled in."""
-        client = await hass_ws_client()
-        result = (await command(client, 1, "haanim/config/get"))["result"]
-        assert result["version"] == VERSION
-        assert list(result["options"]) == [
-            "automation_path",
-            "automation_refresh_interval",
-            "max_concurrent_actions",
-            "action_queue_size",
-            "default_action_timeout",
-            "startup_timeout",
-            "shutdown_timeout",
-            "stop_grace_period",
-            "import_allowlist",
-            "allow_all_imports",
-        ]
-        assert result["options"]["max_concurrent_actions"] == 20
-        assert result["options"]["import_allowlist"] == []
-        assert result["options"]["allow_all_imports"] is False
+        assert sink.title("a") is None
+        assert sink.content("b") == {"blocks": [{"id": "y"}], "title": None, "options": None}

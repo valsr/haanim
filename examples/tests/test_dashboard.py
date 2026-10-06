@@ -10,7 +10,7 @@ DASHBOARD = Path(__file__).parents[1] / "dashboard"
 
 
 async def test_card_is_built_at_startup() -> None:
-    """The card has its seven blocks in order, with the logo from the automation's assets."""
+    """The card has its eight blocks in order, with the logo from the automation's assets."""
     async with AutomationHarness(DASHBOARD) as automation:
         assert [(block["id"], block["type"]) for block in automation.card.blocks] == [
             ("intro", "text"),
@@ -20,9 +20,11 @@ async def test_card_is_built_at_startup() -> None:
             ("sun", "entity"),
             ("add", "button"),
             ("reset", "button"),
+            ("frame", "button"),
         ]
         assert automation.card.block("logo")["url"] == "/api/haanim/assets/dashboard/logo.svg"
         assert automation.card.block("count")["value"] == 0
+        assert automation.card.title == "Dashboard demo"
         assert automation.message == "Card ready"
 
 
@@ -32,6 +34,7 @@ async def test_count_button_adds_one() -> None:
         assert await automation.press("add") == 1
         assert await automation.press("add") == 2
         assert automation.card.block("count")["value"] == 2
+        assert automation.card.title == "Dashboard demo: 2 pressed"
         assert automation.get_variable("count") == 2
         assert "Counted to 2" in automation.logs()
 
@@ -47,8 +50,10 @@ async def test_reset_button() -> None:
     async with AutomationHarness(DASHBOARD, variables={"count": 9}) as automation:
         assert automation.card.block("count")["value"] == 9
         assert automation.card.block("reset")["confirm"] == "Reset the counter to zero?"
+        assert automation.card.title == "Dashboard demo: 9 pressed"
         assert await automation.press("reset") == 0
         assert automation.card.block("count")["value"] == 0
+        assert automation.card.title == "Dashboard demo"
         assert automation.message == "Counter reset"
 
 
@@ -73,6 +78,7 @@ async def test_card_is_empty_when_stopped() -> None:
     async with AutomationHarness(DASHBOARD) as automation:
         await automation.stop()
         assert automation.card.blocks == []
+        assert automation.card.title is None
 
 
 async def test_event_counts() -> None:
@@ -91,3 +97,14 @@ async def test_counter_starts_again_at_midnight() -> None:
         assert automation.card.block("count")["value"] == 0
         assert automation.get_variable("count") == 0
         assert automation.message == "New day: counter reset"
+
+
+async def test_bare_card_and_back() -> None:
+    """The frame button hides every fixed part of the card, and shows them again."""
+    async with AutomationHarness(DASHBOARD) as automation:
+        assert all(automation.card.options.values())
+        assert await automation.press("frame") is False
+        assert not any(automation.card.options.values())
+        assert len(automation.card.blocks) == 8, "the content stays"
+        assert await automation.press("frame") is True
+        assert all(automation.card.options.values())

@@ -259,7 +259,7 @@ class HAStorage:
         await self._store(key).async_save(copy.deepcopy(data))
 
 
-CardListener = Callable[[list[dict[str, Any]]], None]
+CardListener = Callable[[dict[str, Any]], None]
 
 
 class HACardSink:
@@ -268,20 +268,42 @@ class HACardSink:
     def __init__(self) -> None:
         """Initialize with no cards."""
         self._cards: dict[str, list[dict[str, Any]]] = {}
+        self._titles: dict[str, str | None] = {}
+        self._options: dict[str, dict[str, bool] | None] = {}
         self._listeners: dict[str, list[CardListener]] = {}
 
-    def card_changed(self, automation_id: str, blocks: list[dict[str, Any]]) -> None:
-        """Take the new content of an automation's card and tell its subscribers."""
+    def card_changed(
+        self,
+        automation_id: str,
+        blocks: list[dict[str, Any]],
+        title: str | None = None,
+        options: dict[str, bool] | None = None,
+    ) -> None:
+        """Take the new content, title and options of an automation's card and tell its subscribers."""
         self._cards[automation_id] = blocks
+        self._titles[automation_id] = title
+        self._options[automation_id] = options
         for listener in list(self._listeners.get(automation_id, ())):
-            listener(blocks)
+            listener(self.content(automation_id))
+
+    def content(self, automation_id: str) -> dict[str, Any]:
+        """Return what the frontend draws of an automation's card: ``blocks``, ``title`` and ``options``."""
+        return {
+            "blocks": self.blocks(automation_id),
+            "title": self.title(automation_id),
+            "options": self._options.get(automation_id),
+        }
 
     def blocks(self, automation_id: str) -> list[dict[str, Any]]:
         """Return the current content of an automation's card; empty if it has none."""
         return self._cards.get(automation_id, [])
 
+    def title(self, automation_id: str) -> str | None:
+        """Return the title an automation gave its card; None if it gave none."""
+        return self._titles.get(automation_id)
+
     def subscribe(self, automation_id: str, listener: CardListener) -> Callable[[], None]:
-        """Call ``listener(blocks)`` whenever the card of an automation changes.
+        """Call ``listener(content)`` whenever the card of an automation changes.
 
         Returns:
             A function that ends the subscription.

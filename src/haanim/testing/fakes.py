@@ -751,10 +751,22 @@ class FakeCardSink:
         """The latest content of each automation's card, by automation ID."""
         self.updates: list[tuple[str, list[dict[str, Any]]]] = []
         """``(automation_id, blocks)`` for every update, oldest first."""
+        self.options: dict[str, dict[str, bool] | None] = {}
+        """Which fixed parts of each automation's card are shown, as last sent; None for all."""
+        self.titles: dict[str, str | None] = {}
+        """The latest title of each automation's card, by automation ID; None for the automation's name."""
 
-    def card_changed(self, automation_id: str, blocks: list[dict[str, Any]]) -> None:
+    def card_changed(
+        self,
+        automation_id: str,
+        blocks: list[dict[str, Any]],
+        title: str | None = None,
+        options: dict[str, bool] | None = None,
+    ) -> None:
         """Record an update."""
         self.cards[automation_id] = blocks
+        self.titles[automation_id] = title
+        self.options[automation_id] = options
         self.updates.append((automation_id, blocks))
 
 

@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from haanim.engine.assets import AssetStore
-from haanim.engine.card import MAX_BLOCKS, MAX_TEXT_LENGTH, HAAnimCard
+from haanim.engine.card import CARD_PARTS, MAX_BLOCKS, MAX_TEXT_LENGTH, HAAnimCard
 from haanim.testing import FakeCardSink, FakeClock, FakeFileSystem
 from tests.engine.test_lifecycle import World, world  # noqa: F401  pylint: disable=unused-import
 
@@ -154,6 +154,195 @@ class TestBlocks:
         """Test the card describes itself."""
         fill(card)
         assert repr(card) == "<HAAnimCard climate: 5 blocks>"
+
+
+class TestTitle:
+    """Rule: the automation can give its card a title, and change it at any time."""
+
+    def test_no_title_by_default(self, card: HAAnimCard) -> None:
+        """Test a card has no title of its own: it shows the automation's name."""
+        assert card.title is None
+
+    async def test_set_title(self, card: HAAnimCard, sink: FakeCardSink) -> None:
+        """Test the title is kept and sent with the content."""
+        card.set_title("Climate: 3 alerts")
+        await FakeClock().advance()
+        assert card.title == "Climate: 3 alerts"
+        assert sink.titles["climate"] == "Climate: 3 alerts"
+        assert len(sink.updates) == 1
+
+    async def test_title_changes_with_blocks_are_one_update(
+        self, card: HAAnimCard, sink: FakeCardSink
+    ) -> None:
+        """Test a title and blocks set in a row are sent together."""
+        card.set_title("One")
+        card.text("a", "text")
+        card.set_title("Two")
+        await FakeClock().advance()
+        assert len(sink.updates) == 1
+        assert sink.titles["climate"] == "Two"
+
+    async def test_same_title_sends_nothing(self, card: HAAnimCard, sink: FakeCardSink) -> None:
+        """Test setting the title it already has is not a change."""
+        card.set_title("One")
+        await FakeClock().advance()
+        card.set_title("One")
+        await FakeClock().advance()
+        assert len(sink.updates) == 1
+
+    async def test_none_goes_back_to_the_name(self, card: HAAnimCard, sink: FakeCardSink) -> None:
+        """Test None removes the title."""
+        card.set_title("One")
+        card.set_title(None)
+        await FakeClock().advance()
+        assert card.title is None
+        assert sink.titles.get("climate") is None
+
+    @pytest.mark.parametrize(
+        ("title", "error", "message"),
+        [
+            ("", ValueError, "title must not be empty"),
+            ("   ", ValueError, "title must not be empty"),
+            ("x" * 101, ValueError, "at most 100 characters, not 101"),
+            (5, TypeError, "title must be a string, not int"),
+        ],
+    )
+    def test_invalid_title_leaves_the_title(
+        self, card: HAAnimCard, title: Any, error: type[Exception], message: str
+    ) -> None:
+        """Test an invalid title raises and the card keeps the title it had."""
+        card.set_title("Kept")
+        with pytest.raises(error, match=message):
+            card.set_title(title)
+        assert card.title == "Kept"
+
+    def test_title_at_the_limit(self, card: HAAnimCard) -> None:
+        """Test a title of exactly 100 characters is accepted."""
+        card.set_title("x" * 100)
+        assert len(card.title or "") == 100
+
+    def test_clear_keeps_the_title(self, card: HAAnimCard) -> None:
+        """Test clearing the blocks does not touch the title."""
+        card.set_title("Kept")
+        card.text("a", "text")
+        card.clear()
+        assert card.title == "Kept"
+
+    async def test_close_takes_the_title_away(self, card: HAAnimCard, sink: FakeCardSink) -> None:
+        """Test a stopped automation's card has neither content nor title, and the sink is told."""
+        card.set_title("Gone soon")
+        await FakeClock().advance()
+        card.close()
+        assert card.title is None
+        assert sink.titles["climate"] is None
+        assert len(sink.updates) == 2
+
+    def test_set_title_is_synchronous(self) -> None:
+        """Test set_title is a plain function."""
+        assert not inspect.iscoroutinefunction(HAAnimCard.set_title)
+
+
+ALL_SHOWN = {"title": True, "state": True, "message": True, "actions": True, "log": True}
+
+
+class TestConfigure:
+    """Rule: the automation can hide and show the fixed parts of its card."""
+
+    def test_everything_is_shown_by_default(self, card: HAAnimCard) -> None:
+        """Test a card shows its five fixed parts until told otherwise."""
+        assert card.options == ALL_SHOWN
+        assert tuple(card.options) == CARD_PARTS
+
+    @pytest.mark.parametrize("part", CARD_PARTS)
+    async def test_hide_one_part(self, card: HAAnimCard, sink: FakeCardSink, part: str) -> None:
+        """Test hiding a part hides only that part, and the frontend is told."""
+        card.configure(**{part: False})
+        await FakeClock().advance()
+        assert card.options == {**ALL_SHOWN, part: False}
+        assert sink.options["climate"] == {**ALL_SHOWN, part: False}
+        assert len(sink.updates) == 1
+
+    def test_parts_not_named_keep_their_setting(self, card: HAAnimCard) -> None:
+        """Test a later call changes only what it names; None leaves a part as it is."""
+        card.configure(title=False, log=False)
+        card.configure(state=False, log=None)
+        assert card.options == {
+            "title": False,
+            "state": False,
+            "message": True,
+            "actions": True,
+            "log": False,
+        }
+        card.configure(title=True)
+        assert card.options["title"] is True
+        assert card.options["log"] is False
+
+    def test_bare_box(self, card: HAAnimCard) -> None:
+        """Test all five parts can be hidden, leaving the content."""
+        card.text("a", "content")
+        card.configure(title=False, state=False, message=False, actions=False, log=False)
+        assert not any(card.options.values())
+        assert len(card.blocks) == 1
+
+    async def test_no_change_sends_nothing(self, card: HAAnimCard, sink: FakeCardSink) -> None:
+        """Test configuring what is already so, or nothing, is not a change."""
+        card.configure(log=False)
+        await FakeClock().advance()
+        card.configure(log=False)
+        card.configure(title=True)
+        card.configure()
+        await FakeClock().advance()
+        assert len(sink.updates) == 1
+
+    async def test_configure_with_other_changes_is_one_update(
+        self, card: HAAnimCard, sink: FakeCardSink
+    ) -> None:
+        """Test options, title and blocks set in a row are sent together."""
+        card.configure(actions=False)
+        card.set_title("Bare")
+        card.text("a", "content")
+        await FakeClock().advance()
+        assert len(sink.updates) == 1
+        assert sink.options["climate"]["actions"] is False
+        assert sink.titles["climate"] == "Bare"
+
+    @pytest.mark.parametrize("value", [0, 1, "no", "false", [], object()])
+    def test_invalid_value_changes_nothing(self, card: HAAnimCard, value: Any) -> None:
+        """Test a value that is not True, False or None raises, and no part changes, also the valid ones."""
+        with pytest.raises(TypeError, match="state must be True or False"):
+            card.configure(title=False, state=value)
+        assert card.options == ALL_SHOWN
+
+    def test_only_keywords(self, card: HAAnimCard) -> None:
+        """Test the parts have to be named."""
+        with pytest.raises(TypeError):
+            card.configure(False)  # type: ignore[misc]
+        with pytest.raises(TypeError):
+            card.configure(footer=False)  # type: ignore[call-arg]
+
+    def test_options_is_a_copy(self, card: HAAnimCard) -> None:
+        """Test changing what options returns does not change the card."""
+        card.options["title"] = False
+        assert card.options["title"] is True
+
+    def test_clear_keeps_the_options(self, card: HAAnimCard) -> None:
+        """Test clearing the blocks does not show hidden parts again."""
+        card.configure(log=False)
+        card.clear()
+        assert card.options["log"] is False
+
+    async def test_close_shows_everything_again(self, card: HAAnimCard, sink: FakeCardSink) -> None:
+        """Test a stopped automation's card is back to the default, and the sink is told."""
+        card.configure(title=False)
+        await FakeClock().advance()
+        card.close()
+        assert card.options == ALL_SHOWN
+        assert sink.options["climate"] == ALL_SHOWN
+        assert len(sink.updates) == 2
+
+    def test_configure_is_synchronous(self) -> None:
+        """Test configure is a plain function."""
+        assert not inspect.iscoroutinefunction(HAAnimCard.configure)
 
 
 class TestOrder:

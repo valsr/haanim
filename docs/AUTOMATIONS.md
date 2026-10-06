@@ -258,12 +258,14 @@ Names are relative to the automation's `assets/` folder. An automation reaches o
 ## The card
 
 Each automation has a card for dashboards, `custom:haanim-card` with `automation_id: <id>`. The card shows
-the name, state, message and controls, the automation's actions and its recent log, and in between whatever
-the automation puts there:
+a title, the state and the status message, then whatever the automation puts there, and two buttons:
+**Actions** opens a popup with all of the automation's actions, and **Log** goes to the automation's log in
+the HAAnim panel. Enabling, stopping and restarting are done on the automation's page in the panel.
 
 ```python
 @startup
 def build_card(event: ActionEvent):
+    haa.card.set_title("Climate")                 # the automation's name if never set
     haa.card.text("intro", "## Climate\nKeeps the house between **19** and **23** °C.")
     haa.card.image("logo", asset="logo.png", alt="Logo")
     haa.card.value("alerts", label="Alerts today", value=0)
@@ -276,10 +278,20 @@ def reset_alerts(event: ActionEvent):
     haa.card.value("alerts", label="Alerts today", value=0)     # replaces the block in place
 ```
 
+`haa.card.set_title()` can be called at any time, so the title can say what is going on
+(`haa.card.set_title(f"Climate: {count} alerts")`); `None` goes back to the automation's name.
+
+The fixed parts can be hidden, each on its own, and shown again at any time:
+
+```python
+haa.card.configure(state=False, log=False)       # no state badge, no Log button
+haa.card.configure(title=False, state=False, message=False, actions=False, log=False)   # only the content
+```
+
 Each block has an ID. Setting an ID again replaces that block in place, which is how a value is updated;
 `haa.card.remove(id)` and `haa.card.clear()` take blocks away. A button calls one of the automation's actions,
 with its extra keyword arguments as `event.data`. The card is emptied when the automation stops, so build it
-in `@startup`. A card has at most 50 blocks and a text block at most 10 000 characters. Markdown is
+in `@startup`. A card has at most 50 blocks, a text block at most 10 000 characters and a title at most 100. Markdown is
 sanitised: raw HTML is removed.
 
 ## Testing
@@ -317,7 +329,7 @@ async def test_morning_routine_only_when_home():
 | See what it did                             | `service_calls()`, `events()`, `logs()`, `message`, `state`, `variables`, `last_error` |
 | Decide what services do                     | `stub_service("weather.get_forecasts", response={...})`, `success=False`, `remove_service` |
 | Stand in for other automations              | `stub_automation("notifications", send_message="sent")`, `automation_calls()` |
-| Check the card and press its buttons        | `card.blocks`, `card.block(id)`, `await press(id)`              |
+| Check the card and press its buttons        | `card.title`, `card.blocks`, `card.block(id)`, `await press(id)` |
 | Drive the lifecycle                         | `start=False`, then `load()`, `start()`, `stop()`, `reload()`   |
 | Provide assets and stored variables         | `assets={"logo.png": b"..."}`, `variables={"count": 3}`         |
 

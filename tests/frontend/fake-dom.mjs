@@ -20,6 +20,19 @@ export class FakeShadowRoot {
         return this.byId[id] || null;
     }
 
+    /** Put a stand-in element under an ID, so the element under test finds it. */
+    stub(id, extra = {}) {
+        this.byId[id] = {
+            innerHTML: '',
+            scrolled: 0,
+            scrollIntoView() {
+                this.scrolled += 1;
+            },
+            ...extra,
+        };
+        return this.byId[id];
+    }
+
     /** Deliver an event to the listeners, as the browser does for an event inside the shadow root. */
     fire(type, event) {
         for (const listener of this.listeners[type] || []) listener(event);
@@ -38,14 +51,23 @@ export class FakeHTMLElement {
     }
 }
 
-/** An element as a click reports it: `closest` finds it by the data attribute it carries. */
-export function clicked(dataset) {
+/**
+ * An element as a click reports it: `closest` finds it by the data attribute it carries.
+ *
+ * The keys of `dataset` are written as in HTML without the `data-` prefix (`'haanim-ui'`); the element's
+ * dataset has them in camel case, as in the browser.
+ */
+export function clicked(attributes) {
+    const dataset = {};
+    for (const [name, value] of Object.entries(attributes)) {
+        dataset[name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = value;
+    }
     return {
         target: {
             dataset,
             closest(selector) {
                 const name = /^\[data-([a-z-]+)\]$/.exec(selector)[1];
-                return name in dataset ? this : null;
+                return name in attributes ? this : null;
             },
         },
     };
@@ -59,7 +81,14 @@ export function installDom() {
         define: (name, constructor) => registry.set(name, constructor),
         get: (name) => registry.get(name),
     };
-    globalThis.window = { confirm: () => true, customCards: undefined };
+    const visited = [];
+    const fired = [];
+    globalThis.window = {
+        confirm: () => true,
+        customCards: undefined,
+        dispatchEvent: (event) => fired.push(event.type),
+    };
+    globalThis.history = { pushState: (state, title, path) => visited.push(path) };
     globalThis.CustomEvent = class {
         constructor(type, init) {
             this.type = type;
@@ -67,7 +96,7 @@ export function installDom() {
         }
     };
     globalThis.URL.createObjectURL = (blob) => `blob:${blob.name}`;
-    return { registry, window: globalThis.window };
+    return { registry, window: globalThis.window, visited, fired };
 }
 
 /** A stand-in for the `hass` object: records calls and lets a test push subscription messages. */

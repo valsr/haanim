@@ -31,6 +31,8 @@ seen = []
 
 @startup
 def build(event):
+    haa.card.set_title("Demo card")
+    haa.card.configure(log=False)
     haa.card.text("intro", "## Demo")
     haa.card.button("press", label="Press", action="echo", confirm="Sure?", room="hall")
     haa.set_message("ready")
@@ -632,6 +634,14 @@ class TestCard:
             assert [block["id"] for block in automation.card.blocks] == ["intro", "press"]
             assert automation.card.block("intro")["markdown"] == "## Demo"
             assert isinstance(automation.card, HarnessCard)
+            assert automation.card.title == "Demo card"
+            assert automation.card.options == {
+                "title": True,
+                "state": True,
+                "message": True,
+                "actions": True,
+                "log": False,
+            }
             assert automation.card_updates[-1] == automation.card.blocks
             with pytest.raises(KeyError):
                 automation.card.block("missing")
@@ -658,6 +668,8 @@ class TestCard:
         async with AutomationHarness(folder) as automation:
             await automation.stop()
             assert automation.card.blocks == []
+            assert automation.card.title is None
+            assert all(automation.card.options.values())
             assert automation.card_updates[-1] == []
 
 

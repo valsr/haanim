@@ -1,16 +1,23 @@
 /**
  * custom:haanim-card
  *
- * The card of one automation: a fixed header with controls, the content the automation puts there through
- * `haa.card`, its actions and its recent log. Configured with the automation ID:
+ * The card of one automation: a header with the title, state and status message, the content the automation
+ * puts there through `haa.card`, a button that opens its actions in a popup, and one that goes to its log in
+ * the HAAnim panel. Configured with the automation ID:
  *
  *     type: custom:haanim-card
  *     automation_id: climate
  */
 
-import { MAX_LOG_RECORDS, renderCard, serviceCall } from './haanim-render.js';
+import { automationPath, renderCard, serviceCall } from './haanim-render.js';
 
 const DOMAIN = 'haanim';
+
+/** Go to another page of Home Assistant without reloading it. */
+export function navigate(path) {
+    history.pushState(null, '', path);
+    window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
+}
 
 const STYLES = `
     :host { display: block; }
@@ -23,34 +30,39 @@ const STYLES = `
     .state-disabled, .state-unavailable { background: var(--disabled-color, #9e9e9e); }
     .state-error { background: var(--error-color, #f44336); }
     .message { margin-top: 4px; color: var(--secondary-text-color); }
-    .controls { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
     button {
         background: var(--primary-color); color: var(--text-primary-color, white); border: none;
         padding: 6px 14px; border-radius: 4px; cursor: pointer; font: inherit;
     }
-    button.control { background: transparent; color: var(--primary-color); border: 1px solid var(--primary-color); }
     .content { margin-top: 12px; border-top: 1px solid var(--divider-color); padding-top: 12px; }
+    .content.bare { margin-top: 0; border-top: none; padding-top: 0; }
+    .title .state:only-child { margin-left: auto; }
     .block { margin-bottom: 10px; }
     .block-value, .block-entity { display: flex; justify-content: space-between; gap: 12px; }
     .block .label { color: var(--secondary-text-color); }
     .block .value { font-weight: 500; }
     .block img { max-width: 100%; border-radius: 4px; }
     .block-text p, .block-text h1, .block-text h2, .block-text h3 { margin: 0 0 6px 0; }
-    .section { margin-top: 12px; border-top: 1px solid var(--divider-color); padding-top: 8px; }
-    summary { cursor: pointer; color: var(--secondary-text-color); }
     ul { list-style: none; margin: 8px 0 0 0; padding: 0; }
     .block-text ul { list-style: disc; padding-left: 20px; }
-    .actions li { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-    .description { color: var(--secondary-text-color); font-size: 0.9em; }
-    .log { max-height: 260px; overflow-y: auto; font-family: var(--code-font-family, monospace); font-size: 0.85em; }
-    .record { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 0; }
-    .record .time, .record .level { color: var(--secondary-text-color); }
-    .level-warning .level, .level-warning .text { color: var(--warning-color, #ff9800); }
-    .level-error .level, .level-error .text, .level-critical .level, .level-critical .text {
-        color: var(--error-color, #f44336);
+    .toolbar {
+        margin-top: 12px; border-top: 1px solid var(--divider-color); padding-top: 12px;
+        display: flex; gap: 8px;
     }
-    .level-debug .text { color: var(--secondary-text-color); }
-    .traceback { flex-basis: 100%; margin: 2px 0 6px 0; white-space: pre-wrap; }
+    button.tool { background: transparent; color: var(--primary-color); border: 1px solid var(--primary-color); }
+    .overlay {
+        position: fixed; inset: 0; z-index: 10; background: rgba(0, 0, 0, 0.45);
+        display: flex; align-items: center; justify-content: center;
+    }
+    .dialog {
+        background: var(--card-background-color, white); color: var(--primary-text-color);
+        border-radius: 12px; padding: 20px; min-width: 280px; max-width: min(560px, 90vw);
+        max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+    .dialog-title { font-size: 1.2em; font-weight: 500; margin-bottom: 8px; }
+    .dialog-buttons { margin-top: 16px; display: flex; justify-content: flex-end; }
+    .actions li { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .description { color: var(--secondary-text-color); font-size: 0.9em; }
     .empty, .card-loading { color: var(--secondary-text-color); font-style: italic; margin-top: 8px; }
     .card-error { color: var(--error-color, #f44336); }
 `;
@@ -63,16 +75,16 @@ export class HAAnimCard extends HTMLElement {
         this._hass = null;
         this._automation = null;
         this._blocks = [];
-        this._records = [];
+        this._title = null;
+        this._options = null;
         this._images = {};
-        this._open = { actions: false, log: false };
+        this._showActions = false;
         this._error = null;
         this._unsubscribe = [];
         this._subscribed = false;
         this._connected = false;
         this._watched = '';
         this.shadowRoot.addEventListener('click', (event) => this._onClick(event));
-        this.shadowRoot.addEventListener('toggle', (event) => this._onToggle(event), true);
     }
 
     /** Called by the dashboard with the card's configuration. */
@@ -86,7 +98,9 @@ export class HAAnimCard extends HTMLElement {
             this._stop();
             this._automation = null;
             this._blocks = [];
-            this._records = [];
+            this._title = null;
+            this._options = null;
+            this._showActions = false;
             this._start();
         }
         this._render();
@@ -130,7 +144,7 @@ export class HAAnimCard extends HTMLElement {
         return `sensor.${DOMAIN}_${this._automationId}`;
     }
 
-    /** Subscribe to the automation's card content and log, and read its details. */
+    /** Subscribe to the automation's card content and read its details. */
     async _start() {
         if (this._subscribed || !this._connected || !this._hass || !this._automationId) return;
         this._subscribed = true;
@@ -141,11 +155,6 @@ export class HAAnimCard extends HTMLElement {
                 automation_id: automationId,
             });
             this._unsubscribe.push(card);
-            const log = await this._hass.connection.subscribeMessage((message) => this._onLog(message), {
-                type: `${DOMAIN}/logs/subscribe`,
-                automation_id: automationId,
-            });
-            this._unsubscribe.push(log);
             this._error = null;
             await this._loadAutomation();
         } catch (error) {
@@ -177,16 +186,9 @@ export class HAAnimCard extends HTMLElement {
 
     _onCard(message) {
         this._blocks = message.blocks || [];
+        this._title = message.title || null;
+        this._options = message.options || null;
         this._loadImages();
-        this._render();
-    }
-
-    _onLog(message) {
-        if (message.records) {
-            this._records = message.records.slice(-MAX_LOG_RECORDS);
-        } else if (message.record) {
-            this._records = [...this._records, message.record].slice(-MAX_LOG_RECORDS);
-        }
         this._render();
     }
 
@@ -235,11 +237,35 @@ export class HAAnimCard extends HTMLElement {
     }
 
     _onClick(event) {
-        const element = event.target && event.target.closest ? event.target.closest('[data-haanim]') : null;
-        if (!element || !this._hass) return;
-        const call = serviceCall(element.dataset, this._automationId);
+        const target = event.target && event.target.closest ? event.target : null;
+        if (!target || !this._hass) return;
+        const control = target.closest('[data-haanim]');
+        if (control) {
+            this._call(control.dataset);
+            return;
+        }
+        const own = target.closest('[data-haanim-ui]');
+        const what = own ? own.dataset.haanimUi : null;
+        if (what === 'actions') {
+            this._showActions = true;
+            this._render();
+        } else if (what === 'close') {
+            this._showActions = false;
+            this._render();
+        } else if (what === 'log') {
+            navigate(automationPath(this._automationId, true));
+        }
+    }
+
+    /** Call the service a clicked control stands for; running an action from the popup closes it. */
+    _call(dataset) {
+        const call = serviceCall(dataset, this._automationId);
         if (!call) return;
         if (call.confirm && !window.confirm(call.confirm)) return;
+        if (this._showActions) {
+            this._showActions = false;
+            this._render();
+        }
         this._hass.callService(DOMAIN, call.service, call.data).catch((error) => {
             this.dispatchEvent(
                 new CustomEvent('hass-notification', {
@@ -251,19 +277,15 @@ export class HAAnimCard extends HTMLElement {
         });
     }
 
-    _onToggle(event) {
-        const section = event.target && event.target.dataset ? event.target.dataset.section : null;
-        if (section) this._open[section] = Boolean(event.target.open);
-    }
-
     _render() {
         const body = renderCard({
             automation: this._automation,
+            title: this._title,
+            options: this._options,
             blocks: this._blocks,
-            records: this._records,
             states: this._hass ? this._hass.states : {},
             images: this._images,
-            open: this._open,
+            showActions: this._showActions,
             error: this._config ? this._error : 'No automation configured',
         });
         this.shadowRoot.innerHTML = `<style>${STYLES}</style><ha-card><div class="card">${body}</div></ha-card>`;
@@ -276,6 +298,6 @@ if (!customElements.get('haanim-card')) {
     window.customCards.push({
         type: 'haanim-card',
         name: 'HAAnim automation',
-        description: 'State, controls, content, actions and log of one HAAnim automation',
+        description: 'The card of one HAAnim automation: its title, state, content and actions',
     });
 }

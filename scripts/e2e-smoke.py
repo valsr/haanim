@@ -193,8 +193,11 @@ async def run(base: str) -> None:
         first = await smoke.event(card, lambda event: "blocks" in event, "the card of the dashboard example")
         ids = [block["id"] for block in first["blocks"]]
         check(
-            ids == ["intro", "logo", "count", "uptime", "sun", "add", "reset"],
+            ids == ["intro", "logo", "count", "uptime", "sun", "add", "reset", "frame"],
             f"the card has its blocks: {ids}",
+        )
+        check(
+            first["title"] == "Dashboard demo", f"the card has the title the automation set: {first['title']}"
         )
 
         logs, _ = await smoke.command("haanim/logs/subscribe", automation_id="dashboard")
@@ -210,12 +213,19 @@ async def run(base: str) -> None:
                 block["id"] == "count" and block["value"] == value for block in event["blocks"]
             )
 
-        await smoke.event(card, count_is(2), "the count on the card after the action")
+        updated = await smoke.event(card, count_is(2), "the count on the card after the action")
         check(True, "the card is updated over the websocket when the action changes it")
+        check(updated["title"] == "Dashboard demo: 2 pressed", f"the title follows: {updated['title']}")
         await smoke.event(
             logs, lambda event: event.get("record", {}).get("message") == "Counted to 2", "the log"
         )
         check(True, "what the action printed arrives as a log record")
+
+        await smoke.service("haanim", "run_action", automation_id="dashboard", action="toggle_frame")
+        bare = await smoke.event(card, lambda event: not event["options"]["title"], "the stripped card")
+        check(not any(bare["options"].values()), "the automation can hide every fixed part of its card")
+        await smoke.service("haanim", "run_action", automation_id="dashboard", action="toggle_frame")
+        await smoke.event(card, lambda event: event["options"]["title"], "the card with its frame again")
 
         await smoke.command("fire_event", event_type="dashboard_count", event_data={"step": 3})
         await smoke.event(card, count_is(5), "the count on the card after the event")

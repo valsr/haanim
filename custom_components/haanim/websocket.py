@@ -112,7 +112,7 @@ async def ws_get_automation(hass: HomeAssistant, connection: ActiveConnection, m
 @websocket_command({vol.Required("type"): f"{DOMAIN}/card/subscribe", vol.Required("automation_id"): str})
 @async_response
 async def ws_subscribe_card(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
-    """Send the card content of an automation now and whenever it changes."""
+    """Send the content, title and options of an automation's card now and whenever they change."""
     manager = await _manager_for(hass, connection, msg)
     if manager is None:
         return
@@ -122,12 +122,12 @@ async def ws_subscribe_card(hass: HomeAssistant, connection: ActiveConnection, m
         return
 
     @callback
-    def forward(blocks: list[dict[str, Any]]) -> None:
-        connection.send_message(event_message(msg["id"], {"blocks": blocks}))
+    def forward(content: dict[str, Any]) -> None:
+        connection.send_message(event_message(msg["id"], content))
 
     connection.subscriptions[msg["id"]] = sink.subscribe(msg["automation_id"], forward)
     connection.send_result(msg["id"])
-    forward(sink.blocks(msg["automation_id"]))
+    forward(sink.content(msg["automation_id"]))
 
 
 @websocket_command({vol.Required("type"): f"{DOMAIN}/logs/subscribe", vol.Required("automation_id"): str})

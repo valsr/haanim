@@ -31,8 +31,9 @@ async def morning(event: TimeEvent):
 - **`haa`**: entity access, service calls, `sleep` and `wait_for`, persistent variables, assets, calling and
   controlling other automations.
 - **A sensor per automation** (`sensor.haanim_<id>`: `on`, `off`, `error`) with status attributes.
-- **A dashboard card** (`custom:haanim-card`) that the automation fills with text, images, values, live
-  entities and buttons, plus a management panel in the sidebar.
+- **A dashboard card** (`custom:haanim-card`) that the automation titles and fills with text, images,
+  values, live entities and buttons, plus a management panel in the sidebar with each automation's
+  controls, actions and log.
 - **Hot reload**: edit a file and the automation is reloaded.
 - **A test harness**: test an automation with `pytest`, with no Home Assistant running.
 

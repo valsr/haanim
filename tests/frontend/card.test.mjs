@@ -48,16 +48,88 @@ describe('haanim-card', () => {
         assert.throws(() => card.setConfig(null), /automation_id is required/);
     });
 
-    test('subscribes to the card and the log of its automation and reads its details', async () => {
+    test('subscribes to the card of its automation and reads its details', async () => {
         const { card, hass } = await mounted();
         assert.deepEqual(hass.subscriptions.map((subscription) => subscription.message), [
             { type: 'haanim/card/subscribe', automation_id: 'climate' },
-            { type: 'haanim/logs/subscribe', automation_id: 'climate' },
         ]);
         assert.deepEqual(hass.calls[0], { type: 'haanim/automations/get', automation_id: 'climate' });
         assert.match(card.shadowRoot.innerHTML, /<ha-card>/);
         assert.match(card.shadowRoot.innerHTML, /<span class="name">Climate<\/span>/);
         assert.equal(card.hass, hass);
+    });
+
+    test('has no controls at the top, and draws neither the actions nor the log', async () => {
+        const { card } = await mounted();
+        assert.doesNotMatch(card.shadowRoot.innerHTML, /data-haanim="(enable|disable|start|stop|restart)"/);
+        assert.doesNotMatch(card.shadowRoot.innerHTML, /data-haanim="run"|class="record|<details/);
+        assert.match(card.shadowRoot.innerHTML, /data-haanim-ui="actions">Actions \(1\)</);
+        assert.match(card.shadowRoot.innerHTML, /data-haanim-ui="log">Log</);
+    });
+
+    test('shows the title the automation sets, and follows it', async () => {
+        const { card, hass } = await mounted();
+        hass.push('haanim/card/subscribe', { blocks: [], title: 'Climate: 1 alert' });
+        assert.match(card.shadowRoot.innerHTML, /<span class="name">Climate: 1 alert<\/span>/);
+        hass.push('haanim/card/subscribe', { blocks: [], title: 'Climate: 2 alerts' });
+        assert.match(card.shadowRoot.innerHTML, /<span class="name">Climate: 2 alerts<\/span>/);
+        hass.push('haanim/card/subscribe', { blocks: [], title: null });
+        assert.match(card.shadowRoot.innerHTML, /<span class="name">Climate<\/span>/);
+    });
+
+    test('hides the parts the automation hides, and shows them again', async () => {
+        const { card, hass } = await mounted();
+        const bare = { title: false, state: false, message: false, actions: false, log: false };
+        hass.push('haanim/card/subscribe', { blocks: [{ id: 'a', type: 'text', markdown: 'only this' }], options: bare });
+        assert.doesNotMatch(card.shadowRoot.innerHTML, /class="header"|class="toolbar"|class="name"|class="state /);
+        assert.match(card.shadowRoot.innerHTML, /class="content bare"/);
+        assert.match(card.shadowRoot.innerHTML, /only this/);
+
+        hass.push('haanim/card/subscribe', { blocks: [], options: { ...bare, title: true, log: true } });
+        assert.match(card.shadowRoot.innerHTML, /class="name"/);
+        assert.match(card.shadowRoot.innerHTML, /data-haanim-ui="log"/);
+        assert.doesNotMatch(card.shadowRoot.innerHTML, /data-haanim-ui="actions"|class="state /);
+
+        hass.push('haanim/card/subscribe', { blocks: [] });
+        assert.match(card.shadowRoot.innerHTML, /data-haanim-ui="actions"/);
+        assert.match(card.shadowRoot.innerHTML, /class="state /);
+    });
+
+    test('the actions button opens a popup with all actions, which can be closed', async () => {
+        const { card, hass } = await mounted();
+        card.shadowRoot.fire('click', clicked({ 'haanim-ui': 'actions' }));
+        assert.match(card.shadowRoot.innerHTML, /class="overlay"/);
+        assert.match(card.shadowRoot.innerHTML, /data-haanim="run" data-action="reset_alerts"/);
+
+        card.shadowRoot.fire('click', clicked({ 'haanim-ui': 'dialog' }));
+        assert.match(card.shadowRoot.innerHTML, /class="overlay"/, 'a click inside the popup keeps it open');
+
+        hass.push('haanim/card/subscribe', { blocks: [] });
+        assert.match(card.shadowRoot.innerHTML, /class="overlay"/, 'an update of the card keeps it open');
+
+        card.shadowRoot.fire('click', clicked({ 'haanim-ui': 'close' }));
+        assert.doesNotMatch(card.shadowRoot.innerHTML, /class="overlay"/);
+        assert.equal(hass.services.length, 0);
+    });
+
+    test('running an action from the popup calls it and closes the popup', async () => {
+        const { card, hass } = await mounted();
+        card.shadowRoot.fire('click', clicked({ 'haanim-ui': 'actions' }));
+        card.shadowRoot.fire('click', clicked({ haanim: 'run', action: 'reset_alerts' }));
+        assert.deepEqual(hass.services, [
+            { domain: 'haanim', service: 'run_action', data: { automation_id: 'climate', action: 'reset_alerts', data: {} } },
+        ]);
+        assert.doesNotMatch(card.shadowRoot.innerHTML, /class="overlay"/);
+    });
+
+    test('the log button goes to the log of the automation in the HAAnim panel', async () => {
+        const { card, hass } = await mounted();
+        dom.visited.length = 0;
+        dom.fired.length = 0;
+        card.shadowRoot.fire('click', clicked({ 'haanim-ui': 'log' }));
+        assert.deepEqual(dom.visited, ['/haanim/automation/climate/logs']);
+        assert.deepEqual(dom.fired, ['location-changed']);
+        assert.equal(hass.services.length, 0);
     });
 
     test('does not subscribe before it is on a page and has hass', async () => {
@@ -79,15 +151,6 @@ describe('haanim-card', () => {
         assert.equal(card.getCardSize(), 4);
         hass.push('haanim/card/subscribe', {});
         assert.doesNotMatch(card.shadowRoot.innerHTML, /class="content"/);
-    });
-
-    test('shows the recent log records and adds new ones', async () => {
-        const { card, hass } = await mounted();
-        hass.push('haanim/logs/subscribe', { records: [{ time: '', level: 'INFO', message: 'first' }] });
-        hass.push('haanim/logs/subscribe', { record: { time: '', level: 'WARNING', message: 'second' } });
-        hass.push('haanim/logs/subscribe', {});
-        assert.match(card.shadowRoot.innerHTML, /Log \(2\)/);
-        assert.match(card.shadowRoot.innerHTML, /first[\s\S]*second/);
     });
 
     test('a control calls its service', async () => {
@@ -126,6 +189,7 @@ describe('haanim-card', () => {
         const { card, hass } = await mounted();
         card.shadowRoot.fire('click', clicked({}));
         card.shadowRoot.fire('click', clicked({ haanim: 'format_disk' }));
+        card.shadowRoot.fire('click', clicked({ 'haanim-ui': 'something' }));
         card.shadowRoot.fire('click', { target: null });
         assert.equal(hass.services.length, 0);
     });
@@ -172,9 +236,8 @@ describe('haanim-card', () => {
         hass.states = { [ENTITY]: entity('on', '3') };
         card.hass = hass;
         await settle();
-        assert.equal(hass.subscriptions.length, 4);
+        assert.equal(hass.subscriptions.length, 2);
         assert.equal(hass.active('haanim/card/subscribe').length, 1);
-        assert.equal(hass.active('haanim/logs/subscribe').length, 1);
     });
 
     test('an automation that is not there shows why, and is tried again when its entity changes', async () => {
@@ -216,28 +279,21 @@ describe('haanim-card', () => {
         assert.equal(hass.fetched.filter((fetched) => fetched === url).length, 1, 'a loaded image is not fetched again');
     });
 
-    test('remembers which sections are open across redraws', async () => {
-        const { card, hass } = await mounted();
-        card.shadowRoot.fire('toggle', { target: { dataset: { section: 'log' }, open: true } });
-        card.shadowRoot.fire('toggle', { target: { dataset: {} } });
-        hass.push('haanim/logs/subscribe', { record: { time: '', level: 'INFO', message: 'x' } });
-        assert.match(card.shadowRoot.innerHTML, /data-section="log" open/);
-        assert.doesNotMatch(card.shadowRoot.innerHTML, /data-section="actions" open/);
-    });
-
     test('ends its subscriptions when it leaves the page', async () => {
         const { card, hass } = await mounted();
         card.disconnectedCallback();
         await settle();
         assert.equal(hass.active('haanim/card/subscribe').length, 0);
-        assert.equal(hass.active('haanim/logs/subscribe').length, 0);
     });
 
     test('a new automation ID starts over', async () => {
         const { card, hass } = await mounted();
         hass.answers['haanim/automations/get'] = (message) => ({ ...DETAIL, id: message.automation_id, name: 'Other' });
+        hass.push('haanim/card/subscribe', { blocks: [], title: 'Old title' });
+        card.shadowRoot.fire('click', clicked({ 'haanim-ui': 'actions' }));
         card.setConfig({ automation_id: 'other' });
         await settle();
+        assert.doesNotMatch(card.shadowRoot.innerHTML, /Old title|class="overlay"/);
         assert.deepEqual(hass.active('haanim/card/subscribe').map((subscription) => subscription.message.automation_id), ['other']);
         assert.match(card.shadowRoot.innerHTML, /<span class="name">Other<\/span>/);
         card.setConfig({ automation_id: 'other' });

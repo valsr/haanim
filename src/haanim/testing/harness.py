@@ -31,6 +31,7 @@ from haanim.engine.action_dispatcher import ActionDispatcher
 from haanim.engine.action_pool import ActionWorkerPool
 from haanim.engine.automation_context import ActionDefinition, AutomationContext
 from haanim.engine.automation_status import AutomationStatusManager
+from haanim.engine.card import CARD_PARTS
 from haanim.engine.control import AutomationControl, EnabledFlags
 from haanim.engine.discovery import ASSETS_DIRNAME
 from haanim.engine.errors import (
@@ -94,9 +95,14 @@ class HarnessCard:
 
     Args:
         blocks: The blocks in order, each a dictionary with ``id``, ``type`` and its content.
+        title: The title the automation gave the card; None while it shows the automation's name.
+        options: Which fixed parts of the card are shown: ``title``, ``state``,
+            ``message``, ``actions`` and ``log``.
     """
 
     blocks: list[dict[str, Any]] = field(default_factory=list)
+    title: str | None = None
+    options: dict[str, bool] = field(default_factory=lambda: dict.fromkeys(CARD_PARTS, True))
 
     def block(self, block_id: str) -> dict[str, Any]:
         """Return the block with an ID.
@@ -695,7 +701,9 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
     def card(self) -> HarnessCard:
         """The content of the automation's card now; empty while the automation is not running."""
         haa = self._context._haa  # pylint: disable=protected-access
-        return HarnessCard(haa.card.blocks if haa is not None else [])
+        if haa is None:
+            return HarnessCard()
+        return HarnessCard(haa.card.blocks, haa.card.title, haa.card.options)
 
     @property
     def card_updates(self) -> list[list[dict[str, Any]]]:

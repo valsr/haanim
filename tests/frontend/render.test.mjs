@@ -3,18 +3,25 @@ import { describe, test } from 'node:test';
 
 import {
     MAX_LOG_RECORDS,
+    CARD_PARTS,
+    PANEL_PATH,
+    automationPath,
     escapeHtml,
     formatTime,
-    renderActions,
+    parseRoute,
+    renderActionList,
+    renderActionsDialog,
     renderBlock,
     renderCard,
     renderConfig,
     renderContent,
+    renderControls,
     renderDetail,
     renderHeader,
     renderList,
     renderLog,
     renderMarkdown,
+    renderToolbar,
     safeUrl,
     serviceCall,
     stateLabel,
@@ -204,7 +211,6 @@ describe('stateLabel', () => {
 });
 
 describe('renderHeader', () => {
-    const controls = (automation) => [...renderHeader(automation).matchAll(/data-haanim="(\w+)"/g)].map((match) => match[1]);
     test('name, state and message', () => {
         const html = renderHeader({ id: 'climate', name: 'Climate <1>', state: 'on', enabled: true, message: 'All <good>' });
         assert.match(html, /<span class="name">Climate &lt;1&gt;<\/span>/);
@@ -216,6 +222,76 @@ describe('renderHeader', () => {
         assert.match(html, /<span class="name">climate<\/span>/);
         assert.doesNotMatch(html, /class="message"/);
     });
+    test('the title the automation set replaces the name', () => {
+        const automation = { id: 'climate', name: 'Climate', state: 'on', enabled: true };
+        assert.match(renderHeader(automation, 'Climate: 3 <alerts>'), /<span class="name">Climate: 3 &lt;alerts&gt;<\/span>/);
+        assert.match(renderHeader(automation, null), /<span class="name">Climate<\/span>/);
+        assert.match(renderHeader(automation, ''), /<span class="name">Climate<\/span>/);
+    });
+    test('the header has no controls', () => {
+        for (const state of ['on', 'off', 'error']) {
+            const html = renderHeader({ id: 'climate', name: 'Climate', state, enabled: true });
+            assert.doesNotMatch(html, /<button|data-haanim/);
+        }
+    });
+});
+
+describe('parts of the card the automation hides', () => {
+    const automation = { id: 'climate', name: 'Climate', state: 'on', enabled: true, message: 'All good', actions: [{ name: 'alert', description: '' }] };
+    const all = { title: true, state: true, message: true, actions: true, log: true };
+    test('the five parts', () => {
+        assert.deepEqual(CARD_PARTS, ['title', 'state', 'message', 'actions', 'log']);
+    });
+    test('everything is shown without options, and with all of them on', () => {
+        for (const options of [null, undefined, {}, all]) {
+            const html = renderCard({ automation, blocks: [], options });
+            assert.match(html, /class="name"/);
+            assert.match(html, /class="state /);
+            assert.match(html, /class="message"/);
+            assert.match(html, /data-haanim-ui="actions"/);
+            assert.match(html, /data-haanim-ui="log"/);
+        }
+    });
+    const parts = [
+        ['title', /class="name"/],
+        ['state', /class="state /],
+        ['message', /class="message"/],
+        ['actions', /data-haanim-ui="actions"/],
+        ['log', /data-haanim-ui="log"/],
+    ];
+    for (const [part, pattern] of parts) {
+        test(`hiding ${part} hides only that`, () => {
+            const html = renderCard({ automation, blocks: [], options: { ...all, [part]: false } });
+            assert.doesNotMatch(html, pattern);
+            for (const [other, otherPattern] of parts) {
+                if (other !== part) assert.match(html, otherPattern);
+            }
+        });
+    }
+    test('a header with nothing in it is not drawn', () => {
+        assert.equal(renderHeader(automation, null, { title: false, state: false, message: false }), '');
+        assert.equal(renderHeader({ ...automation, message: null }, null, { title: false, state: false }), '');
+        assert.match(renderHeader(automation, null, { title: false, state: false }), /^<div class="header"><div class="message">All good<\/div><\/div>$/);
+    });
+    test('a toolbar with nothing in it is not drawn', () => {
+        assert.equal(renderToolbar(automation, { actions: false, log: false }), '');
+        assert.doesNotMatch(renderToolbar(automation, { actions: false }), /data-haanim-ui="actions"/);
+        assert.doesNotMatch(renderToolbar(automation, { log: false }), /data-haanim-ui="log"/);
+    });
+    test('with everything hidden the card is the bare content', () => {
+        const none = { title: false, state: false, message: false, actions: false, log: false };
+        const html = renderCard({ automation, blocks: [{ id: 'a', type: 'text', markdown: 'hi' }], options: none });
+        assert.equal(html, '<div class="content bare"><div class="block block-text" data-block="a"><p>hi</p></div></div>');
+        assert.equal(renderCard({ automation, blocks: [], options: none }), '');
+    });
+    test('the popup cannot be open while the actions are hidden', () => {
+        const html = renderCard({ automation, blocks: [], options: { actions: false }, showActions: true });
+        assert.doesNotMatch(html, /class="overlay"/);
+    });
+});
+
+describe('renderControls', () => {
+    const controls = (automation) => [...renderControls(automation).matchAll(/data-haanim="(\w+)"/g)].map((match) => match[1]);
     test('the controls that apply to each state', () => {
         assert.deepEqual(controls({ state: 'on', enabled: true }), ['disable', 'stop', 'restart']);
         assert.deepEqual(controls({ state: 'off', enabled: true }), ['disable', 'start']);
@@ -225,18 +301,43 @@ describe('renderHeader', () => {
     });
 });
 
-describe('renderActions', () => {
+describe('renderActionList', () => {
     test('a run button per action', () => {
-        const html = renderActions([{ name: 'alert', aliases: [], description: 'Count <one>' }, { name: 'reset', aliases: [], description: '' }]);
-        assert.match(html, /<summary>Actions \(2\)<\/summary>/);
+        const html = renderActionList([{ name: 'alert', aliases: [], description: 'Count <one>' }, { name: 'reset', aliases: [], description: '' }]);
         assert.match(html, /data-haanim="run" data-action="alert"/);
+        assert.match(html, /data-haanim="run" data-action="reset"/);
         assert.match(html, /<span class="description">Count &lt;one&gt;<\/span>/);
         assert.equal((html.match(/class="description"/g) || []).length, 1);
-        assert.doesNotMatch(html, /<details[^>]* open/);
     });
-    test('none, and open', () => {
-        assert.match(renderActions([], true), /<details class="section" data-section="actions" open>.*No actions/);
-        assert.match(renderActions(undefined), /Actions \(0\)/);
+    test('none', () => {
+        assert.match(renderActionList([]), /No actions/);
+        assert.match(renderActionList(undefined), /No actions/);
+    });
+});
+
+describe('renderToolbar', () => {
+    test('a button for the actions and one for the log', () => {
+        const html = renderToolbar({ actions: [{ name: 'a' }, { name: 'b' }] });
+        assert.match(html, /<button class="tool" data-haanim-ui="actions">Actions \(2\)<\/button>/);
+        assert.match(html, /<button class="tool" data-haanim-ui="log">Log<\/button>/);
+        assert.match(renderToolbar({}), /Actions \(0\)/);
+    });
+    test('the actions and the log are not drawn on the card itself', () => {
+        const html = renderToolbar({ actions: [{ name: 'alert', description: 'x' }] });
+        assert.doesNotMatch(html, /data-haanim="run"|class="record|<details/);
+    });
+});
+
+describe('renderActionsDialog', () => {
+    test('all actions in a popup that can be closed', () => {
+        const html = renderActionsDialog({ id: 'climate', name: 'Climate <x>', actions: [{ name: 'alert', description: '' }, { name: 'reset', description: '' }] });
+        assert.match(html, /^<div class="overlay" data-haanim-ui="close"><div class="dialog" role="dialog" aria-modal="true" data-haanim-ui="dialog">/);
+        assert.match(html, /Climate &lt;x&gt;: actions/);
+        assert.equal((html.match(/data-haanim="run"/g) || []).length, 2);
+        assert.match(html, /<button class="tool" data-haanim-ui="close">Close<\/button>/);
+    });
+    test('an automation without actions', () => {
+        assert.match(renderActionsDialog({ id: 'plain', actions: [] }), /plain: actions.*No actions/);
     });
 });
 
@@ -246,7 +347,6 @@ describe('renderLog', () => {
             { time: '2025-01-06T08:00:00+00:00', level: 'INFO', message: 'hello <b>' },
             { time: '2025-01-06T08:00:01+00:00', level: 'ERROR', message: 'failed', traceback: 'Traceback <x>' },
         ]);
-        assert.match(html, /<summary>Log \(2\)<\/summary>/);
         assert.match(html, /class="record level-info"/);
         assert.match(html, /class="record level-error"/);
         assert.match(html, /<span class="text">hello &lt;b&gt;<\/span>/);
@@ -258,16 +358,41 @@ describe('renderLog', () => {
     });
     test('only the latest records are drawn', () => {
         const records = Array.from({ length: MAX_LOG_RECORDS + 5 }, (_, index) => ({ time: '', level: 'INFO', message: `m${index}` }));
-        const html = renderLog(records, true);
+        const html = renderLog(records);
         assert.equal((html.match(/class="record/g) || []).length, MAX_LOG_RECORDS);
         assert.doesNotMatch(html, />m4</);
         assert.match(html, />m5</);
-        assert.match(html, / open>/);
     });
     test('no records', () => {
         assert.match(renderLog([]), /No log records/);
-        assert.match(renderLog(undefined), /Log \(0\)/);
+        assert.match(renderLog(undefined), /No log records/);
         assert.match(renderLog([{ message: 'm' }]), /level-info/);
+    });
+});
+
+describe('panel addresses', () => {
+    test('the path of an automation and of its log', () => {
+        assert.equal(PANEL_PATH, '/haanim');
+        assert.equal(automationPath('climate'), '/haanim/automation/climate');
+        assert.equal(automationPath('climate', true), '/haanim/automation/climate/logs');
+        assert.equal(automationPath('a b/c'), '/haanim/automation/a%20b%2Fc');
+    });
+    test('reading the address', () => {
+        assert.deepEqual(parseRoute(''), { page: 'list', id: null, section: null });
+        assert.deepEqual(parseRoute('/'), { page: 'list', id: null, section: null });
+        assert.deepEqual(parseRoute(undefined), { page: 'list', id: null, section: null });
+        assert.deepEqual(parseRoute('/config'), { page: 'config', id: null, section: null });
+        assert.deepEqual(parseRoute('/automation/climate'), { page: 'detail', id: 'climate', section: null });
+        assert.deepEqual(parseRoute('/automation/climate/logs'), { page: 'detail', id: 'climate', section: 'logs' });
+        assert.deepEqual(parseRoute('/automation/climate/other'), { page: 'detail', id: 'climate', section: null });
+        assert.deepEqual(parseRoute('/automation/a%20b'), { page: 'detail', id: 'a b', section: null });
+        assert.deepEqual(parseRoute('/automation/%E0%A4%A'), { page: 'detail', id: '%E0%A4%A', section: null });
+        assert.deepEqual(parseRoute('/automation'), { page: 'list', id: null, section: null });
+        assert.deepEqual(parseRoute('/config/more'), { page: 'list', id: null, section: null });
+        assert.deepEqual(parseRoute('/unknown'), { page: 'list', id: null, section: null });
+    });
+    test('an automation called config has its own page', () => {
+        assert.deepEqual(parseRoute(automationPath('config').slice(PANEL_PATH.length)), { page: 'detail', id: 'config', section: null });
     });
 });
 
@@ -282,18 +407,32 @@ describe('formatTime', () => {
 
 describe('renderCard', () => {
     const automation = { id: 'climate', name: 'Climate', state: 'on', enabled: true, message: null, actions: [{ name: 'alert', aliases: [], description: '' }] };
-    test('header, content, actions and log in that order', () => {
-        const html = renderCard({ automation, blocks: [{ id: 'a', type: 'text', markdown: 'hi' }], records: [], open: { log: true } });
-        const order = ['class="header"', 'class="content"', 'data-section="actions"', 'data-section="log"'].map((part) => html.indexOf(part));
+    test('header, content and the two buttons in that order', () => {
+        const html = renderCard({ automation, blocks: [{ id: 'a', type: 'text', markdown: 'hi' }] });
+        const order = ['class="header"', 'class="content"', 'class="toolbar"'].map((part) => html.indexOf(part));
         assert.deepEqual([...order].sort((a, b) => a - b), order);
         assert.ok(order.every((index) => index >= 0));
-        assert.match(html, /data-section="log" open/);
+        assert.doesNotMatch(html, /class="overlay"/);
+    });
+    test('the header shows the title the automation set', () => {
+        assert.match(renderCard({ automation, title: 'Climate: 2 alerts', blocks: [] }), /<span class="name">Climate: 2 alerts<\/span>/);
+        assert.match(renderCard({ automation, title: null, blocks: [] }), /<span class="name">Climate<\/span>/);
+    });
+    test('no controls at the top of the card', () => {
+        const html = renderCard({ automation, blocks: [] });
+        assert.doesNotMatch(html, /data-haanim="(enable|disable|start|stop|restart)"/);
+    });
+    test('the actions popup is drawn only when it is open', () => {
+        const html = renderCard({ automation, blocks: [], showActions: true });
+        assert.match(html, /class="overlay"/);
+        assert.match(html, /data-haanim="run" data-action="alert"/);
+        assert.doesNotMatch(renderCard({ automation, blocks: [] }), /data-haanim="run" data-action="alert"/);
     });
     test('the fixed parts are shown without content', () => {
-        const html = renderCard({ automation: { ...automation, state: 'off' }, blocks: [], records: [] });
+        const html = renderCard({ automation: { ...automation, state: 'off' }, blocks: [] });
         assert.doesNotMatch(html, /class="content"/);
         assert.match(html, /class="header"/);
-        assert.match(html, /data-section="actions"/);
+        assert.match(html, /class="toolbar"/);
     });
     test('loading and error', () => {
         assert.match(renderCard({ automation: null }), /Loading/);

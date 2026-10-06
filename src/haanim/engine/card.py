@@ -17,13 +17,19 @@ from typing import Any
 from haanim.engine.assets import AssetStore
 from haanim.interfaces import CardSink
 
-__all__ = ["HAAnimCard", "MAX_BLOCKS", "MAX_TEXT_LENGTH"]
+__all__ = ["CARD_PARTS", "HAAnimCard", "MAX_BLOCKS", "MAX_TEXT_LENGTH", "MAX_TITLE_LENGTH"]
 
 MAX_BLOCKS = 50
 """The most blocks a card can have."""
 
 MAX_TEXT_LENGTH = 10_000
 """The most characters a text block can have."""
+
+MAX_TITLE_LENGTH = 100
+"""The most characters the card's title can have."""
+
+CARD_PARTS = ("title", "state", "message", "actions", "log")
+"""The fixed parts of the card an automation can hide: all are shown unless it hides them."""
 
 
 def _check_str(value: Any, what: str, *, empty: bool = True) -> str:
@@ -61,11 +67,92 @@ class HAAnimCard:
         self._has_action = has_action
         self._sink = sink
         self._blocks: dict[str, dict[str, Any]] = {}
+        self._title: str | None = None
+        self._hidden: set[str] = set()
         self._pending: asyncio.Handle | None = None
 
     def __repr__(self) -> str:
         """Return a short description."""
         return f"<HAAnimCard {self._automation_id}: {len(self._blocks)} blocks>"
+
+    # --- Title -------------------------------------------------------------------
+
+    @property
+    def title(self) -> str | None:
+        """The title the automation gave its card; None while the card shows the automation's name."""
+        return self._title
+
+    def set_title(self, title: str | None) -> None:
+        """Set the title shown at the top of the card.
+
+        Without a title the card shows the automation's name. The title can be
+        set again at any time, so it can follow what the automation does.
+
+        Args:
+            title: The title, or None to go back to the automation's name.
+
+        Raises:
+            ValueError: If the title is empty or longer than 100 characters.
+        """
+        if title is not None:
+            _check_str(title, "title", empty=False)
+            if len(title) > MAX_TITLE_LENGTH:
+                raise ValueError(
+                    f"A card title can have at most {MAX_TITLE_LENGTH} characters, not {len(title)}"
+                )
+        if title != self._title:
+            self._title = title
+            self._changed()
+
+    # --- The fixed parts ---------------------------------------------------------
+
+    @property
+    def options(self) -> dict[str, bool]:
+        """Which fixed parts of the card are shown: ``title``, ``state``, ``message``, ``actions``, ``log``.
+
+        The dictionary is a copy: changing it does not change the card.
+        """
+        return {part: part not in self._hidden for part in CARD_PARTS}
+
+    def configure(
+        self,
+        *,
+        title: bool | None = None,
+        state: bool | None = None,
+        message: bool | None = None,
+        actions: bool | None = None,
+        log: bool | None = None,
+    ) -> None:
+        """Show or hide the fixed parts of the card.
+
+        Every part is shown until it is hidden. A part that is not named
+        keeps its setting, so ``configure(log=False)`` hides only the log
+        button. With all five hidden the card is a bare box with the
+        automation's content.
+
+        Args:
+            title: The title at the top.
+            state: The state badge (Running, Stopped, ...).
+            message: The status message set with ``haa.set_message()``.
+            actions: The button that opens the automation's actions.
+            log: The button that goes to the automation's log.
+
+        Raises:
+            TypeError: If a value is not True, False or None.
+        """
+        given = {"title": title, "state": state, "message": message, "actions": actions, "log": log}
+        for part, shown in given.items():
+            if shown is not None and not isinstance(shown, bool):
+                raise TypeError(f"{part} must be True or False, not {type(shown).__name__}")
+        hidden = set(self._hidden)
+        for part, shown in given.items():
+            if shown is True:
+                hidden.discard(part)
+            elif shown is False:
+                hidden.add(part)
+        if hidden != self._hidden:
+            self._hidden = hidden
+            self._changed()
 
     # --- Blocks ------------------------------------------------------------------
 
@@ -210,11 +297,13 @@ class HAAnimCard:
         """Hand the current content to the sink."""
         self._pending = None
         if self._sink is not None:
-            self._sink.card_changed(self._automation_id, self.blocks)
+            self._sink.card_changed(self._automation_id, self.blocks, self._title, self.options)
 
     def close(self) -> None:
         """Empty the card and tell the sink at once: the automation has stopped."""
-        had_blocks = bool(self._blocks)
+        had_blocks = bool(self._blocks) or self._title is not None or bool(self._hidden)
+        self._title = None
+        self._hidden = set()
         waiting = self._pending is not None
         if self._pending is not None:
             self._pending.cancel()

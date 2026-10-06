@@ -17,7 +17,7 @@ const CONTROLS = [
 
 const CONTROL_SERVICES = new Set(['enable', 'disable', 'start', 'stop', 'restart', 'reload']);
 
-/** How many log records the card shows. */
+/** How many log records are shown. */
 export const MAX_LOG_RECORDS = 200;
 
 /** Escape text for use in HTML content and in double-quoted attributes. */
@@ -215,23 +215,76 @@ export function renderContent(blocks, context = {}) {
     return (blocks || []).map((block) => renderBlock(block, context)).join('');
 }
 
-/** Render the fixed header: name, state, status message and the controls that apply. */
-export function renderHeader(automation) {
+/** The path of the HAAnim panel, and of the pages in it. */
+export const PANEL_PATH = '/haanim';
+
+/** The path of an automation's page in the panel; with `logs`, of the log section on it. */
+export function automationPath(automationId, logs = false) {
+    return `${PANEL_PATH}/automation/${encodeURIComponent(automationId)}${logs ? '/logs' : ''}`;
+}
+
+/**
+ * Read the part of the address after the panel's own path.
+ *
+ * Returns `{page, id, section}`: page is `list`, `config` or `detail`; for `detail`, `id` is the automation
+ * and `section` is `logs` if the address points at its log.
+ */
+export function parseRoute(path) {
+    const parts = String(path || '')
+        .split('/')
+        .filter((part) => part !== '');
+    if (parts[0] === 'config' && parts.length === 1) return { page: 'config', id: null, section: null };
+    if (parts[0] === 'automation' && parts[1]) {
+        let id = parts[1];
+        try {
+            id = decodeURIComponent(parts[1]);
+        } catch (error) {
+            id = parts[1];
+        }
+        return { page: 'detail', id, section: parts[2] === 'logs' ? 'logs' : null };
+    }
+    return { page: 'list', id: null, section: null };
+}
+
+/** The fixed parts of the card an automation can hide with `haa.card.configure()`. All are shown by default. */
+export const CARD_PARTS = ['title', 'state', 'message', 'actions', 'log'];
+
+/** Whether a fixed part of the card is shown: it is, unless the options say `false` for it. */
+function shown(options, part) {
+    return !options || options[part] !== false;
+}
+
+/**
+ * Render the fixed header: the title, the state and the status message, each unless the automation hid it.
+ *
+ * The title is the one the automation set with `haa.card.set_title()`, else the automation's name. With
+ * nothing to show there is no header at all.
+ */
+export function renderHeader(automation, title = null, options = null) {
     const state = stateLabel(automation.state, automation.enabled);
+    const name = shown(options, 'title')
+        ? `<span class="name">${escapeHtml(title || automation.name || automation.id)}</span>`
+        : '';
+    const badge = shown(options, 'state') ? `<span class="state state-${state.css}">${state.label}</span>` : '';
+    const message =
+        shown(options, 'message') && automation.message
+            ? `<div class="message">${escapeHtml(automation.message)}</div>`
+            : '';
+    if (!name && !badge && !message) return '';
+    const top = name || badge ? `<div class="title">${name}${badge}</div>` : '';
+    return `<div class="header">${top}${message}</div>`;
+}
+
+/** Render the controls that apply to the automation's state: enable, disable, start, stop, restart. */
+export function renderControls(automation) {
     const controls = CONTROLS.filter((control) => control.when(automation))
         .map((control) => `<button class="control" data-haanim="${control.service}">${control.label}</button>`)
         .join('');
-    const message = automation.message ? `<div class="message">${escapeHtml(automation.message)}</div>` : '';
-    return (
-        '<div class="header">' +
-        `<div class="title"><span class="name">${escapeHtml(automation.name || automation.id)}</span>` +
-        `<span class="state state-${state.css}">${state.label}</span></div>` +
-        `${message}<div class="controls">${controls}</div></div>`
-    );
+    return `<div class="controls">${controls}</div>`;
 }
 
-/** Render the collapsible list of actions, each with a run button. */
-export function renderActions(actions, open = false) {
+/** Render the automation's actions as a list, each with a run button. */
+export function renderActionList(actions) {
     const rows = (actions || [])
         .map((action) => {
             const description = action.description
@@ -243,15 +296,37 @@ export function renderActions(actions, open = false) {
             );
         })
         .join('');
-    const body = rows ? `<ul class="actions">${rows}</ul>` : '<div class="empty">No actions</div>';
+    return rows ? `<ul class="actions">${rows}</ul>` : '<div class="empty">No actions</div>';
+}
+
+/**
+ * Render the buttons at the bottom of the card: one opens the actions, one goes to the log.
+ *
+ * Each is left out if the automation hid it; with both hidden there is no toolbar.
+ */
+export function renderToolbar(automation, options = null) {
+    const count = (automation.actions || []).length;
+    const actions = shown(options, 'actions')
+        ? `<button class="tool" data-haanim-ui="actions">Actions (${count})</button>`
+        : '';
+    const log = shown(options, 'log') ? '<button class="tool" data-haanim-ui="log">Log</button>' : '';
+    return actions || log ? `<div class="toolbar">${actions}${log}</div>` : '';
+}
+
+/** Render the popup with all actions of the automation. A click outside it, or on Close, closes it. */
+export function renderActionsDialog(automation) {
     return (
-        `<details class="section" data-section="actions"${open ? ' open' : ''}>` +
-        `<summary>Actions (${(actions || []).length})</summary>${body}</details>`
+        '<div class="overlay" data-haanim-ui="close">' +
+        '<div class="dialog" role="dialog" aria-modal="true" data-haanim-ui="dialog">' +
+        `<div class="dialog-title">${escapeHtml(automation.name || automation.id)}: actions</div>` +
+        renderActionList(automation.actions) +
+        '<div class="dialog-buttons"><button class="tool" data-haanim-ui="close">Close</button></div>' +
+        '</div></div>'
     );
 }
 
-/** Render the collapsible log: the recent records, newest last, with the level as a class. */
-export function renderLog(records, open = false) {
+/** Render log records, newest last, with the level as a class. Only the latest are drawn. */
+export function renderLog(records) {
     const rows = (records || [])
         .slice(-MAX_LOG_RECORDS)
         .map((record) => {
@@ -264,29 +339,29 @@ export function renderLog(records, open = false) {
             );
         })
         .join('');
-    const body = rows ? `<ul class="log">${rows}</ul>` : '<div class="empty">No log records</div>';
-    return (
-        `<details class="section" data-section="log"${open ? ' open' : ''}>` +
-        `<summary>Log (${(records || []).length})</summary>${body}</details>`
-    );
+    return rows ? `<ul class="log">${rows}</ul>` : '<div class="empty">No log records</div>';
 }
 
 /**
- * Render the whole card: the fixed header, the automation's content, the actions and the log.
+ * Render the whole card: the header, the automation's content, and the buttons for actions and log.
  *
- * `view` has `automation` (the detail of the automation, or null while it is unknown), `blocks`, `records`,
- * `states`, `images`, `open` ({actions, log}) and `error` (a message shown instead of the card).
+ * `view` has `automation` (the detail of the automation, or null while it is unknown), `title` (the one the
+ * automation set, or null), `options` (which fixed parts the automation shows, or null for all), `blocks`,
+ * `states`, `images`, `showActions` (whether the actions popup is open) and `error` (a message shown instead
+ * of the card).
  */
 export function renderCard(view) {
     if (view.error) return `<div class="card-error">${escapeHtml(view.error)}</div>`;
     if (!view.automation) return '<div class="card-loading">Loading…</div>';
-    const open = view.open || {};
+    const header = renderHeader(view.automation, view.title, view.options);
     const content = renderContent(view.blocks, view);
+    // The line between header and content is only drawn when there is a header
+    const contentClass = header ? 'content' : 'content bare';
     return (
-        renderHeader(view.automation) +
-        (content ? `<div class="content">${content}</div>` : '') +
-        renderActions(view.automation.actions, open.actions) +
-        renderLog(view.records, open.log)
+        header +
+        (content ? `<div class="${contentClass}">${content}</div>` : '') +
+        renderToolbar(view.automation, view.options) +
+        (view.showActions && shown(view.options, 'actions') ? renderActionsDialog(view.automation) : '')
     );
 }
 

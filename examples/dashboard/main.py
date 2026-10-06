@@ -1,7 +1,9 @@
 """A card that shows everything `haa.card` can do.
 
-The card has a heading, a logo from the automation's assets, a counter that is
-kept across restarts, the live state of an entity and two buttons. Add it to a
+The card has a title that changes with what the automation does, a heading, a
+logo from the automation's assets, a counter that is kept across restarts, the
+live state of an entity and three buttons, one of which strips the card to a
+bare box and back. Add it to a
 dashboard with::
 
     type: custom:haanim-card
@@ -30,9 +32,11 @@ ENTITY = "sun.sun"
 
 
 def show_count() -> int:
-    """Put the stored count on the card and return it."""
+    """Put the stored count on the card and in its title, and return it."""
     count = int(haa.get_variable("count", 0))
     haa.card.value("count", label="Button presses", value=count)
+    # The title of the card follows the count
+    haa.card.set_title(f"Dashboard demo: {count} pressed" if count else "Dashboard demo")
     return count
 
 
@@ -46,6 +50,7 @@ def build_card(event: ActionEvent) -> None:
     haa.card.entity("sun", ENTITY)
     haa.card.button("add", label="Count", action="count", step=1)
     haa.card.button("reset", label="Reset", action="reset", confirm="Reset the counter to zero?")
+    haa.card.button("frame", label="Bare card on/off", action="toggle_frame")
     haa.set_message("Card ready")
 
 
@@ -64,6 +69,14 @@ def reset(event: ActionEvent) -> int:
     haa.set_variable("count", 0)
     haa.set_message("Counter reset")
     return show_count()
+
+
+@action(description="Hide or show everything on the card that is not the automation's own content")
+def toggle_frame(event: ActionEvent) -> bool:
+    """Strip the card to a bare box, or bring its title, state, message and buttons back."""
+    show = not haa.card.options["title"]
+    haa.card.configure(title=show, state=show, message=show, actions=show, log=show)
+    return show
 
 
 @on_interval("00:01:00")
