@@ -267,6 +267,8 @@ class AutomationContext:
         self._decorators.clear()
         self._global_symbols = SymbolTable()
         self._evaluator = None
+        if self._haa is not None:
+            self._haa.card.close()
         self._haa = None
         self.variables = None
         self._actions = {}

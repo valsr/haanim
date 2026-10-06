@@ -320,6 +320,42 @@ class ServiceDomainProxy:
         """Get service proxy."""
         ...
 
+class HAAnimCard:
+    """The content of the automation's card (haa.card): an ordered list of blocks."""
+
+    def text(self, id: str, markdown: str) -> None:
+        """Show markdown text (at most 10 000 characters)."""
+        ...
+
+    def image(self, id: str, asset: str | None = None, url: str | None = None, alt: str = "") -> None:
+        """Show an image from assets/ or from a URL (exactly one of the two)."""
+        ...
+
+    def value(self, id: str, label: str, value: str | int | float | bool, unit: str = "") -> None:
+        """Show a labelled value."""
+        ...
+
+    def entity(self, id: str, entity_id: str) -> None:
+        """Show the live state of a Home Assistant entity."""
+        ...
+
+    def button(self, id: str, label: str, action: str, confirm: str | None = None, **data: Any) -> None:
+        """Show a button that runs one of the automation's actions."""
+        ...
+
+    def remove(self, id: str) -> None:
+        """Remove a block; does nothing if the ID is not present."""
+        ...
+
+    def clear(self) -> None:
+        """Remove all blocks."""
+        ...
+
+    @property
+    def blocks(self) -> list[dict[str, Any]]:
+        """Read-only list of the current blocks."""
+        ...
+
 class HAAnim:
     """Main HAAnim API object (haa instance).
 
@@ -409,6 +445,11 @@ class HAAnim:
 
     def clear_variables(self) -> None:
         """Clear all persistent variables."""
+        ...
+
+    @property
+    def card(self) -> HAAnimCard:
+        """The content of the automation's card."""
         ...
 
     async def read_asset(self, name: str, text: bool = False) -> bytes | str:

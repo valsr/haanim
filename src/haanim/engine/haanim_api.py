@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from haanim.engine.assets import AssetStore
+from haanim.engine.card import HAAnimCard
 from haanim.engine.durations import parse_duration
 from haanim.engine.expression_eval import parse_expression
 from haanim.engine.variables import VariableStore
@@ -401,6 +402,7 @@ class HAAnim:
         self._manager = automation_manager
         self._variables = variables or VariableStore(automation_id, host.storage, host.clock)
         self._assets = AssetStore(automation_id, folder, host.files, host.asset_signer)
+        self._card = HAAnimCard(automation_id, self._assets, self._has_action, host.cards)
 
     @property
     def variables(self) -> VariableStore:
@@ -628,6 +630,18 @@ class HAAnim:
     def clear_variables(self) -> None:
         """Clear all stored variables."""
         self._variables.clear()
+
+    # --- Card: what the automation shows on its card --------------------------------
+
+    @property
+    def card(self) -> HAAnimCard:
+        """The content of the automation's card."""
+        return self._card
+
+    def _has_action(self, name: str) -> bool:
+        """Return whether this automation has an action by a name."""
+        context = self._manager.get_context_by_name(self._automation_id)
+        return context is not None and context.get_action(name) is not None
 
     # --- Assets: the files in the automation's assets/ folder ----------------------
 

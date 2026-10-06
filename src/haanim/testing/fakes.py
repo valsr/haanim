@@ -17,7 +17,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from haanim.engine.errors import NonExistingAutomationError, ServiceCallError
-from haanim.interfaces import AssetSigner, AutomationTimes, FileSystem, Host, IssueReporter, StorageBackend
+from haanim.interfaces import (
+    AssetSigner,
+    AutomationTimes,
+    CardSink,
+    FileSystem,
+    Host,
+    IssueReporter,
+    StorageBackend,
+)
 from haanim.types import EventData, ServiceInfo, StateChangedEvent, StateVal
 
 if TYPE_CHECKING:
@@ -28,6 +36,7 @@ __all__ = [
     "FakeClock",
     "FakeEventBus",
     "FakeAssetSigner",
+    "FakeCardSink",
     "FakeFileSystem",
     "FakeIssueReporter",
     "FakeServiceCaller",
@@ -723,6 +732,22 @@ class FakeAssetSigner:
         return f"{path}?signed={expires:g}"
 
 
+class FakeCardSink:
+    """Card content held in memory."""
+
+    def __init__(self) -> None:
+        """Initialize with no cards."""
+        self.cards: dict[str, list[dict[str, Any]]] = {}
+        """The latest content of each automation's card, by automation ID."""
+        self.updates: list[tuple[str, list[dict[str, Any]]]] = []
+        """``(automation_id, blocks)`` for every update, oldest first."""
+
+    def card_changed(self, automation_id: str, blocks: list[dict[str, Any]]) -> None:
+        """Record an update."""
+        self.cards[automation_id] = blocks
+        self.updates.append((automation_id, blocks))
+
+
 class FakeIssueReporter:
     """Issues held in memory."""
 
@@ -879,6 +904,7 @@ def make_host(
     storage: StorageBackend | None = None,
     hass: Any = None,
     asset_signer: AssetSigner | None = None,
+    cards: CardSink | None = None,
 ) -> Host:
     """Build a Host from fakes.
 
@@ -901,4 +927,5 @@ def make_host(
         storage=storage or FakeStorage(),
         hass=hass,
         asset_signer=asset_signer or FakeAssetSigner(),
+        cards=cards or FakeCardSink(),
     )

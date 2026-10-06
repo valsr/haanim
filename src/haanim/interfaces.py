@@ -26,6 +26,7 @@ T = TypeVar("T")
 __all__ = [
     "AssetSigner",
     "AutomationRegistry",
+    "CardSink",
     "Clock",
     "EventBus",
     "FileSystem",
@@ -234,6 +235,20 @@ class AssetSigner(Protocol):
         """Return a signed form of a URL path, valid for ``expires`` seconds."""
 
 
+class CardSink(Protocol):
+    """Receives the card content of automations, to show it."""
+
+    def card_changed(self, automation_id: str, blocks: list[dict[str, Any]]) -> None:
+        """Take the new content of an automation's card.
+
+        Args:
+            automation_id: ID of the automation.
+            blocks: Every block of the card in order, each a dictionary of JSON
+                values with ``id``, ``type`` and the block's content. Empty when
+                the card was cleared or the automation stopped. The receiver owns it.
+        """
+
+
 class StorageBackend(Protocol):
     """Durable storage of JSON documents, one per key.
 
@@ -364,6 +379,8 @@ class Host:
             host has none to offer.
         asset_signer: Signs asset URLs so they work without login. None if
             the host cannot.
+        cards: Where the card content of automations goes. None if the host
+            shows no cards.
     """
 
     states: StateProvider
@@ -376,3 +393,4 @@ class Host:
     storage: StorageBackend
     hass: Any = None
     asset_signer: AssetSigner | None = None
+    cards: CardSink | None = None
