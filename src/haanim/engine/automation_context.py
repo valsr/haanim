@@ -37,6 +37,7 @@ from haanim.engine.haanim_module import DecoratorRegistry, build_haanim_module
 from haanim.engine.logging_wrapper import create_logger_wrapper
 from haanim.engine.metadata import DEFAULT_VERSION, load_metadata
 from haanim.engine.validation import validate_files
+from haanim.engine.variables import VariableStore
 from haanim.engine.automation_status import AutomationStatusManager
 from haanim.interfaces import AutomationRegistry, Host
 
@@ -166,7 +167,6 @@ class AutomationContext:
         *,
         automation_id: str | None = None,
         status_manager: AutomationStatusManager,
-        storage_path: str,
         registry: AutomationRegistry,
         additional_imports: list[str] | None = None,
         allow_all_imports: bool = False,
@@ -178,14 +178,12 @@ class AutomationContext:
             automation_path: Path of the automation's folder, which holds its ``main.py``.
             automation_id: The automation's ID. Derived from the folder name if omitted.
             status_manager: Where this automation's status is recorded.
-            storage_path: Directory holding the persistent storage files of automations.
             registry: The loaded automations, used by ``haa`` to reach other automations.
             additional_imports: Modules automations may import in addition to the default allowlist.
             allow_all_imports: If True, allow all imports.
         """
         self.host = host
         self._status_manager = status_manager
-        self._storage_path = storage_path
         self._registry = registry
         self.automation_path = automation_path
         self.folder = Path(automation_path)
@@ -223,6 +221,8 @@ class AutomationContext:
         # What the automation's code gets from 'haanim'
         self._decorators = DecoratorRegistry()
         self._haa: Any = None
+        # The persistent variables of the running automation; None while its code is not loaded into memory
+        self.variables: VariableStore | None = None
 
     def _build_modules(self) -> None:
         """Build the modules the engine supplies to this automation.
@@ -236,7 +236,8 @@ class AutomationContext:
             HAAnim,
         )
 
-        self._haa = HAAnim(self.host, self.automation_id, self._registry, self._storage_path)
+        self._haa = HAAnim(self.host, self.automation_id, self._registry)
+        self.variables = self._haa.variables
         logging_module = create_logger_wrapper(self._logger)
         automation_id = self.automation_id
         status_manager = self._status_manager
@@ -286,6 +287,7 @@ class AutomationContext:
         self._global_symbols = SymbolTable()
         self._evaluator = None
         self._haa = None
+        self.variables = None
         self._actions = {}
         self._action_names = {}
         self._triggers = []
@@ -376,6 +378,9 @@ class AutomationContext:
 
         self.discard()
         self._build_modules()
+        # The variables are in memory before any code runs: reading them is synchronous
+        assert self.variables is not None
+        await self.variables.load()
         self._evaluator = AstEvaluator(
             name=self.automation_id,
             global_symbols=self._global_symbols,

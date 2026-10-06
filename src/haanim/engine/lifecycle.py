@@ -332,6 +332,7 @@ class Automation:
         self._dispatcher.set_failure_handler(self.automation_id, None)
         self._dispatcher.remove_queued(self.automation_id, REASON_START_FAILED)
         self._dispatcher.cancel_running(self.automation_id, REASON_START_FAILED)
+        await self._flush_variables()
         self.context.discard()
 
     # --- Stop ---------------------------------------------------------------------
@@ -357,6 +358,7 @@ class Automation:
         finally:
             self._stopping = False
             self._dispatcher.set_failure_handler(self.automation_id, None)
+            await self._flush_variables()
             self.context.discard()
             self._set_state(AutomationState.OFF)
 
@@ -404,6 +406,11 @@ class Automation:
         finally:
             _HANDLER_OF.reset(token)
             self._handler_running = False
+
+    async def _flush_variables(self) -> None:
+        """Write the persistent variables that have changed: always done before the namespace goes."""
+        if self.context.variables is not None:
+            await self.context.variables.flush()
 
     def _record_failure(
         self, action: str, error_type: str, message: str, level: int = logging.ERROR

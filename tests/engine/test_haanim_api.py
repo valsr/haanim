@@ -75,7 +75,7 @@ def registry() -> FakeAutomationRegistry:
 @pytest.fixture
 def haa(host: Host, registry: FakeAutomationRegistry, tmp_path: Path) -> HAAnim:
     """The haa instance of an automation called ``me``."""
-    return HAAnim(host, "me", registry, str(tmp_path / "storage"))
+    return HAAnim(host, "me", registry)
 
 
 @pytest.fixture
@@ -309,7 +309,7 @@ class TestCallingActions:
         context = make_context(str(path), registry=registry)
         await load_and_run(context)
         registry.add(context)
-        own_haa = HAAnim(host, "other", registry, str(tmp_path / "storage"))
+        own_haa = HAAnim(host, "other", registry)
 
         assert await own_haa.call("greet") == "hello world"
 
@@ -340,7 +340,7 @@ class TestControl:
         operation: str,
     ) -> None:
         """Test haa's own control methods act on the automation that owns the haa instance."""
-        own_haa = HAAnim(host, "other", registry, str(tmp_path / "storage"))
+        own_haa = HAAnim(host, "other", registry)
         await getattr(own_haa, operation)()
         assert registry.control_calls == [(operation, "other")]
 
@@ -352,89 +352,10 @@ class TestStatusMessage:
         self, host: Host, other: AutomationContext, registry: FakeAutomationRegistry, tmp_path: Path
     ) -> None:
         """Test the message is stored on the automation and visible through a proxy."""
-        own_haa = HAAnim(host, "other", registry, str(tmp_path / "storage"))
+        own_haa = HAAnim(host, "other", registry)
         own_haa.set_message("Starting task...")
         assert own_haa.automation("other").message == "Starting task..."
 
     def test_set_message_without_context(self, haa: HAAnim) -> None:
         """Test setting a message for an automation that is not registered does nothing."""
         haa.set_message("ignored")
-
-
-class TestStorage:
-    """Tests for persistent variables."""
-
-    def test_storage_directory_created(self, haa: HAAnim, tmp_path: Path) -> None:
-        """Test creating a haa instance creates the storage directory."""
-        assert haa.id == "me"
-        assert (tmp_path / "storage").is_dir()
-
-    def test_get_default(self, haa: HAAnim) -> None:
-        """Test an unset variable gives the default, or None."""
-        assert haa.get_variable("missing") is None
-        assert haa.get_variable("missing", "fallback") == "fallback"
-
-    async def test_set_and_get(self, haa: HAAnim) -> None:
-        """Test a set variable is returned."""
-        await haa.set_variable("threshold", "25.0")
-        assert haa.get_variable("threshold") == "25.0"
-        assert haa.get_variable("threshold", "other") == "25.0"
-
-    async def test_written_to_file(self, haa: HAAnim, tmp_path: Path) -> None:
-        """Test variables are written to the automation's JSON file."""
-        await haa.set_variable("a", "1")
-        stored = json.loads((tmp_path / "storage" / "me.json").read_text(encoding="utf-8"))
-        assert stored == {"a": "1"}
-
-    async def test_survives_new_instance(
-        self, haa: HAAnim, host: Host, registry: FakeAutomationRegistry, tmp_path: Path
-    ) -> None:
-        """Test a new haa instance for the same automation sees stored variables."""
-        await haa.set_variable("a", "1")
-        again = HAAnim(host, "me", registry, str(tmp_path / "storage"))
-        assert again.get_variable("a") == "1"
-
-    async def test_isolated_per_automation(
-        self, haa: HAAnim, host: Host, registry: FakeAutomationRegistry, tmp_path: Path
-    ) -> None:
-        """Test another automation does not see the variables."""
-        await haa.set_variable("a", "1")
-        other_haa = HAAnim(host, "someone_else", registry, str(tmp_path / "storage"))
-        assert other_haa.get_variable("a") is None
-
-    async def test_unset(self, haa: HAAnim, tmp_path: Path) -> None:
-        """Test unset removes one variable and tolerates a missing one."""
-        await haa.set_variable("a", "1")
-        await haa.set_variable("b", "2")
-        await haa.unset_variable("a")
-        await haa.unset_variable("never_set")
-        assert haa.get_variable("a") is None
-        assert haa.get_variable("b") == "2"
-        assert json.loads((tmp_path / "storage" / "me.json").read_text(encoding="utf-8")) == {"b": "2"}
-
-    async def test_clear(self, haa: HAAnim, tmp_path: Path) -> None:
-        """Test clear removes every variable."""
-        await haa.set_variable("a", "1")
-        await haa.set_variable("b", "2")
-        await haa.clear_variables()
-        assert haa.get_variable("a") is None
-        assert json.loads((tmp_path / "storage" / "me.json").read_text(encoding="utf-8")) == {}
-
-    def test_corrupt_file_starts_empty(
-        self, host: Host, registry: FakeAutomationRegistry, tmp_path: Path
-    ) -> None:
-        """Test an unreadable storage file is treated as empty."""
-        storage = tmp_path / "storage"
-        storage.mkdir()
-        (storage / "me.json").write_text("{not json", encoding="utf-8")
-        haa = HAAnim(host, "me", registry, str(storage))
-        assert haa.get_variable("a") is None
-
-    async def test_save_failure_is_logged_not_raised(
-        self, haa: HAAnim, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Test a failed write keeps the value in memory and logs an error."""
-        with patch("haanim.engine.haanim_api.open", side_effect=OSError("disk full"), create=True):
-            await haa.set_variable("a", "1")
-        assert haa.get_variable("a") == "1"
-        assert "Failed to save storage" in caplog.text

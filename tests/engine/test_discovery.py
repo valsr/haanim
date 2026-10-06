@@ -439,7 +439,7 @@ class TestFolderAtLoad:
         await clock.advance(seconds=30)
         files.write("/automations/lights/metadata.json", "{}")
         host = make_host(files=files, clock=clock)
-        context = make_context("/automations/lights", host=host, storage_path=str(tmp_path))
+        context = make_context("/automations/lights", host=host)
 
         metadata = await load_and_run(context)
 

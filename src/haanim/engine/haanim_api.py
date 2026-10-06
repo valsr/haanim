@@ -6,8 +6,6 @@ providing a clean API for interacting with Home Assistant and other automations.
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -16,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from haanim.engine.durations import parse_duration
 from haanim.engine.expression_eval import parse_expression
+from haanim.engine.variables import VariableStore
 from haanim.engine.waiting import StateWait
 from haanim.entity import HAAnimEntity
 from haanim.engine.errors import (
@@ -381,7 +380,7 @@ class HAAnim:
         host: Host,
         automation_id: str,
         automation_manager: AutomationRegistry,
-        storage_path: str,
+        variables: VariableStore | None = None,
     ) -> None:
         """Initialize HAAnim API.
 
@@ -389,21 +388,18 @@ class HAAnim:
             host: The host the engine runs in.
             automation_id: The current automation's ID.
             automation_manager: The automation manager instance.
-            storage_path: Path to storage directory.
+            variables: The automation's persistent variables. A store on the
+                host's storage if omitted; it starts empty until it is loaded.
         """
         self._host = host
         self._automation_id = automation_id
         self._manager = automation_manager
-        self._storage_path = Path(storage_path)
-        self._storage_file = self._storage_path / f"{automation_id}.json"
-        self._storage_lock = asyncio.Lock()
-        self._storage_cache: dict[str, str] = {}
+        self._variables = variables or VariableStore(automation_id, host.storage, host.clock)
 
-        # Ensure storage directory exists
-        self._storage_path.mkdir(parents=True, exist_ok=True)
-
-        # Load storage cache
-        self._load_storage()
+    @property
+    def variables(self) -> VariableStore:
+        """The store behind the persistent variables."""
+        return self._variables
 
     @property
     def id(self) -> str:
@@ -588,64 +584,41 @@ class HAAnim:
         if context and context._metadata:
             context._metadata.message = message
 
-    # Storage API
+    # --- Persistent storage: synchronous, on the in-memory store -------------------
 
-    def _load_storage(self) -> None:
-        """Load storage from disk."""
-        if self._storage_file.exists():
-            try:
-                with open(self._storage_file, "r", encoding="utf-8") as f:
-                    self._storage_cache = json.load(f)
-            except Exception as err:  # pylint: disable=broad-exception-caught
-                _LOGGER.error("Failed to load storage for %s: %s", self._automation_id, err)
-                self._storage_cache = {}
-        else:
-            self._storage_cache = {}
-
-    def _save_storage(self) -> None:
-        """Save storage to disk."""
-        try:
-            with open(self._storage_file, "w", encoding="utf-8") as f:
-                json.dump(self._storage_cache, f, indent=2)
-        except Exception as err:  # pylint: disable=broad-exception-caught
-            _LOGGER.error("Failed to save storage for %s: %s", self._automation_id, err)
-
-    async def set_variable(self, key: str, value: str) -> None:
-        """Store a persistent value.
+    def set_variable(self, key: str, value: Any) -> None:
+        """Store a persistent value. A copy is stored.
 
         Args:
-            key: Variable key.
-            value: Variable value (must be a string).
+            key: Variable name.
+            value: Any JSON value: a string, number, boolean, None, list, or
+                dictionary with string keys. A tuple is stored as a list.
+
+        Raises:
+            TypeError: If the value is not a JSON value; nothing is stored.
         """
-        async with self._storage_lock:
-            self._storage_cache[key] = value
-            self._save_storage()
+        self._variables.set(key, value)
 
-    def get_variable(self, key: str, default: str | None = None) -> str | None:
-        """Retrieve a persistent value.
+    def get_variable(self, key: str, default: Any = None) -> Any:
+        """Retrieve a persistent value. A copy is returned.
 
         Args:
-            key: Variable key.
-            default: Default value if key doesn't exist.
+            key: Variable name.
+            default: What to return if the variable is not set.
 
         Returns:
-            The stored value or default.
+            The stored value, or ``default``.
         """
-        return self._storage_cache.get(key, default)
+        return self._variables.get(key, default)
 
-    async def unset_variable(self, key: str) -> None:
-        """Remove a single variable.
+    def unset_variable(self, key: str) -> None:
+        """Remove a single variable; does nothing if it is not set.
 
         Args:
-            key: Variable key to remove.
+            key: Variable name.
         """
-        async with self._storage_lock:
-            if key in self._storage_cache:
-                del self._storage_cache[key]
-                self._save_storage()
+        self._variables.unset(key)
 
-    async def clear_variables(self) -> None:
+    def clear_variables(self) -> None:
         """Clear all stored variables."""
-        async with self._storage_lock:
-            self._storage_cache.clear()
-            self._save_storage()
+        self._variables.clear()

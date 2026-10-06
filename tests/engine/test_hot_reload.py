@@ -486,7 +486,6 @@ class Automations:
         self.pool = ActionWorkerPool(status_manager=AutomationStatusManager(), clock=self.clock)
         self.dispatcher = ActionDispatcher(self.pool)
         self.flags = EnabledFlags(FakeStorage())
-        self.storage_path = str(tmp_path)
         self.automations: dict[Path, Automation] = {}
         self.reloader = HotReloader(self.files, ROOT, self.clock, self)
 
@@ -503,7 +502,6 @@ class Automations:
             str(found.folder),
             host=self.host,
             automation_id=found.automation_id,
-            storage_path=self.storage_path,
         )
         automation = Automation(context, dispatcher=self.dispatcher, triggers=NoTriggers())
         self.automations[found.folder] = automation
@@ -564,8 +562,8 @@ class TestReloadSequence:
         """The old version's @shutdown runs before the new version's @startup."""
         source = (
             "from haanim import startup, shutdown, haa\n\n@startup\nasync def on_start():\n"
-            "    await haa.set_variable('order', haa.get_variable('order', '') + ' start{v}')\n\n"
-            "@shutdown\nasync def on_stop():\n    await haa.set_variable('order', haa.get_variable('order', '') + ' stop{v}')\n\n"
+            "    haa.set_variable('order', haa.get_variable('order', '') + ' start{v}')\n\n"
+            "@shutdown\nasync def on_stop():\n    haa.set_variable('order', haa.get_variable('order', '') + ' stop{v}')\n\n"
             "from haanim import action\n\n@action\ndef order():\n    return haa.get_variable('order')\n"
         )
         automations.write("heating", source.format(v=1))
@@ -591,7 +589,7 @@ class TestReloadSequence:
     async def test_storage_and_enabled_flag_are_unaffected(self, automations: Automations) -> None:
         """Persistent storage survives a reload, and a disabled automation stays stopped."""
         source = (
-            "from haanim import action, haa\n\n@action\nasync def remember():\n    await haa.set_variable('kept', 'yes')\n\n"
+            "from haanim import action, haa\n\n@action\nasync def remember():\n    haa.set_variable('kept', 'yes')\n\n"
             "@action\ndef recall():\n    return haa.get_variable('kept')\n"
         )
         automations.write("memory", source)

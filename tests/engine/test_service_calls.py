@@ -61,7 +61,7 @@ def services() -> FakeServiceCaller:
 def haa(services: FakeServiceCaller, clock: FakeClock, tmp_path: Path) -> HAAnim:
     """The haa instance of an automation."""
     host = make_host(services=services, clock=clock)
-    return HAAnim(host, "me", FakeAutomationRegistry(), str(tmp_path / "storage"))
+    return HAAnim(host, "me", FakeAutomationRegistry())
 
 
 class TestServiceProxy:

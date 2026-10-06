@@ -73,7 +73,6 @@ def make_context(automation_path: str, *, host: Host | None = None, **kwargs: An
         folder = folder.parent
     defaults: dict[str, Any] = {
         "status_manager": AutomationStatusManager(),
-        "storage_path": str(folder.parent / ".storage"),
         "registry": FakeAutomationRegistry(),
     }
     defaults.update(kwargs)

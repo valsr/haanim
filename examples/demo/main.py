@@ -65,7 +65,7 @@ async def morning_routine():
     await haa.service.light.turn_on(entity_id="light.bedroom", brightness=50, transition=60)
 
     # Update storage
-    await haa.set_variable("last_morning", str(haa.id))
+    haa.set_variable("last_morning", str(haa.id))
 
 
 @on_time("sunset", when="binary_sensor.presence == 'on'")
@@ -111,7 +111,7 @@ async def periodic_check():
     # Increment counter
     counter = int(haa.get_variable("counter", "0"))
     counter += 1
-    await haa.set_variable("counter", str(counter))
+    haa.set_variable("counter", str(counter))
 
     log.info(f"Periodic check #{counter}")
 
@@ -133,7 +133,7 @@ async def hourly_cleanup():
 
     # Clear old storage values
     old_runs = int(haa.get_variable("cleanup_runs", "0"))
-    await haa.set_variable("cleanup_runs", str(old_runs + 1))
+    haa.set_variable("cleanup_runs", str(old_runs + 1))
 
 
 # =============================================================================
@@ -248,8 +248,8 @@ async def service_demo():
 async def storage_demo():
     """Demonstrate persistent storage."""
     # Store values
-    await haa.set_variable("last_run", "2026-01-04 13:00:00")
-    await haa.set_variable("run_count", "42")
+    haa.set_variable("last_run", "2026-01-04 13:00:00")
+    haa.set_variable("run_count", "42")
 
     # Retrieve values
     last_run = haa.get_variable("last_run", "never")
@@ -258,10 +258,10 @@ async def storage_demo():
     log.info(f"Last run: {last_run}, Count: {run_count}")
 
     # Remove a value
-    await haa.unset_variable("temp_value")
+    haa.unset_variable("temp_value")
 
     # Clear all (be careful!)
-    # await haa.clear_variables()
+    # haa.clear_variables()
 
 
 # =============================================================================

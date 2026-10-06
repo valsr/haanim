@@ -81,7 +81,6 @@ class AutomationManager:
         self.entry = entry
         self.host = host
         self._status_manager = AutomationStatusManager()
-        self._storage_path = hass.config.path(".storage", "haanim", "automations")
 
         # Get configuration
         self._config: ConfigManager = get_config_manager()
@@ -271,7 +270,6 @@ class AutomationManager:
             automation_path=automation_path,
             automation_id=self._automation_ids.get(automation_path),
             status_manager=self._status_manager,
-            storage_path=self._storage_path,
             registry=self,
             additional_imports=self._import_allowlist,
             allow_all_imports=self._allow_all_imports,

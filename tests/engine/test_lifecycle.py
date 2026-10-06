@@ -124,9 +124,7 @@ class World:
     def add(self, name: str, source: str, **files: str) -> Automation:
         """Create an automation from source. It is not loaded yet."""
         folder = self.write(name, source, **files)
-        context = make_context(
-            str(folder), host=self.host, registry=self, storage_path=str(self.root / ".storage")
-        )
+        context = make_context(str(folder), host=self.host, registry=self)
         automation = Automation(
             context, dispatcher=self.dispatcher, triggers=self.triggers, settings=self.settings
         )
@@ -887,7 +885,7 @@ class TestUnload:
         """Persistent storage survives stop and unload, as for a folder that is removed and put back."""
         source = (
             "from haanim import action, haa\n\n@action\nasync def remember(event):\n"
-            "    await haa.set_variable('kept', event.data['value'])\n\n@action\ndef recall():\n    return haa.get_variable('kept')\n"
+            "    haa.set_variable('kept', event.data['value'])\n\n@action\ndef recall():\n    return haa.get_variable('kept')\n"
         )
         automation = await world.started("lights", source)
         await automation.call_action("remember", {"value": "42"})

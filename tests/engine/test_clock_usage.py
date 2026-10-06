@@ -209,7 +209,7 @@ class TestHaaOnClock:
     @pytest.fixture
     def haa(self, host: Host, tmp_path: Path) -> HAAnim:
         """A haa instance on the fake host."""
-        return HAAnim(host, "me", FakeAutomationRegistry(), str(tmp_path / "storage"))
+        return HAAnim(host, "me", FakeAutomationRegistry())
 
     async def test_now_follows_the_clock(self, haa: HAAnim, clock: FakeClock) -> None:
         """Test haa.now() is the clock's time, timezone-aware, and moves when the clock moves."""

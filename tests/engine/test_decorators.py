@@ -752,7 +752,7 @@ async def started(tmp_path: Path, source: str, name: str = "lights") -> tuple[Au
     triggers = RecordingTriggers()
     pool = ActionWorkerPool(status_manager=AutomationStatusManager(), clock=clock)
     automation = Automation(
-        make_context(str(path), host=host, storage_path=str(tmp_path / ".storage")),
+        make_context(str(path), host=host),
         dispatcher=ActionDispatcher(pool),
         triggers=triggers,
     )
@@ -854,7 +854,7 @@ class TestAtStart:
         host = make_host(files=LocalFileSystem(), clock=clock)
         triggers = RecordingTriggers()
         pool = ActionWorkerPool(status_manager=AutomationStatusManager(), clock=clock)
-        context = make_context(str(tmp_path / "demo"), host=host, storage_path=str(tmp_path / ".storage"))
+        context = make_context(str(tmp_path / "demo"), host=host)
         automation = Automation(context, dispatcher=ActionDispatcher(pool), triggers=triggers)
 
         assert await automation.load(), automation.message

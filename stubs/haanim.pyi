@@ -395,19 +395,19 @@ class HAAnim:
         """Set status message for this automation."""
         ...
 
-    async def set_variable(self, key: str, value: str) -> None:
-        """Store a persistent variable."""
+    def set_variable(self, key: str, value: Any) -> None:
+        """Store a persistent variable: any JSON value. Raises TypeError for anything else."""
         ...
 
-    def get_variable(self, key: str, default: str | None = None) -> str | None:
-        """Get a persistent variable."""
+    def get_variable(self, key: str, default: Any = None) -> Any:
+        """Get a persistent variable, or the default if it is not set."""
         ...
 
-    async def unset_variable(self, key: str) -> None:
-        """Remove a persistent variable."""
+    def unset_variable(self, key: str) -> None:
+        """Remove a persistent variable; does nothing if it is not set."""
         ...
 
-    async def clear_variables(self) -> None:
+    def clear_variables(self) -> None:
         """Clear all persistent variables."""
         ...
 

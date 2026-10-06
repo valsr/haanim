@@ -294,9 +294,7 @@ class World:
         """Write, load and start an automation."""
         path = automation_file(self.root, name)
         path.write_text(source, encoding="utf-8")
-        context = make_context(
-            str(path), host=self.host, registry=self, storage_path=str(self.root / ".storage")
-        )
+        context = make_context(str(path), host=self.host, registry=self)
         automation = Automation(context, dispatcher=self.dispatcher, triggers=NoTriggers())
         self.automations[automation.automation_id] = automation
         await automation.load()
@@ -526,7 +524,7 @@ class TestLifecycleHandlers:
         automation = await world.start(
             "lights",
             "from haanim import startup, shutdown, haa\nseen = []\n\n@startup\ndef on_start(event):\n    seen.append(event)\n\n"
-            "@shutdown\nasync def on_stop(event):\n    await haa.set_variable('stopped_by', event.source)\n",
+            "@shutdown\nasync def on_stop(event):\n    haa.set_variable('stopped_by', event.source)\n",
         )
         (event,) = automation.context.get_symbol("seen")
 

@@ -1381,7 +1381,7 @@ class TestAutomationManagerLifecycle:
         """Unloading the automation of a removed folder runs @shutdown and leaves its storage in place."""
         source = (
             "from haanim import action, shutdown, haa\n\n@action\nasync def remember():\n"
-            "    await haa.set_variable('kept', 'yes')\n\n@action\ndef recall():\n    return haa.get_variable('kept')\n\n"
+            "    haa.set_variable('kept', 'yes')\n\n@action\ndef recall():\n    return haa.get_variable('kept')\n\n"
             "@shutdown\ndef on_stop():\n    record('stop ' + __name__)\n"
         )
         folder = self.write(tmp_path, "lights", source)
