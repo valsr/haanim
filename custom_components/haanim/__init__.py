@@ -19,6 +19,7 @@ from custom_components.haanim.ha.host import HAServiceCaller, build_host
 from custom_components.haanim.ha.services import ServiceManager
 from custom_components.haanim.ha.state import StateManager
 from custom_components.haanim.automation_manager import AutomationManager
+from custom_components.haanim.log_buffer import AutomationLogBuffer
 from custom_components.haanim.options import engine_options
 from custom_components.haanim.websocket import async_register_websocket
 from haanim.engine.triggers import TriggerManager
@@ -67,6 +68,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     event_manager = EventManager(hass)
     service_manager = ServiceManager(hass)
     host = build_host(hass, state_manager, event_manager)
+    # Keep the recent log records of the automations, from the first one they write
+    log_buffer = AutomationLogBuffer()
+    log_buffer.install()
+    entry.async_on_unload(log_buffer.remove)
+
     automation_manager = AutomationManager(
         hass, entry, host, options=engine_options({**entry.data, **entry.options})
     )
@@ -85,6 +91,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = {
         "entry": entry,
         "manager": automation_manager,
+        "log_buffer": log_buffer,
         "state_manager": state_manager,
         "event_manager": event_manager,
         "service_manager": service_manager,

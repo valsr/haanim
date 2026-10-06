@@ -3,6 +3,7 @@
 - ``haanim/automations/list``: every automation with its state.
 - ``haanim/automations/get``: the details of one automation.
 - ``haanim/card/subscribe``: the card content of one automation, now and whenever it changes.
+- ``haanim/logs/subscribe``: the recent log records of one automation, then each new one.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from homeassistant.core import HomeAssistant, callback
 from custom_components.haanim.automation_manager import AutomationManager, async_get_manager
 from custom_components.haanim.const import DOMAIN
 from custom_components.haanim.ha.host import HACardSink
+from custom_components.haanim.log_buffer import AutomationLogBuffer
 
 ERR_NOT_FOUND = "not_found"
 ERR_NOT_READY = "not_ready"
@@ -131,9 +133,40 @@ async def ws_subscribe_card(
     forward(sink.blocks(msg["automation_id"]))
 
 
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/logs/subscribe", vol.Required("automation_id"): str}
+)
+@websocket_api.async_response
+async def ws_subscribe_logs(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Answer with the recent log records of an automation, then send each new one."""
+    if await _manager_for(hass, connection, msg) is None:
+        return
+    buffer = next(
+        (
+            data["log_buffer"]
+            for data in hass.data.get(DOMAIN, {}).values()
+            if isinstance(data, dict) and isinstance(data.get("log_buffer"), AutomationLogBuffer)
+        ),
+        None,
+    )
+    if buffer is None:
+        connection.send_error(msg["id"], ERR_NOT_READY, "Log records are not available")
+        return
+
+    @callback
+    def forward(record: dict[str, Any]) -> None:
+        connection.send_message(websocket_api.event_message(msg["id"], {"record": record}))
+
+    connection.subscriptions[msg["id"]] = buffer.subscribe(msg["automation_id"], forward)
+    connection.send_result(msg["id"], {"records": buffer.records(msg["automation_id"])})
+
+
 @callback
 def async_register_websocket(hass: HomeAssistant) -> None:
     """Register the websocket commands."""
     websocket_api.async_register_command(hass, ws_list_automations)
     websocket_api.async_register_command(hass, ws_get_automation)
     websocket_api.async_register_command(hass, ws_subscribe_card)
+    websocket_api.async_register_command(hass, ws_subscribe_logs)
