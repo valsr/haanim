@@ -22,14 +22,16 @@ from haanim.engine import (
 from haanim.engine.ast_evaluator import AstEvaluator
 from haanim.engine.automation_ids import automation_id as derive_automation_id
 from haanim.engine.callables import as_coroutine_function, event_arguments, signature_problem
-from haanim.engine.decorators import ActionInfo, FunctionMetadata, get_metadata
+from haanim.engine.decorators import ActionInfo, FunctionMetadata, TriggerInfo, get_metadata
 from haanim.engine.discovery import MAIN_FILENAME, has_main, last_modified, source_files
 from haanim.engine.errors import (
     ActionNotFoundError,
     AutomationDefinitionError,
     AutomationNotLoadedError,
+    AutomationSyntaxError,
     HAAnimError,
 )
+from haanim.engine.expression_eval import parse_expression
 from haanim.events import SOURCE_TRIGGER, ActionEvent, AutomationEvent, ManualEvent
 from haanim.engine.haanim_module import DecoratorRegistry, build_haanim_module
 from haanim.engine.logging_wrapper import create_logger_wrapper
@@ -465,6 +467,7 @@ class AutomationContext:
             # The triggers of a disabled action are not registered
             if not definition.disabled:
                 for trigger_info in metadata.triggers:
+                    self._check_expressions(func_name, trigger_info)
                     self._triggers.append(
                         TriggerDefinition(
                             trigger_type=trigger_info.trigger_type,
@@ -493,6 +496,23 @@ class AutomationContext:
                     f"More than one @shutdown handler: '{self._shutdown_name}' and '{func_name}'"
                 )
             self._shutdown_func, self._shutdown_name = func, func_name
+
+    @staticmethod
+    def _check_expressions(func_name: str, trigger_info: TriggerInfo) -> None:
+        """Check the state expressions of a trigger, so that a mistake is found at start.
+
+        Raises:
+            AutomationDefinitionError: If a state expression is not valid.
+        """
+        expressions = [trigger_info.constraints.get(name) for name in ("when", "when_not")]
+        if trigger_info.trigger_type == const.TRIGGER_STATE:
+            expressions.append(trigger_info.trigger_expr)
+        for expression in expressions:
+            if isinstance(expression, str):
+                try:
+                    parse_expression(expression)
+                except AutomationSyntaxError as err:
+                    raise AutomationDefinitionError(f"'{func_name}': {err}") from None
 
     def make_event(
         self,
