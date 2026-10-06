@@ -38,6 +38,7 @@ from haanim.engine.lifecycle import REASON_STOPPED, AutomationState, LifecycleSe
 from haanim.engine.triggers.manager import TriggerManager
 from haanim.testing import FakeClock, FakeStateProvider, make_host
 from haanim.testing.fakes import DEFAULT_NOW
+from tests.engine.helpers import fire_trigger
 from tests.engine.test_lifecycle import World, world  # noqa: F401  pylint: disable=unused-import
 
 DROP, QUEUE, CANCEL = ActionMode.DROP, ActionMode.QUEUE, ActionMode.CANCEL
@@ -1337,7 +1338,7 @@ class TestTriggeredActions:
         fires = []
         for _ in range(2):
             # pylint: disable-next=protected-access
-            fires.append(asyncio.create_task(manager._execute_trigger(trigger_id)))
+            fires.append(asyncio.create_task(fire_trigger(manager, trigger_id)))
             await bench.clock.settle()
         return fires
 

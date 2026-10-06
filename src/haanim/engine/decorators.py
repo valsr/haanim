@@ -552,6 +552,8 @@ def on_state(
         raise TypeError(f"@on_state: every_change must be True or False, not {type(every_change).__name__}")
     if hold is not None:
         _require_duration("on_state", "hold", hold)
+        if every_change:
+            raise ValueError("@on_state: hold cannot be combined with every_change=True")
     constraints: dict[str, Any] = {
         "start_time": start_time,
         "end_time": end_time,

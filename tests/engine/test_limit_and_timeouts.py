@@ -30,6 +30,7 @@ from haanim.engine.errors import (
 from haanim.engine.triggers.manager import TriggerManager
 from haanim.testing import FakeClock, FakeStateProvider, make_host
 from haanim.testing.fakes import DEFAULT_NOW
+from tests.engine.helpers import fire_trigger
 from tests.engine.test_action_dispatcher import (  # noqa: F401  pylint: disable=unused-import
     Bench,
     bench,
@@ -887,7 +888,7 @@ class TestTimeoutsOfAutomationActions:
                 timeout=4,
             )
         )
-        firing = asyncio.create_task(manager._execute_trigger(trigger_id))  # pylint: disable=protected-access
+        firing = asyncio.create_task(fire_trigger(manager, trigger_id))
         await bench.clock.advance(seconds=4)
         await firing
 

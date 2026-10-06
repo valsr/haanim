@@ -394,10 +394,15 @@ class TestTriggers:
         """@on_state takes every_change and hold."""
         func = function()
 
-        on_state("sensor.temperature > 30", every_change=True, hold="00:01:00")(func)
+        on_state("sensor.temperature > 30", hold="00:01:00")(func)
 
         (trigger,) = metadata_of(func).triggers
-        assert trigger.kwargs == {"every_change": True, "hold": "00:01:00"}
+        assert trigger.kwargs == {"hold": "00:01:00"}
+        every = function()
+        on_state("sensor.temperature > 30", every_change=True)(every)
+        assert metadata_of(every).triggers[0].kwargs == {"every_change": True}
+        with pytest.raises(ValueError, match="hold cannot be combined with every_change=True"):
+            on_state("sensor.temperature > 30", every_change=True, hold=5)
         on_state("sensor.a == 'on'", hold=30)(function())
         with pytest.raises(TypeError, match="every_change must be True or False, not str"):
             on_state("sensor.a == 'on'", every_change="yes")  # type: ignore[arg-type]
@@ -613,13 +618,13 @@ class TestDefinitions:
         context = await executed(
             tmp_path,
             "from haanim import on_state, on_event\n\n"
-            "@on_state('sensor.t > 30', every_change=True, hold=5, when='person.john == \"home\"', day_of_week='weekdays')\n"
+            "@on_state('sensor.t > 30', hold=5, when='person.john == \"home\"', day_of_week='weekdays')\n"
             "@on_event('doorbell', data={'ring': 2}, start_time='08:00', end_time='18:00')\n"
             "def react():\n    pass\n",
         )
 
         state, event = context.get_triggers()
-        assert state.kwargs == {"every_change": True, "hold": 5}
+        assert state.kwargs == {"hold": 5}
         assert state.constraints == {"when": 'person.john == "home"', "day_of_week": "weekdays"}
         assert (event.trigger_expr, event.kwargs) == ("doorbell", {"data": {"ring": 2}})
         assert event.constraints == {"start_time": "08:00", "end_time": "18:00"}

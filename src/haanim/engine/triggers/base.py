@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -73,68 +72,6 @@ class BaseTrigger(ABC):
         evaluated in the host's time zone at the moment the trigger fires.
         """
         return self._constraints.allows(self.host.clock.now(), self.state_manager.get, self.host.sun)
-
-    def _evaluate_state_expr(self, expr: str) -> bool:
-        """Evaluate a state expression.
-
-        Args:
-            expr: State expression string (e.g., "sensor.temp > 25").
-
-        Returns:
-            True if expression evaluates to true.
-        """
-        # Simple expression parser for common patterns
-        # Supports: entity_id == 'value', entity_id > number, etc.
-
-        patterns = [
-            (r"([a-z_]+\.[a-z0-9_]+)\s*==\s*['\"]([^'\"]+)['\"]", "eq_str"),
-            (r"([a-z_]+\.[a-z0-9_]+)\s*!=\s*['\"]([^'\"]+)['\"]", "neq_str"),
-            (r"([a-z_]+\.[a-z0-9_]+)\s*==\s*(\d+(?:\.\d+)?)", "eq_num"),
-            (r"([a-z_]+\.[a-z0-9_]+)\s*!=\s*(\d+(?:\.\d+)?)", "neq_num"),
-            (r"([a-z_]+\.[a-z0-9_]+)\s*>\s*(\d+(?:\.\d+)?)", "gt"),
-            (r"([a-z_]+\.[a-z0-9_]+)\s*>=\s*(\d+(?:\.\d+)?)", "gte"),
-            (r"([a-z_]+\.[a-z0-9_]+)\s*<\s*(\d+(?:\.\d+)?)", "lt"),
-            (r"([a-z_]+\.[a-z0-9_]+)\s*<=\s*(\d+(?:\.\d+)?)", "lte"),
-        ]
-
-        for pattern, op_type in patterns:
-            match = re.match(pattern, expr.strip(), re.IGNORECASE)
-            if match:
-                entity_id, value = match.groups()
-                state = self.state_manager.get(entity_id)
-
-                if not state.is_available():
-                    return False
-
-                if op_type == "eq_str":
-                    return state.state == value
-                elif op_type == "neq_str":
-                    return state.state != value
-                elif op_type in ("eq_num", "neq_num", "gt", "gte", "lt", "lte"):
-                    try:
-                        if not state.state:
-                            _LOGGER.warning("State is not available for entity: %s", entity_id)
-                            return False
-                        state_val = float(state.state)
-                        compare_val = float(value)
-
-                        if op_type == "eq_num":
-                            return state_val == compare_val
-                        elif op_type == "neq_num":
-                            return state_val != compare_val
-                        elif op_type == "gt":
-                            return state_val > compare_val
-                        elif op_type == "gte":
-                            return state_val >= compare_val
-                        elif op_type == "lt":
-                            return state_val < compare_val
-                        elif op_type == "lte":
-                            return state_val <= compare_val
-                    except (ValueError, TypeError):
-                        return False
-
-        self._logger.warning("Could not evaluate state expression: %s", expr)
-        return False
 
     def _event(self, event_class: type[E], **fields: Any) -> E:
         """Build the event of a firing of this trigger.

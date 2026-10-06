@@ -700,7 +700,7 @@ class TestTriggerFiredEvents:
         self.check_base(event, clock)
 
     async def test_events_from_the_trigger_manager(self) -> None:
-        """The manager builds a StateEvent for a state trigger; a time trigger delivers a TimeEvent."""
+        """Triggers registered with the manager deliver the event of their kind."""
         clock = FakeClock()
         states = FakeStateProvider(clock)
         host = make_host(clock=clock, states=states)
@@ -708,17 +708,6 @@ class TestTriggerFiredEvents:
             host, ActionDispatcher(ActionWorkerPool(status_manager=AutomationStatusManager(), clock=clock))
         )
         states.set_state("sensor.temperature", "20")
-        old = states.get("sensor.temperature")
-        states.set_state("sensor.temperature", "35")
-        change = type(
-            "Change",
-            (),
-            {
-                "entity_id": "sensor.temperature",
-                "old_state": old,
-                "new_state": states.get("sensor.temperature"),
-            },
-        )()
         fired: list[ActionEvent] = []
         state_id = await manager.register_trigger(
             definition(TRIGGER_STATE, "sensor.temperature > 30", fired.append)
@@ -727,15 +716,16 @@ class TestTriggerFiredEvents:
         time_definition.func_name = "at_nine"
         time_id = await manager.register_trigger(time_definition)
 
-        await manager._execute_trigger(state_id, change)  # pylint: disable=protected-access
-        assert time_id
+        assert state_id and time_id
+        states.set_state("sensor.temperature", "35")
+        await clock.settle()
         await clock.advance(hours=24)
 
         state_event, time_event = fired
         assert type(state_event) is StateEvent
-        assert (state_event.entity_id, state_event.old_state, state_event.new_state.state) == (
+        assert (state_event.entity_id, state_event.old_state.state, state_event.new_state.state) == (
             "sensor.temperature",
-            old,
+            "20",
             "35",
         )
         assert type(time_event) is TimeEvent

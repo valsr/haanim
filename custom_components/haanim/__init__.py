@@ -73,7 +73,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await service_manager.async_setup()
     if isinstance(host.services, HAServiceCaller):
         await host.services.async_refresh_descriptions()
-    await trigger_manager.async_setup()
     await automation_manager.async_setup()
 
     # Store managers in hass.data

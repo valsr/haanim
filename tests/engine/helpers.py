@@ -98,3 +98,16 @@ async def load_and_run(context: AutomationContext) -> Any:
     """
     await context.load()
     return await context.execute()
+
+
+async def fire_trigger(manager: Any, trigger_id: str) -> None:
+    """Fire a registered trigger now, as it does itself when its condition is met.
+
+    The action is requested through the dispatcher, with the action's mode
+    and timeout, and with a plain trigger event.
+    """
+    from haanim.events import ActionEvent  # pylint: disable=import-outside-toplevel
+
+    trigger = manager.get_trigger(trigger_id)
+    # pylint: disable-next=protected-access
+    await trigger._execute_function(trigger._event(ActionEvent))

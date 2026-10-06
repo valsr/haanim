@@ -30,7 +30,7 @@ from haanim.engine.lifecycle import ActionFailure, Automation, AutomationState
 from haanim.engine.triggers.manager import TriggerManager
 from haanim.testing import FakeClock
 from haanim.testing.fakes import DEFAULT_NOW
-from tests.engine.helpers import automation_file, load_and_run, make_context
+from tests.engine.helpers import automation_file, fire_trigger, load_and_run, make_context
 from tests.engine.test_lifecycle import World, world  # noqa: F401  pylint: disable=unused-import
 
 RAISING_SOURCE = """
@@ -236,9 +236,13 @@ class TriggerWorld(World):
         """Fire the trigger of a function, as the trigger manager does when its condition is met."""
         manager: Any = self.triggers
         # pylint: disable-next=protected-access
-        (trigger_id,) = [key for key, trigger in manager._triggers.items() if trigger.func_name == func_name]
+        (trigger_id,) = [
+            trigger_id
+            for trigger_id in manager.get_trigger_ids()
+            if manager.get_trigger(trigger_id).trigger_def.func_name == func_name
+        ]
         # pylint: disable-next=protected-access
-        task = asyncio.create_task(manager._execute_trigger(trigger_id))
+        task = asyncio.create_task(fire_trigger(manager, trigger_id))
         await self.clock.settle()
         return task
 
