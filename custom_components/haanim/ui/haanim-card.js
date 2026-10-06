@@ -43,7 +43,7 @@ const STYLES = `
     /* Cells share the row equally, and wrap onto further lines when the card is too narrow for them */
     .row {
         display: grid; gap: 4px 12px; align-items: start;
-        grid-template-columns: repeat(auto-fit, minmax(max(72px, calc(100% / var(--cells) - 12px)), 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(max(40px, calc(100% / var(--cells) - 12px)), 1fr));
     }
     .cell { min-width: 0; }
     .cell button.card-button { width: 100%; }
@@ -86,6 +86,10 @@ const STYLES = `
     .legend-value { font-weight: 500; }
     .block-icon { display: flex; align-items: center; gap: 12px; }
     .block-icon[data-more-info] { cursor: pointer; }
+    /* In a cell there is no room for icon, name and state side by side: they go below each other */
+    .cell .block-icon { flex-direction: column; gap: 2px; text-align: center; }
+    .cell .block-icon .value { margin-left: 0; }
+    .cell .block-icon .label, .cell .block-icon .value { max-width: 100%; overflow-wrap: anywhere; }
     .block-icon .icon { --mdc-icon-size: 32px; display: inline-flex; color: var(--primary-text-color); }
     .block-icon .icon.inactive { color: var(--state-inactive-color, var(--disabled-color, #9e9e9e)); }
     .block-icon .icon.spin { animation: haanim-spin 1.5s linear infinite; }

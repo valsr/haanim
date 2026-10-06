@@ -21,7 +21,19 @@ import aiohttp
 
 USERNAME = "admin"
 PASSWORD = "admin"
-EXAMPLES = ("climate", "dashboard", "motion_light", "notifications")
+EXAMPLES = (
+    "climate",
+    "demo_basics",
+    "demo_calls",
+    "demo_controls",
+    "demo_errors",
+    "demo_graphs",
+    "demo_html",
+    "demo_images",
+    "demo_layout",
+    "motion_light",
+    "notifications",
+)
 STARTUP_SECONDS = 180
 
 
@@ -172,7 +184,7 @@ async def run(base: str) -> None:
         for name in EXAMPLES:
             entity = by_id.get(f"sensor.haanim_{name}")
             check(entity is not None and entity["state"] == "on", f"entity sensor.haanim_{name} is on")
-        attributes = by_id["sensor.haanim_dashboard"]["attributes"]
+        attributes = by_id["sensor.haanim_demo_basics"]["attributes"]
         check(
             attributes["device_class"] == "enum" and attributes["enabled"] is True,
             "the entity has its attributes",
@@ -184,49 +196,27 @@ async def run(base: str) -> None:
             sorted(item["id"] for item in listed["automations"]) == sorted(EXAMPLES),
             "haanim.list_automations",
         )
-        actions = await smoke.service("haanim", "list_actions", True, automation_id="dashboard")
+        actions = await smoke.service("haanim", "list_actions", True, automation_id="demo_basics")
         check({"count", "reset"} <= {action["name"] for action in actions["actions"]}, "haanim.list_actions")
 
         # --- The card follows the automation ---------------------------------------------------
-        await smoke.service("haanim", "run_action", automation_id="dashboard", action="reset")
-        card, _ = await smoke.command("haanim/card/subscribe", automation_id="dashboard")
-        first = await smoke.event(card, lambda event: "blocks" in event, "the card of the dashboard example")
+        await smoke.service("haanim", "run_action", automation_id="demo_basics", action="reset")
+        card, _ = await smoke.command("haanim/card/subscribe", automation_id="demo_basics")
+        first = await smoke.event(card, lambda event: "blocks" in event, "the card of the basics demo")
         ids = [block["id"] for block in first["blocks"]]
         check(
-            ids
-            == [
-                "intro",
-                "logo",
-                "count",
-                "uptime",
-                "goal",
-                "dial",
-                "level",
-                "fan_state",
-                "presses",
-                "sun",
-                "camera",
-                "temperature",
-                "fan",
-                "sun_icon",
-                "info",
-                "add",
-                "reset",
-                "frame",
-            ],
+            ids == ["intro", "count", "last", "add", "add5", "reset", "frame"],
             f"the card has its blocks: {ids}",
         )
-        check(
-            first["title"] == "Dashboard demo", f"the card has the title the automation set: {first['title']}"
-        )
+        check(first["title"] == "Basics demo", f"the card has the title the automation set: {first['title']}")
         rows = [(row["cells"], len(row["elements"])) for row in first["layout"]]
-        check(rows[2] == (2, 2) and rows[-1] == (3, 3), f"the card has its layout: {rows}")
+        check(rows[0] == (1, 1) and rows[-1] == (4, 4), f"the card has its layout: {rows}")
 
-        logs, _ = await smoke.command("haanim/logs/subscribe", automation_id="dashboard")
+        logs, _ = await smoke.command("haanim/logs/subscribe", automation_id="demo_basics")
         await smoke.event(logs, lambda event: "records" in event, "the recent log records")
 
         result = await smoke.service(
-            "haanim", "run_action", True, automation_id="dashboard", action="count", data={"step": 2}
+            "haanim", "run_action", True, automation_id="demo_basics", action="count", data={"step": 2}
         )
         check(result == {"result": 2}, f"haanim.run_action returns the action's result: {result}")
 
@@ -237,21 +227,87 @@ async def run(base: str) -> None:
 
         updated = await smoke.event(card, count_is(2), "the count on the card after the action")
         check(True, "the card is updated over the websocket when the action changes it")
-        check(updated["title"] == "Dashboard demo: 2 pressed", f"the title follows: {updated['title']}")
+        check(updated["title"] == "Basics: 2 pressed", f"the title follows: {updated['title']}")
         await smoke.event(
             logs, lambda event: event.get("record", {}).get("message") == "Counted to 2", "the log"
         )
         check(True, "what the action printed arrives as a log record")
 
-        await smoke.service("haanim", "run_action", automation_id="dashboard", action="toggle_frame")
+        await smoke.service("haanim", "run_action", automation_id="demo_basics", action="toggle_frame")
         bare = await smoke.event(card, lambda event: not event["options"]["title"], "the stripped card")
         check(not any(bare["options"].values()), "the automation can hide every fixed part of its card")
-        await smoke.service("haanim", "run_action", automation_id="dashboard", action="toggle_frame")
+        await smoke.service("haanim", "run_action", automation_id="demo_basics", action="toggle_frame")
         await smoke.event(card, lambda event: event["options"]["title"], "the card with its frame again")
 
-        await smoke.command("fire_event", event_type="dashboard_count", event_data={"step": 3})
+        await smoke.command("fire_event", event_type="demo_count", event_data={"step": 3})
         await smoke.event(card, count_is(5), "the count on the card after the event")
         check(True, "an event trigger fires and the card follows")
+
+        # --- The other demos: each has its card, and its actions run ----------------------------
+        kinds: set[str] = set()
+        for name in EXAMPLES:
+            subscription, _ = await smoke.command("haanim/card/subscribe", automation_id=name)
+            shown = await smoke.event(subscription, lambda event: "blocks" in event, f"the card of {name}")
+            kinds |= {block["type"] for block in shown["blocks"]}
+            await smoke.command("unsubscribe_events", subscription=subscription)
+        wanted = {"text", "html", "image", "value", "entity", "icon", "gauge", "badge", "graph", "button"}
+        check(kinds >= wanted, f"the demos show every kind of element: {sorted(kinds)}")
+
+        result = await smoke.service(
+            "haanim", "run_action", True, automation_id="demo_errors", action="careful"
+        )
+        check(
+            result == {"result": "Caught `ValueError`: This action always fails"},
+            f"an automation catches the failure of an action it calls: {result}",
+        )
+        try:
+            await smoke.service("haanim", "run_action", True, automation_id="demo_errors", action="fail")
+            raised = ""
+        except AssertionError as failure:
+            raised = str(failure)
+        check("This action always fails" in raised, "a failing action raises to whoever called it")
+        result = await smoke.service(
+            "haanim", "run_action", True, automation_id="demo_errors", action="twice"
+        )
+        check(
+            result == {"result": "1 finished, 1 dropped with `ActionDroppedError`"},
+            f"a busy action drops a second request: {result}",
+        )
+        result = await smoke.service(
+            "haanim", "run_action", True, automation_id="demo_errors", action="missing"
+        )
+        check(
+            "NonExistingAutomationError" in result["result"]
+            and "NonExistingServiceError" in result["result"],
+            "an automation and a service that do not exist raise errors of their own",
+        )
+        result = await smoke.service(
+            "haanim", "run_action", True, automation_id="demo_calls", action="count_there"
+        )
+        check(result == {"result": 6}, f"an automation calls another and gets its result: {result}")
+        result = await smoke.service(
+            "haanim", "run_action", True, automation_id="demo_calls", action="notify"
+        )
+        check(
+            result == {"result": "Hello from the calls demo"},
+            f"the calls demo has the notifications automation send a message: {result}",
+        )
+        result = await smoke.service("haanim", "run_action", True, automation_id="demo_layout", action="move")
+        check(result == {"result": "second"}, "the layout demo moves an element to another row")
+        await smoke.service("haanim", "run_action", automation_id="demo_layout", action="rebuild")
+        html = await smoke.service(
+            "haanim", "run_action", True, automation_id="demo_html", action="set_note", data={}
+        )
+        check("<script>" in html["result"], "the HTML demo keeps a note with markup in it")
+        subscription, _ = await smoke.command("haanim/card/subscribe", automation_id="demo_html")
+        shown = await smoke.event(
+            subscription, lambda event: bool(event["blocks"]), "the card of the HTML demo"
+        )
+        table = next(block["html"] for block in shown["blocks"] if block["id"] == "table")
+        check(
+            "&lt;script&gt;" in table and "<script>" not in table and "<table" in table,
+            "the HTML demo puts a table on its card, with text from outside escaped",
+        )
 
         # --- A state trigger, a service call from the automation, persistent storage ------------
         await smoke.service("input_number", "set_value", entity_id="input_number.temperature", value=25)
@@ -271,14 +327,14 @@ async def run(base: str) -> None:
         await smoke.service("input_number", "set_value", entity_id="input_number.temperature", value=21)
 
         # --- Assets and the frontend -----------------------------------------------------------
-        status, content_type, body = await smoke.get("/api/haanim/assets/dashboard/logo.svg")
+        status, content_type, body = await smoke.get("/api/haanim/assets/demo_images/logo.svg")
         check(
             status == 200 and "svg" in content_type and "<svg" in body,
             "the asset is served to a logged-in user",
         )
-        status, _, _ = await smoke.get("/api/haanim/assets/dashboard/logo.svg", logged_in=False)
+        status, _, _ = await smoke.get("/api/haanim/assets/demo_images/logo.svg", logged_in=False)
         check(status == 401, "the asset is refused without login")
-        status, _, _ = await smoke.get("/api/haanim/assets/dashboard/..%2Fmain.py")
+        status, _, _ = await smoke.get("/api/haanim/assets/demo_images/..%2Fmain.py")
         check(status in (400, 404), "the automation's code is not served as an asset")
         for module in ("haanim-panel.js", "haanim-card.js", "haanim-render.js", "haanim-graph.js"):
             status, _, body = await smoke.get(f"/haanim/ui/{module}", logged_in=False)
@@ -301,11 +357,11 @@ async def run(base: str) -> None:
         check(config["options"]["max_concurrent_actions"] == 20, "the configuration is readable")
 
         # --- Control -----------------------------------------------------------------------------
-        await smoke.service("haanim", "stop", automation_id="dashboard")
+        await smoke.service("haanim", "stop", automation_id="demo_basics")
         await smoke.event(card, lambda event: event["blocks"] == [], "the empty card after the stop")
-        check((await automations(smoke))["dashboard"]["state"] == "off", "haanim.stop stops the automation")
-        await smoke.service("haanim", "start", automation_id="dashboard")
-        await smoke.event(card, count_is(5), "the card after the restart")
+        check((await automations(smoke))["demo_basics"]["state"] == "off", "haanim.stop stops the automation")
+        await smoke.service("haanim", "start", automation_id="demo_basics")
+        await smoke.event(card, count_is(6), "the card after the restart")
         check(True, "after a restart the card is rebuilt, with the stored count")
 
     print("\nEnd-to-end smoke test passed")

@@ -1,10 +1,34 @@
 title: HAAnim examples
 views:
+  # One card per demo: each shows one part of what an automation can do
+  - title: Demos
+    path: demos
+    cards:
+      - type: custom:haanim-card
+        automation_id: demo_basics
+      - type: custom:haanim-card
+        automation_id: demo_controls
+      - type: custom:haanim-card
+        automation_id: demo_layout
+      - type: custom:haanim-card
+        automation_id: demo_graphs
+      - type: custom:haanim-card
+        automation_id: demo_images
+      - type: custom:haanim-card
+        automation_id: demo_html
+      - type: custom:haanim-card
+        automation_id: demo_errors
+      - type: custom:haanim-card
+        automation_id: demo_calls
+      - type: entities
+        title: Try the demos
+        entities:
+          - input_boolean.fan
+          - input_number.temperature
+  # The automations that do something: what a real one looks like
   - title: Examples
     path: examples
     cards:
-      - type: custom:haanim-card
-        automation_id: dashboard
       - type: custom:haanim-card
         automation_id: climate
       - type: custom:haanim-card

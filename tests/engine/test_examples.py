@@ -24,8 +24,20 @@ DESIGN = REPO_ROOT / "_design.md"
 
 
 def test_the_examples() -> None:
-    """Test the examples are the four the README lists."""
-    assert NAMES == ["climate", "dashboard", "motion_light", "notifications"]
+    """Test the examples are the ones the README lists: three automations and eight demos."""
+    assert NAMES == [
+        "climate",
+        "demo_basics",
+        "demo_calls",
+        "demo_controls",
+        "demo_errors",
+        "demo_graphs",
+        "demo_html",
+        "demo_images",
+        "demo_layout",
+        "motion_light",
+        "notifications",
+    ]
     readme = (EXAMPLES / "README.md").read_text(encoding="utf-8")
     for name in NAMES:
         assert f"`{name}/`" in readme
@@ -97,6 +109,6 @@ def test_climate_is_the_designs_complete_example() -> None:
     assert (EXAMPLES / "climate" / "main.py").read_text(encoding="utf-8") == code
 
 
-def test_assets_of_the_dashboard() -> None:
-    """Test the image the dashboard example shows is in its assets folder."""
-    assert (EXAMPLES / "dashboard" / "assets" / "logo.svg").read_text(encoding="utf-8").startswith("<svg")
+def test_assets_of_the_images_demo() -> None:
+    """Test the image the images demo shows is in its assets folder."""
+    assert (EXAMPLES / "demo_images" / "assets" / "logo.svg").read_text(encoding="utf-8").startswith("<svg")

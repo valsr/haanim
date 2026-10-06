@@ -1,0 +1,6 @@
+{
+  "name": "Demo: calls",
+  "description": "Reading entities, calling services to change them, and calling other automations.",
+  "author": "HAAnim",
+  "version": "1.0.0"
+}

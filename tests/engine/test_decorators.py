@@ -851,7 +851,7 @@ class TestAtStart:
         examples = Path(__file__).parents[2] / "examples"
         kinds: set[str] = set()
         actions = 0
-        for name in ("climate", "dashboard", "motion_light"):
+        for name in ("climate", "demo_basics", "motion_light"):
             shutil.copytree(examples / name, tmp_path / name)
             clock = FakeClock()
             host = make_host(files=LocalFileSystem(), clock=clock)
