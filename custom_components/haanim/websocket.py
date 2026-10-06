@@ -45,6 +45,7 @@ def _summary(manager: AutomationManager, automation_id: str) -> dict[str, Any]:
         "state": state,
         "enabled": manager.is_automation_enabled(automation_id),
         "message": message,
+        "running_actions": list(manager.get_automation_status(automation_id).running_actions.values()),
     }
 
 
@@ -60,7 +61,6 @@ def _detail(manager: AutomationManager, automation_id: str) -> dict[str, Any]:
         "description": metadata.description if metadata else "",
         "author": metadata.author if metadata else "",
         "last_run": times.run_time.isoformat() if times.run_time else None,
-        "running_actions": list(status.running_actions.values()),
         "last_action": status.last_action,
         "last_action_time": times.last_action_time.isoformat() if times.last_action_time else None,
         "last_error": failure.as_dict() if failure else None,

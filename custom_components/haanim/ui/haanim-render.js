@@ -149,9 +149,21 @@ export function renderMarkdown(markdown) {
     return html.join('');
 }
 
-/** The words the design uses for an automation's state. */
-export function stateLabel(state, enabled) {
-    if (state === 'on') return { label: 'Running', css: 'running' };
+/**
+ * What the state badge says, and how it looks.
+ *
+ * A running automation shows what it is doing: the name of the action that is executing (the first, and how
+ * many more, if there are several), or `Idle` while none is. `@startup` and `@shutdown` are shown as
+ * `startup` and `shutdown`. Stopped, disabled, error and unavailable are shown as such.
+ * Returns `{label, css}`; the label is text, not HTML.
+ */
+export function stateLabel(state, enabled, running = []) {
+    if (state === 'on') {
+        const names = (running || []).map((name) => String(name).replace(/^__(.*)__$/, '$1'));
+        if (names.length === 0) return { label: 'Idle', css: 'idle' };
+        const more = names.length > 1 ? ` +${names.length - 1}` : '';
+        return { label: `${names[0]}${more}`, css: 'running' };
+    }
     if (state === 'error') return { label: 'Error', css: 'error' };
     if (state === 'off') return enabled ? { label: 'Stopped', css: 'stopped' } : { label: 'Disabled', css: 'disabled' };
     return { label: 'Unavailable', css: 'unavailable' };
@@ -335,11 +347,13 @@ function shown(options, part) {
  * nothing to show there is no header at all.
  */
 export function renderHeader(automation, title = null, options = null) {
-    const state = stateLabel(automation.state, automation.enabled);
+    const state = stateLabel(automation.state, automation.enabled, automation.running_actions);
     const name = shown(options, 'title')
         ? `<span class="name">${escapeHtml(title || automation.name || automation.id)}</span>`
         : '';
-    const badge = shown(options, 'state') ? `<span class="state state-${state.css}">${state.label}</span>` : '';
+    const badge = shown(options, 'state')
+        ? `<span class="state state-${state.css}">${escapeHtml(state.label)}</span>`
+        : '';
     const message =
         shown(options, 'message') && automation.message
             ? `<div class="message">${escapeHtml(automation.message)}</div>`
@@ -472,12 +486,12 @@ export function renderList(automations) {
     }
     const rows = automations
         .map((automation) => {
-            const state = stateLabel(automation.state, automation.enabled);
+            const state = stateLabel(automation.state, automation.enabled, automation.running_actions);
             return (
                 `<tr class="row" data-open="${escapeHtml(automation.id)}">` +
                 `<td class="name">${escapeHtml(automation.name || automation.id)}` +
                 `<div class="id">${escapeHtml(automation.id)}</div></td>` +
-                `<td><span class="state state-${state.css}">${state.label}</span></td>` +
+                `<td><span class="state state-${state.css}">${escapeHtml(state.label)}</span></td>` +
                 `<td>${escapeHtml(automation.version || '')}</td>` +
                 `<td class="message">${escapeHtml(automation.message || '')}</td></tr>`
             );

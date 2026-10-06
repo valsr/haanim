@@ -172,6 +172,8 @@ class TestBlocks:
                 "max": None,
                 "entities": ["sensor.temperature"],
                 "hours": 24.0,
+                "x_major": None,
+                "x_minor": None,
             }
         ]
         card.graph(
@@ -237,6 +239,21 @@ class TestBlocks:
         card.graph("g", series={"Temperature": [(0, 20.5), (1, 21)], "Heating": [(0, "off"), (1, "on")]})
         assert card.blocks[0]["series"]["Heating"] == [[0.0, "off"], [1.0, "on"]]
         assert card.blocks[0]["series"]["Temperature"] == [[0.0, 20.5], [1.0, 21.0]]
+
+    def test_graph_marks_on_a_time_axis(self, card: HAAnimCard) -> None:
+        """Test on a time axis the distances between marks are durations, kept in seconds."""
+        card.graph("h", "sensor.temperature", x_major="01:00:00", x_minor=900)
+        card.graph("t", series={"A": [("2025-01-06T12:00:00+00:00", 1)]}, x_major=3600)
+        history, own = card.blocks
+        assert (history["x_major"], history["x_minor"]) == (3600.0, 900.0)
+        assert (own["x_major"], own["x_minor"]) == (3600.0, None)
+
+    def test_graph_marks_on_a_number_axis(self, card: HAAnimCard) -> None:
+        """Test on other axes the distances are numbers; either can be given alone."""
+        card.graph("g", series={"A": [1, 2, 3]}, x_major=10, x_minor=2.5)
+        card.graph("m", series={"A": [(0, 1)]}, x_minor=0.5)
+        assert (card.blocks[0]["x_major"], card.blocks[0]["x_minor"]) == (10.0, 2.5)
+        assert (card.blocks[1]["x_major"], card.blocks[1]["x_minor"]) == (None, 0.5)
 
     def test_graph_values_are_json(self, card: HAAnimCard) -> None:
         """Test what a graph block carries is plain JSON, whatever was passed in."""
@@ -804,6 +821,48 @@ INVALID: list[tuple[str, Any, type[Exception], str]] = [
         lambda c: c.graph("g", series={"A": [(0, 1), ("2025-01-06T12:00:00+00:00", 1)]}),
         ValueError,
         "these are mixed: number, time",
+    ),
+    (
+        "graph major zero",
+        lambda c: c.graph("g", series={"A": [1]}, x_major=0),
+        ValueError,
+        "x_major must be more",
+    ),
+    (
+        "graph minor negative",
+        lambda c: c.graph("g", series={"A": [1]}, x_minor=-1),
+        ValueError,
+        "x_minor must be",
+    ),
+    (
+        "graph major a duration on a number axis",
+        lambda c: c.graph("g", series={"A": [1]}, x_major="01:00:00"),
+        TypeError,
+        "x_major must be a number",
+    ),
+    (
+        "graph minor not below major",
+        lambda c: c.graph("g", series={"A": [1]}, x_major=5, x_minor=5),
+        ValueError,
+        "x_minor \\(5\\) must be less than x_major \\(5\\)",
+    ),
+    (
+        "graph major not a duration",
+        lambda c: c.graph("g", "sensor.a", x_major="an hour"),
+        ValueError,
+        "x_major is a duration on a time axis",
+    ),
+    (
+        "graph minor duration zero",
+        lambda c: c.graph("g", "sensor.a", x_minor=0),
+        ValueError,
+        "x_minor is a duration on a time axis",
+    ),
+    (
+        "graph minor duration above major",
+        lambda c: c.graph("g", "sensor.a", x_major="00:30:00", x_minor="01:00:00"),
+        ValueError,
+        "x_minor \\(3600\\) must be less than x_major \\(1800\\)",
     ),
     ("button label not a string", lambda c: c.button("b", 1, "reset"), TypeError, "label must be a string"),
     ("button action not a string", lambda c: c.button("b", "Go", None), TypeError, "action must be a string"),

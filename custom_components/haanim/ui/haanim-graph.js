@@ -221,11 +221,201 @@ function areaPath(points, toX, toY, step, baseline) {
         .join('');
 }
 
-function formatPosition(position, data, span) {
-    if (!data.time) return formatValue(position);
+const MINUTE = 60000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+/** The steps a time axis is marked in: from fifteen seconds to thirty days. */
+const TIME_STEPS = [
+    15000, 30000, MINUTE, 2 * MINUTE, 5 * MINUTE, 10 * MINUTE, 15 * MINUTE, 30 * MINUTE,
+    HOUR, 2 * HOUR, 3 * HOUR, 6 * HOUR, 12 * HOUR, DAY, 2 * DAY, 7 * DAY, 14 * DAY, 30 * DAY,
+];
+
+const MAX_MAJOR_TICKS = 12;
+const MAX_MINOR_TICKS = 80;
+
+/** How many bands a graph is divided into for hovering, at most. */
+const MAX_HOVER_BANDS = 60;
+
+/** A position on a time axis as text: a time of day, or a date if the marks are days apart. */
+function formatTimeMark(position, step) {
     const date = new Date(position);
     if (Number.isNaN(date.getTime())) return '';
-    return span > 24 * 3600000 ? date.toLocaleDateString() : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (step >= DAY) return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const seconds = step < MINUTE ? { second: '2-digit' } : {};
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false, ...seconds });
+}
+
+/** A moment as text for the hover readout: the time of day, with the date if the graph spans more than a day. */
+function formatMoment(position, span) {
+    const date = new Date(position);
+    if (Number.isNaN(date.getTime())) return '';
+    const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    return span > DAY ? `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}` : time;
+}
+
+/** Every multiple of `step` in a range, counted from `origin`. */
+function multiples(from, to, step, origin = 0) {
+    const marks = [];
+    const first = Math.ceil((from - origin) / step - 1e-9);
+    for (let count = first; origin + count * step <= to + step * 1e-9; count += 1) {
+        marks.push(origin + count * step);
+        if (marks.length > 1000) break;
+    }
+    return marks;
+}
+
+/**
+ * The marks of the horizontal axis: major ones, which are labelled, and minor ones between them.
+ *
+ * `domain` is the range of the axis and `kind` what runs along it: `time` (milliseconds), `number` or
+ * `index`. `major` and `minor` are the distances the automation asked for, in the units of the axis (seconds
+ * for time); without them, or if they would give too many marks, round distances are chosen: for time the
+ * usual clock steps, on the local clock, so that marks fall on full hours and days; for numbers 1, 2, 2.5 or
+ * 5 times a power of ten; for an index whole numbers only. Returns `{major, minor, step}`, where `step` is
+ * the distance between major marks.
+ */
+export function axisTicks(domain, kind, major = null, minor = null) {
+    const [from, to] = domain;
+    const span = to - from;
+    if (!(span > 0) || !finite(span)) return { major: [], minor: [], step: 0 };
+    const time = kind === 'time';
+    const scale = time ? 1000 : 1;
+    // Local time is what a person reads off the axis: shift the origin so marks fall on local hours and days
+    const origin = time ? new Date(from).getTimezoneOffset() * MINUTE : 0;
+
+    let step = finite(major) && major > 0 ? major * scale : 0;
+    if (!step || span / step > MAX_MAJOR_TICKS) {
+        if (time) {
+            step = TIME_STEPS.find((candidate) => span / candidate <= 6) || TIME_STEPS[TIME_STEPS.length - 1];
+        } else {
+            step = niceStep(span, 5);
+            if (kind === 'index') step = Math.max(1, Math.ceil(step));
+        }
+    }
+
+    let small = finite(minor) && minor > 0 ? minor * scale : 0;
+    if (!small || small >= step || span / small > MAX_MINOR_TICKS) {
+        if (time) {
+            small = TIME_STEPS.find((candidate) => candidate < step && step % candidate === 0 && step / candidate <= 7) || 0;
+        } else if (kind === 'index') {
+            small = step > 1 ? (step % 5 === 0 ? step / 5 : 1) : 0;
+        } else {
+            small = step / 5;
+        }
+    }
+
+    const marks = multiples(from, to, step, origin);
+    const between = small
+        ? multiples(from, to, small, origin).filter((mark) => !marks.some((one) => Math.abs(one - mark) < small / 1000))
+        : [];
+    return { major: marks, minor: between, step };
+}
+
+function formatPosition(position, data, step) {
+    return data.time ? formatTimeMark(position, step) : formatValue(position);
+}
+
+/** Draw the marks of the horizontal axis below the content: short lines, and a label under each major one. */
+function renderAxis(ticks, data, toX, bottom) {
+    const minor = ticks.minor
+        .map((mark) => {
+            const x = round(toX(mark));
+            return `<line class="tick-minor" x1="${x}" x2="${x}" y1="${bottom}" y2="${bottom + 3}"/>`;
+        })
+        .join('');
+    const major = ticks.major
+        .map((mark) => {
+            const x = round(toX(mark));
+            // Labels at the ends of the axis stay inside the graph
+            let anchor = 'middle';
+            if (x < LEFT + 16) anchor = 'start';
+            else if (x > WIDTH - RIGHT - 16) anchor = 'end';
+            return (
+                `<line class="tick-major" x1="${x}" x2="${x}" y1="${bottom}" y2="${bottom + 5}"/>` +
+                `<text class="tick" x="${x}" y="${bottom + 16}" text-anchor="${anchor}">` +
+                `${escapeHtml(formatPosition(mark, data, ticks.step))}</text>`
+            );
+        })
+        .join('');
+    return `<line class="axis" x1="${LEFT}" x2="${WIDTH - RIGHT}" y1="${bottom}" y2="${bottom}"/>${minor}${major}`;
+}
+
+/** The value of a series at a position: the one that holds there, or the point at or nearest to it. */
+function valueAt(one, position, holds) {
+    let found = null;
+    let distance = Infinity;
+    for (const point of one.points) {
+        if (!finite(point[0])) continue;
+        if (holds) {
+            if (point[0] <= position) found = point;
+        } else if (Math.abs(point[0] - position) < distance) {
+            distance = Math.abs(point[0] - position);
+            found = point;
+        }
+    }
+    return found ? found[1] : null;
+}
+
+/**
+ * The bands a graph is divided into for hovering.
+ *
+ * A band belongs to one position: a position where a series has a point, or, if there are too many of
+ * those, one of evenly spread positions. Returns the positions in order.
+ */
+export function hoverPositions(data) {
+    const [from, to] = data.domain;
+    const all = data.series.flatMap((one) => one.points.map((point) => point[0])).filter((position) => finite(position) && position >= from && position <= to);
+    const distinct = [...new Set(all)].sort((a, b) => a - b);
+    if (distinct.length <= MAX_HOVER_BANDS) return distinct;
+    return Array.from({ length: MAX_HOVER_BANDS }, (_, index) => from + ((index + 0.5) / MAX_HOVER_BANDS) * (to - from));
+}
+
+/**
+ * Draw what hovering shows: for each band an invisible area to hover over, a line at its position, a dot on
+ * each line of the graph, and a box that names the position and the value of every series there.
+ *
+ * All of it is in the SVG from the start and shown by CSS while the pointer is over the band, so reading a
+ * value needs no script.
+ */
+function renderHover(data, layout, unit) {
+    const { toX, toY, top, bottom, low, high } = layout;
+    const positions = hoverPositions(data);
+    const span = data.domain[1] - data.domain[0];
+    const suffix = unit ? ` ${unit}` : '';
+    return positions
+        .map((position, index) => {
+            const x = toX(position);
+            const left = index === 0 ? LEFT : (toX(positions[index - 1]) + x) / 2;
+            const right = index === positions.length - 1 ? WIDTH - RIGHT : (x + toX(positions[index + 1])) / 2;
+            const lines = [data.time ? formatMoment(position, span) : formatValue(position)];
+            let dots = '';
+            data.series.forEach((one, place) => {
+                const value = valueAt(one, position, data.step || one.text);
+                if (one.text) {
+                    lines.push(`${one.name}: ${value === null ? '–' : value}`);
+                } else {
+                    lines.push(`${one.name}: ${finite(value) ? `${formatValue(value)}${suffix}` : '–'}`);
+                    if (finite(value) && toY && value >= low && value <= high) {
+                        dots += `<circle class="dot" cx="${round(x)}" cy="${round(toY(value))}" r="3" style="fill: ${colorOf(place)}"/>`;
+                    }
+                }
+            });
+            const width = Math.min(Math.max(...lines.map((line) => line.length)) * 5.4 + 14, WIDTH - LEFT - RIGHT);
+            const height = lines.length * 12 + 8;
+            const boxX = round(x < (LEFT + WIDTH - RIGHT) / 2 ? Math.min(x + 8, WIDTH - RIGHT - width) : Math.max(x - 8 - width, LEFT));
+            const text = lines
+                .map((line, row) => `<tspan x="${boxX + 7}" dy="${row === 0 ? 0 : 12}"${row === 0 ? ' class="readout-title"' : ''}>${escapeHtml(line)}</tspan>`)
+                .join('');
+            return (
+                '<g class="hover">' +
+                `<rect class="hit" x="${round(left)}" y="${top}" width="${round(Math.max(right - left, 1))}" height="${round(bottom - top)}"/>` +
+                `<line class="guide" x1="${round(x)}" x2="${round(x)}" y1="${top}" y2="${bottom}"/>${dots}` +
+                `<g class="readout"><rect x="${boxX}" y="${top + 2}" width="${round(width)}" height="${height}" rx="4"/>` +
+                `<text x="${boxX + 7}" y="${top + 15}">${text}</text></g></g>`
+            );
+        })
+        .join('');
 }
 
 /**
@@ -273,7 +463,9 @@ function timelineRow(row, top, toX, end, colors) {
 /**
  * Render a graph block as HTML: an optional title, the SVG, and a legend with the latest values.
  *
- * Series of numbers share the plot at the top; series of states each get a row of a timeline below it.
+ * Series of numbers share the plot at the top; series of states each get a row of a timeline below it. The
+ * horizontal axis has major marks with labels and minor marks between them. Hovering over the graph shows
+ * the values of all series at that position.
  * `context` has `history` (the fetched history per graph block), `states` and `now`.
  */
 export function renderGraph(block, context = {}) {
@@ -296,6 +488,8 @@ export function renderGraph(block, context = {}) {
     const [from, to] = data.domain;
     const span = to - from;
     const plotWidth = WIDTH - LEFT - RIGHT;
+    const linear = (position) => (span > 0 ? LEFT + ((position - from) / span) * plotWidth : LEFT);
+    const layout = { toX: linear, toY: null, top: TOP, bottom: TOP, low: 0, high: 0 };
     let shapes = '';
     let bottom = TOP;
 
@@ -343,23 +537,25 @@ export function renderGraph(block, context = {}) {
             })
             .join('');
         bottom = TOP + PLOT_HEIGHT;
+        Object.assign(layout, { toX, toY, low, high });
     }
 
     const colors = stateColors(rows, lines.filter((one) => one.points.some((point) => finite(point[1]))).length);
     if (rows.length) {
-        const toX = (position) => (span > 0 ? LEFT + ((position - from) / span) * plotWidth : LEFT);
         let top = values.length ? bottom + 6 : TOP;
         for (const row of rows) {
-            shapes += timelineRow(row, top, toX, to, colors);
+            shapes += timelineRow(row, top, linear, to, colors);
             top += ROW_PITCH;
         }
         bottom = top - (ROW_PITCH - ROW_BAR_TOP - ROW_BAR_HEIGHT);
     }
 
+    layout.bottom = bottom;
     const height = bottom + BOTTOM;
-    const ends =
-        `<text class="tick" x="${LEFT}" y="${height - 6}" text-anchor="start">${escapeHtml(formatPosition(from, data, span))}</text>` +
-        `<text class="tick" x="${WIDTH - RIGHT}" y="${height - 6}" text-anchor="end">${escapeHtml(formatPosition(to, data, span))}</text>`;
+    const kind = data.time ? 'time' : block.x === 'index' ? 'index' : 'number';
+    const ticks = axisTicks(data.domain, kind, block.x_major, block.x_minor);
+    const axis = renderAxis(ticks, data, layout.toX, bottom);
+    const hover = renderHover(data, layout, unit);
 
     const legend = data.series
         .map((one) => {
@@ -395,6 +591,6 @@ export function renderGraph(block, context = {}) {
     return (
         `${title}<svg class="graph" viewBox="0 0 ${WIDTH} ${height}" role="img"` +
         ` aria-label="${escapeHtml(block.title || data.series.map((one) => one.name).join(', '))}">` +
-        `${shapes}${ends}</svg><div class="legend">${legend}</div>${key}`
+        `${shapes}${axis}${hover}</svg><div class="legend">${legend}</div>${key}`
     );
 }

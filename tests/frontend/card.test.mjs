@@ -95,6 +95,29 @@ describe('haanim-card', () => {
         assert.match(card.shadowRoot.innerHTML, /class="state /);
     });
 
+    test('the state shows the action the entity says is running, at once, and Idle when none is', async () => {
+        const running = (actions, updated, state = 'on') => ({ state, last_updated: updated, attributes: { running_actions: actions, enabled: true } });
+        const { card, hass } = await mounted({ [ENTITY]: running([], '1') });
+        assert.match(card.shadowRoot.innerHTML, /state-idle">Idle</);
+
+        hass.answers['haanim/automations/get'] = () => new Promise(() => {});
+        hass.states = { [ENTITY]: running(['toggle_frame'], '2') };
+        card.hass = hass;
+        assert.match(card.shadowRoot.innerHTML, /state-running">toggle_frame</, 'without waiting for the details');
+
+        hass.states = { [ENTITY]: running([], '3') };
+        card.hass = hass;
+        assert.match(card.shadowRoot.innerHTML, /state-idle">Idle</);
+
+        hass.states = { [ENTITY]: running([], '4', 'off') };
+        card.hass = hass;
+        assert.match(card.shadowRoot.innerHTML, /state-stopped">Stopped</);
+
+        hass.states = { [ENTITY]: { state: 'unavailable', last_updated: '5', attributes: {} } };
+        card.hass = hass;
+        assert.match(card.shadowRoot.innerHTML, /state-unavailable">Unavailable</);
+    });
+
     test('the actions button opens a popup with all actions, which can be closed', async () => {
         const { card, hass } = await mounted();
         card.shadowRoot.fire('click', clicked({ 'haanim-ui': 'actions' }));

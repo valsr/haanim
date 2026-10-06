@@ -258,7 +258,8 @@ Names are relative to the automation's `assets/` folder. An automation reaches o
 ## The card
 
 Each automation has a card for dashboards, `custom:haanim-card` with `automation_id: <id>`. The card shows
-a title, the state and the status message, then whatever the automation puts there, and two buttons:
+a title, what the automation is doing (the name of the action that is running, or Idle) and the status
+message, then whatever the automation puts there, and two buttons:
 **Actions** opens a popup with all of the automation's actions, and **Log** goes to the automation's log in
 the HAAnim panel. Enabling, stopping and restarting are done on the automation's page in the panel.
 
@@ -313,6 +314,15 @@ timeline instead: a row with a coloured segment for every state it was in. One g
 ```python
 haa.card.graph("climate", ["sensor.temperature", "climate.living_room", "binary_sensor.window"], hours=24)
 haa.card.graph("pump", series={"Pump": [(0, "on"), (6, "off"), (8, "on"), (10, "on")]})
+```
+
+Hovering over a graph shows the values of all its series at that position. The horizontal axis has labelled
+marks with smaller ones between them, at round distances the card picks; `x_major` and `x_minor` set the
+distances instead, as durations on a time axis and as numbers otherwise:
+
+```python
+haa.card.graph("temps", "sensor.indoor", hours=6, x_major="01:00:00", x_minor="00:15:00")
+haa.card.graph("curve", series={"Target": [(0, 18), (6, 21), (22, 18)]}, x_major=6, x_minor=1)
 ```
 
 The points of a series are plain values (drawn one after the other), `(x, y)` pairs, or `(time, y)` pairs

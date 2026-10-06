@@ -53,6 +53,7 @@ const STYLES = `
     .name { font-size: 1.4em; font-weight: 500; }
     .state { padding: 2px 10px; border-radius: 12px; font-size: 0.85em; color: white; white-space: nowrap; }
     .state-running { background: var(--success-color, #4caf50); }
+    .state-idle { background: var(--primary-color, #03a9f4); }
     .state-stopped { background: var(--warning-color, #ff9800); }
     .state-disabled, .state-unavailable { background: var(--disabled-color, #9e9e9e); }
     .state-error { background: var(--error-color, #f44336); }

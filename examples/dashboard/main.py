@@ -64,8 +64,16 @@ def build_card(event: ActionEvent) -> None:
     haa.card.entity("sun", ENTITY)
     # A graph of what Home Assistant recorded for entities; it follows them from then on. The
     # temperature is numbers and is drawn as an area; the fan is on or off and becomes a timeline.
+    # Hover over it to read a single value. The time axis is labelled every quarter of an hour, with a
+    # small mark every five minutes; without x_major and x_minor the card picks round distances itself.
     haa.card.graph(
-        "temperature", [TEMPERATURE, FAN], hours=1, kind="area", title="Temperature and fan, last hour"
+        "temperature",
+        [TEMPERATURE, FAN],
+        hours=1,
+        kind="area",
+        title="Temperature and fan, last hour",
+        x_major="00:15:00",
+        x_minor="00:05:00",
     )
     # Icons follow their entity: lit and turning while the fan is on, dimmed while it is off
     haa.card.icon("fan", FAN, icon="mdi:fan", spin=True)

@@ -82,6 +82,7 @@ class TestList:
             "state": "on",
             "enabled": True,
             "message": None,
+            "running_actions": [],
         }
         assert automations[0]["state"] == "error"
         assert "main.py:1" in automations[0]["message"]
@@ -104,8 +105,8 @@ class TestDetail:
             "message": None,
             "description": "Keeps it cool",
             "author": "Ada",
-            "last_run": manager.automation_times("climate").run_time.isoformat(),
             "running_actions": [],
+            "last_run": manager.automation_times("climate").run_time.isoformat(),
             "last_action": None,
             "last_action_time": None,
             "last_error": None,

@@ -1,12 +1,17 @@
+// The marks of a time axis fall on the local clock: the tests run on UTC, whatever the machine is set to
+process.env.TZ = 'UTC';
+
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
     GRAPH_COLORS,
+    axisTicks,
     classify,
     formatValue,
     graphData,
     historyPoints,
+    hoverPositions,
     niceStep,
     numericState,
     renderGraph,
@@ -224,14 +229,6 @@ describe('renderGraph: series of the automation', () => {
     test('a series without a value has a dash in the legend', () => {
         assert.match(renderGraph(supplied({ series: { A: [[0, 1]], B: [[0, null]] } })), /legend-name">B<\/span><span class="legend-value">–</);
     });
-    test('time along the axis is shown as time, as dates for more than a day', () => {
-        const day = renderGraph(supplied({ x: 'time', series: { A: [[NOW / 1000, 1], [NOW / 1000 + 3600, 2]] } }));
-        const month = renderGraph(supplied({ x: 'time', series: { A: [[NOW / 1000, 1], [NOW / 1000 + 86400 * 20, 2]] } }));
-        const ends = (html) => [...html.matchAll(/text-anchor="(?:start|end)">([^<]*)</g)].map((match) => match[1]).slice(-2);
-        assert.ok(ends(day).every((text) => /\d/.test(text) && text.includes(':')));
-        assert.ok(ends(month).every((text) => /\d/.test(text) && !text.includes(':')));
-        assert.notEqual(ends(month)[0], ends(month)[1]);
-    });
     test('more series than colours start over', () => {
         const series = Object.fromEntries(Array.from({ length: 9 }, (_, index) => [`S${index}`, [[0, index]]]));
         const html = renderGraph(supplied({ series }));
@@ -348,6 +345,170 @@ describe('renderGraph: states over time', () => {
         assert.equal(colors.get('auto'), 'var(--haanim-graph-color-2, #ff9800)');
         assert.equal(stateColors([]).size, 0);
         assert.equal(stateColors([{ points: [[0, 'on']] }], 3).get('on'), 'var(--haanim-graph-color-4, #e91e63)');
+    });
+});
+
+describe('marks of the horizontal axis', () => {
+    const MIN = 60000;
+    const at = (hour, minute = 0) => Date.UTC(2025, 0, 6, hour, minute);
+    const clock = (marks) => marks.map((mark) => new Date(mark).toISOString().slice(11, 16));
+
+    test('time: round clock steps, with smaller ones between', () => {
+        const ticks = axisTicks([at(10, 7), at(12, 7)], 'time');
+        assert.equal(ticks.step, 30 * MIN);
+        assert.deepEqual(clock(ticks.major), ['10:30', '11:00', '11:30', '12:00']);
+        assert.deepEqual(clock(ticks.minor).slice(0, 6), ['10:10', '10:15', '10:20', '10:25', '10:35', '10:40']);
+        assert.ok(ticks.minor.every((mark) => !ticks.major.includes(mark)));
+    });
+    test('time: the step grows with the span', () => {
+        const step = (hours) => axisTicks([at(0), at(0) + hours * HOUR], 'time').step / MIN;
+        assert.deepEqual([0.1, 1, 6, 24, 72, 240, 720].map(step), [1, 10, 60, 360, 720, 2880, 10080]);
+    });
+    test('time: days are marked at midnight', () => {
+        const ticks = axisTicks([at(15), at(15) + 5 * 24 * HOUR], 'time');
+        assert.equal(ticks.step, 24 * HOUR);
+        assert.ok(ticks.major.every((mark) => new Date(mark).toISOString().endsWith('T00:00:00.000Z')));
+        assert.equal(ticks.major.length, 5);
+        assert.deepEqual(clock(ticks.minor).slice(0, 3), ['18:00', '06:00', '12:00']);
+    });
+    test('time: the distances the automation asks for, in seconds', () => {
+        const ticks = axisTicks([at(10), at(12)], 'time', 3600, 900);
+        assert.deepEqual(clock(ticks.major), ['10:00', '11:00', '12:00']);
+        assert.deepEqual(clock(ticks.minor), ['10:15', '10:30', '10:45', '11:15', '11:30', '11:45']);
+    });
+    test('numbers: round steps, a fifth of them between', () => {
+        const ticks = axisTicks([0, 22], 'number');
+        assert.deepEqual(ticks.major, [0, 5, 10, 15, 20]);
+        assert.deepEqual(ticks.minor.slice(0, 6), [1, 2, 3, 4, 6, 7]);
+        assert.deepEqual(axisTicks([0, 1], 'number').major.map((mark) => Number(mark.toFixed(2))), [0, 0.2, 0.4, 0.6, 0.8, 1]);
+    });
+    test('an index is marked at whole numbers only', () => {
+        assert.deepEqual(axisTicks([0, 8], 'index'), { major: [0, 2, 4, 6, 8], minor: [1, 3, 5, 7], step: 2 });
+        assert.deepEqual(axisTicks([0, 3], 'index'), { major: [0, 1, 2, 3], minor: [], step: 1 });
+        assert.deepEqual(axisTicks([0, 40], 'index').major, [0, 10, 20, 30, 40]);
+        assert.deepEqual(axisTicks([0, 40], 'index').minor.slice(0, 4), [2, 4, 6, 8]);
+    });
+    test('numbers: the distances the automation asks for', () => {
+        assert.deepEqual(axisTicks([0, 22], 'number', 10, 2), { major: [0, 10, 20], minor: [2, 4, 6, 8, 12, 14, 16, 18, 22], step: 10 });
+        assert.deepEqual(axisTicks([0, 22], 'number', 11).major, [0, 11, 22]);
+        assert.deepEqual(axisTicks([0, 22], 'number', null, 2.5).minor.slice(0, 3), [2.5, 7.5, 12.5]);
+    });
+    test('distances that would crowd the axis are replaced by round ones', () => {
+        assert.deepEqual(axisTicks([0, 22], 'number', 0.5).major, [0, 5, 10, 15, 20]);
+        assert.deepEqual(axisTicks([0, 22], 'number', 10, 0.01).minor.length, 9);
+        assert.deepEqual(axisTicks([0, 22], 'number', 10, 10).minor.length, 9, 'a minor distance has to be the smaller one');
+        assert.deepEqual(axisTicks([0, 22], 'number', -1).major, [0, 5, 10, 15, 20]);
+    });
+    test('an axis of no length has no marks', () => {
+        assert.deepEqual(axisTicks([5, 5], 'number'), { major: [], minor: [], step: 0 });
+        assert.deepEqual(axisTicks([0, NaN], 'number'), { major: [], minor: [], step: 0 });
+    });
+    test('the graph draws an axis line, the marks, and a label under each major one', () => {
+        const html = renderGraph(supplied({ x: 'number', series: { A: [[0, 1], [22, 4]] } }));
+        assert.match(html, /<line class="axis" x1="44" x2="392" y1="158" y2="158"\/>/);
+        const majors = [...html.matchAll(/<line class="tick-major" x1="([\d.]+)"[^>]*y1="158" y2="163"\/><text class="tick" x="[\d.]+" y="174" text-anchor="(\w+)">([^<]*)</g)].map((m) => [Number(m[1]), m[2], m[3]]);
+        assert.deepEqual(majors, [[44, 'start', '0'], [123.1, 'middle', '5'], [202.2, 'middle', '10'], [281.3, 'middle', '15'], [360.4, 'middle', '20']]);
+        assert.equal((html.match(/class="tick-minor"/g) || []).length, 18);
+        assert.match(html, /<line class="tick-minor" x1="59.8" x2="59.8" y1="158" y2="161"\/>/);
+    });
+    test('a label at the right end stays inside the graph', () => {
+        const html = renderGraph(supplied({ x: 'number', series: { A: [[0, 1], [20, 4]] } }));
+        assert.match(html, /<text class="tick" x="392" y="174" text-anchor="end">20</);
+    });
+    test('time is labelled as time of day, and as dates when the marks are days apart', () => {
+        const labels = (html) => [...html.matchAll(/y="174" text-anchor="(?:start|middle|end)">([^<]*)</g)].map((m) => m[1]);
+        const day = renderGraph(history(), withHistory([[NOW - HOUR, 20], [NOW - HOUR / 2, 22]]));
+        assert.deepEqual(labels(day), ['10:00', '10:30', '11:00', '11:30', '12:00']);
+        const month = renderGraph(history({ hours: 240 }), { now: NOW, history: { h: { loaded: true, points: { 'sensor.t': [[NOW - 100 * HOUR, 20]] } } } });
+        assert.ok(labels(month).length >= 4);
+        assert.ok(labels(month).every((label) => /Dec|Jan/.test(label) && !label.includes(':')), labels(month).join());
+    });
+    test('the distances of the block are used', () => {
+        const html = renderGraph(history({ x_major: 3600, x_minor: 1800 }), withHistory([[NOW - HOUR, 20]]));
+        assert.equal((html.match(/class="tick-major"/g) || []).length, 3);
+        assert.equal((html.match(/class="tick-minor"/g) || []).length, 2);
+    });
+    test('bars are marked under the middle of their slots', () => {
+        const html = renderGraph(supplied({ kind: 'bar', series: { A: [[0, 1], [1, 2], [2, 3], [3, 4]] } }));
+        const marks = [...html.matchAll(/class="tick-major" x1="([\d.]+)"/g)].map((m) => Number(m[1]));
+        assert.deepEqual(marks, [87.5, 174.5, 261.5, 348.5]);
+    });
+    test('a timeline has the axis below its last row', () => {
+        const html = renderGraph(supplied({ x: 'number', series: { Pump: [[0, 'on'], [10, 'off']] } }));
+        assert.match(html, /<line class="axis" x1="44" x2="392" y1="34" y2="34"\/>/);
+        assert.match(html, /<text class="tick" x="44" y="50" text-anchor="start">0</);
+    });
+});
+
+describe('hovering over a graph', () => {
+    const bands = (html) =>
+        [...html.matchAll(/<g class="hover"><rect class="hit" x="([\d.]+)" y="(\d+)" width="([\d.]+)" height="([\d.]+)"\/><line class="guide" x1="([\d.]+)"[^>]*\/>(.*?)<g class="readout">.*?<text[^>]*>(.*?)<\/text><\/g><\/g>/g)].map((m) => ({
+            x: Number(m[1]),
+            width: Number(m[3]),
+            height: Number(m[4]),
+            guide: Number(m[5]),
+            dots: [...m[6].matchAll(/cx="([\d.]+)" cy="([\d.]+)"/g)].map((d) => [Number(d[1]), Number(d[2])]),
+            lines: [...m[7].matchAll(/<tspan[^>]*>([^<]*)<\/tspan>/g)].map((t) => t[1]),
+        }));
+
+    test('a band for every position with a point, which together cover the plot', () => {
+        const drawn = bands(renderGraph(supplied({ unit: 'x' })));
+        assert.equal(drawn.length, 3);
+        assert.deepEqual(drawn.map((band) => band.guide), [44, 218, 392]);
+        assert.equal(drawn[0].x, 44);
+        assert.equal(drawn[0].x + drawn[0].width, drawn[1].x);
+        assert.equal(drawn[2].x + drawn[2].width, 392);
+        assert.ok(drawn.every((band) => band.height === 150));
+    });
+    test('the readout names the position and the value of every series there, with the unit', () => {
+        const html = renderGraph(supplied({ unit: '°C', series: { Indoor: [[0, 21.456], [1, 22]], Outdoor: [[0, 5], [1, null]] } }));
+        assert.deepEqual(bands(html).map((band) => band.lines), [['0', 'Indoor: 21.46 °C', 'Outdoor: 5 °C'], ['1', 'Indoor: 22 °C', 'Outdoor: –']]);
+    });
+    test('a dot on each line at the value', () => {
+        const drawn = bands(renderGraph(supplied({ series: { A: [[0, 1], [1, 2], [2, 4]], B: [[0, 4], [2, 1]] } })));
+        assert.deepEqual(drawn[0].dots, [[44, 158], [44, 8]]);
+        assert.deepEqual(drawn[2].dots, [[392, 8], [392, 158]]);
+        assert.equal(drawn[1].dots.length, 2, 'a series without a point there shows its nearest one');
+    });
+    test('history: the value that held at that time', () => {
+        const html = renderGraph(history(), withHistory([[NOW - 2 * HOUR, 20], [NOW - HOUR, 22]]));
+        const drawn = bands(html);
+        assert.deepEqual(drawn.map((band) => band.lines), [['10:00:00', 'sensor.t: 20'], ['11:00:00', 'sensor.t: 22'], ['12:00:00', 'sensor.t: 22']]);
+    });
+    test('states are named in the readout too, and get no dot', () => {
+        const context = { now: NOW, history: { h: { loaded: true, points: { 'sensor.t': [[NOW - 2 * HOUR, '20']], 'fan.a': [[NOW - 2 * HOUR, 'off'], [NOW - HOUR, 'on']] } } } };
+        const drawn = bands(renderGraph(history({ entities: ['sensor.t', 'fan.a'] }), context));
+        assert.deepEqual(drawn[0].lines, ['10:00:00', 'sensor.t: 20', 'fan.a: off']);
+        assert.deepEqual(drawn[1].lines, ['11:00:00', 'sensor.t: 20', 'fan.a: on']);
+        assert.equal(drawn[1].dots.length, 1);
+        assert.equal(drawn[0].height, 182, 'the band covers the plot and the rows');
+    });
+    test('a timeline alone can be hovered', () => {
+        const drawn = bands(renderGraph(supplied({ x: 'number', series: { Pump: [[0, 'on'], [6, 'off'], [10, 'off']] } })));
+        assert.deepEqual(drawn.map((band) => band.lines), [['0', 'Pump: on'], ['6', 'Pump: off'], ['10', 'Pump: off']]);
+        assert.ok(drawn.every((band) => band.dots.length === 0));
+    });
+    test('a graph spanning days names the day', () => {
+        const html = renderGraph(history({ hours: 72 }), { now: NOW, history: { h: { loaded: true, points: { 'sensor.t': [[NOW - 30 * HOUR, 20]] } } } });
+        assert.match(bands(html)[0].lines[0], /Jan 5,? 06:00:00/);
+    });
+    test('many points share a limited number of bands', () => {
+        const points = Array.from({ length: 500 }, (_, index) => [index, index % 7]);
+        const html = renderGraph(supplied({ x: 'number', series: { A: points } }));
+        assert.equal(bands(html).length, 60);
+        assert.equal(hoverPositions({ domain: [0, 499], series: [{ points }] }).length, 60);
+        assert.deepEqual(hoverPositions({ domain: [0, 2], series: [{ points: [[0, 1], [2, 1], [1, 1], [1, 2], [5, 1], [NaN, 1]] }] }), [0, 1, 2]);
+    });
+    test('the readout stays inside the graph, to the right of the pointer on the left half and to the left on the right', () => {
+        const html = renderGraph(supplied());
+        const boxes = [...html.matchAll(/<g class="readout"><rect x="([\d.-]+)" y="10" width="([\d.]+)"/g)].map((m) => [Number(m[1]), Number(m[2])]);
+        assert.ok(boxes[0][0] > 44);
+        assert.ok(boxes[2][0] + boxes[2][1] < 392);
+        assert.ok(boxes.every(([x, width]) => x >= 44 && x + width <= 392));
+    });
+    test('text in the readout cannot be markup', () => {
+        const html = renderGraph(supplied({ unit: '<u>', series: { '<b>A</b>': [[0, 1]] } }));
+        assert.match(html, /<tspan[^>]*>&lt;b&gt;A&lt;\/b&gt;: 1 &lt;u&gt;<\/tspan>/);
     });
 });
 

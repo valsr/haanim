@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Any
 
 from haanim.engine.assets import AssetStore
+from haanim.engine.durations import parse_duration
 from haanim.interfaces import CardSink
 
 __all__ = [
@@ -119,6 +120,31 @@ def _graph_entities(entities: Any, hours: Any) -> dict[str, Any]:
     if len(set(checked)) != len(checked):
         raise ValueError("A graph shows each entity once")
     return {"entities": checked, "hours": span}
+
+
+def _graph_marks(major: Any, minor: Any, *, time: bool) -> dict[str, float | None]:
+    """Check the distances between the marks of the horizontal axis and return them as the block carries them.
+
+    On a time axis a distance is a duration and is carried in seconds.
+    """
+    distances: dict[str, float | None] = {}
+    for name, value in (("x_major", major), ("x_minor", minor)):
+        if value is None:
+            distances[name] = None
+        elif time:
+            try:
+                distances[name] = parse_duration(value)
+            except ValueError as err:
+                raise ValueError(f"{name} is a duration on a time axis: {err}") from None
+        else:
+            distance = _check_number(value, name)
+            if distance <= 0:
+                raise ValueError(f"{name} must be more than 0, not {distance:g}")
+            distances[name] = distance
+    large, small = distances["x_major"], distances["x_minor"]
+    if large is not None and small is not None and small >= large:
+        raise ValueError(f"x_minor ({small:g}) must be less than x_major ({large:g})")
+    return distances
 
 
 def _graph_point(point: Any, index: int, here: str) -> tuple[str, float, float | str | None]:
@@ -436,6 +462,8 @@ class HAAnimCard:
         unit: str | None = None,
         min: float | None = None,  # pylint: disable=redefined-builtin
         max: float | None = None,  # pylint: disable=redefined-builtin
+        x_major: float | str | None = None,
+        x_minor: float | str | None = None,
     ) -> None:
         """Show a graph: the history of entities, or series of the automation's own (exactly one of the two).
 
@@ -463,6 +491,11 @@ class HAAnimCard:
             unit: The unit of the values. For entities it defaults to the first entity's own.
             min: The lowest value of the vertical axis; a round number below the data if omitted.
             max: The highest value of the vertical axis; a round number above the data if omitted.
+            x_major: The distance between the labelled marks of the horizontal axis. On a
+                time axis (entities, or series over time) a duration: seconds or ``"HH:MM:SS"``;
+                otherwise a number. Round distances are chosen if omitted.
+            x_minor: The distance between the small marks between them, in the same form;
+                it must be less than ``x_major``.
 
         Raises:
             ValueError: Unless exactly one of ``entities`` and ``series`` is given,
@@ -482,6 +515,9 @@ class HAAnimCard:
             raise ValueError(f"min ({low:g}) must be less than max ({high:g})")
         content: dict[str, Any] = {"kind": kind, "title": title, "unit": unit, "min": low, "max": high}
         content.update(_graph_entities(entities, hours) if entities is not None else _graph_series(series))
+        content.update(
+            _graph_marks(x_major, x_minor, time=entities is not None or content.get("x") == "time")
+        )
         self._set(id, "graph", content)
 
     def button(

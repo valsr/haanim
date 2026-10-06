@@ -27,6 +27,7 @@ const STYLES = `
     .name { font-size: 1.3em; font-weight: 500; color: var(--primary-text-color); }
     .state { padding: 2px 10px; border-radius: 12px; font-size: 0.85em; color: white; white-space: nowrap; }
     .state-running { background: var(--success-color, #4caf50); }
+    .state-idle { background: var(--primary-color, #03a9f4); }
     .state-stopped { background: var(--warning-color, #ff9800); }
     .state-disabled, .state-unavailable { background: var(--disabled-color, #9e9e9e); }
     .state-error { background: var(--error-color, #f44336); }
@@ -48,6 +49,19 @@ const STYLES = `
     .graph .tick { fill: var(--secondary-text-color, #727272); font-size: 10px; }
     .graph .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
     .graph .area { fill-opacity: 0.18; stroke: none; }
+    .graph { overflow: visible; }
+    .graph .axis, .graph .tick-major { stroke: var(--secondary-text-color, #727272); stroke-width: 1; }
+    .graph .tick-minor { stroke: var(--divider-color, #bdbdbd); stroke-width: 1; }
+    .graph .hit { fill: transparent; }
+    .graph .guide { stroke: var(--secondary-text-color, #727272); stroke-width: 1; stroke-dasharray: 3 3; }
+    .graph .dot { stroke: var(--card-background-color, white); stroke-width: 1.5; }
+    .graph .readout rect {
+        fill: var(--card-background-color, white); stroke: var(--divider-color, #e0e0e0); fill-opacity: 0.95;
+    }
+    .graph .readout text { fill: var(--primary-text-color, #212121); font-size: 10px; }
+    .graph .readout-title { font-weight: 600; }
+    .graph .guide, .graph .dot, .graph .readout { opacity: 0; pointer-events: none; }
+    .graph .hover:hover .guide, .graph .hover:hover .dot, .graph .hover:hover .readout { opacity: 1; }
     .graph .row-label { fill: var(--secondary-text-color, #727272); font-size: 10px; }
     .graph .segment { stroke: none; }
     .swatch.square { border-radius: 2px; }
@@ -385,9 +399,25 @@ export class HAAnimCard extends HTMLElement {
         });
     }
 
+    /**
+     * The automation as last read, with what its entity says now.
+     *
+     * The entity is told about every action that starts and ends, so the state badge follows the
+     * automation without a round trip for each change.
+     */
+    _withEntity(automation) {
+        const entity = automation && this._hass && this._hass.states ? this._hass.states[this._entityId] : null;
+        if (!entity || !entity.attributes) return automation;
+        const now = { ...automation };
+        if (['on', 'off', 'error', 'unavailable'].includes(entity.state)) now.state = entity.state;
+        if (Array.isArray(entity.attributes.running_actions)) now.running_actions = entity.attributes.running_actions;
+        if (typeof entity.attributes.enabled === 'boolean') now.enabled = entity.attributes.enabled;
+        return now;
+    }
+
     _render() {
         const body = renderCard({
-            automation: this._automation,
+            automation: this._withEntity(this._automation),
             title: this._title,
             options: this._options,
             blocks: this._blocks,

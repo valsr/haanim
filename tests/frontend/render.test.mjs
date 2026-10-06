@@ -278,9 +278,22 @@ describe('renderContent', () => {
 });
 
 describe('stateLabel', () => {
-    test("the design's words for each state", () => {
-        assert.deepEqual(stateLabel('on', true), { label: 'Running', css: 'running' });
-        assert.deepEqual(stateLabel('off', true), { label: 'Stopped', css: 'stopped' });
+    test('a running automation shows the action it is running, or Idle', () => {
+        assert.deepEqual(stateLabel('on', true), { label: 'Idle', css: 'idle' });
+        assert.deepEqual(stateLabel('on', true, []), { label: 'Idle', css: 'idle' });
+        assert.deepEqual(stateLabel('on', true, null), { label: 'Idle', css: 'idle' });
+        assert.deepEqual(stateLabel('on', true, ['toggle_frame']), { label: 'toggle_frame', css: 'running' });
+    });
+    test('several actions at once: the first and how many more', () => {
+        assert.deepEqual(stateLabel('on', true, ['count', 'reset']), { label: 'count +1', css: 'running' });
+        assert.deepEqual(stateLabel('on', true, ['a', 'b', 'c']), { label: 'a +2', css: 'running' });
+    });
+    test('the lifecycle handlers are shown by their plain names', () => {
+        assert.equal(stateLabel('on', true, ['__startup__']).label, 'startup');
+        assert.equal(stateLabel('on', true, ['__shutdown__']).label, 'shutdown');
+    });
+    test('an automation that is not running shows why, whatever is said to be running', () => {
+        assert.deepEqual(stateLabel('off', true, ['count']), { label: 'Stopped', css: 'stopped' });
         assert.deepEqual(stateLabel('off', false), { label: 'Disabled', css: 'disabled' });
         assert.deepEqual(stateLabel('error', true), { label: 'Error', css: 'error' });
         assert.deepEqual(stateLabel('unavailable', true), { label: 'Unavailable', css: 'unavailable' });
@@ -291,7 +304,7 @@ describe('renderHeader', () => {
     test('name, state and message', () => {
         const html = renderHeader({ id: 'climate', name: 'Climate <1>', state: 'on', enabled: true, message: 'All <good>' });
         assert.match(html, /<span class="name">Climate &lt;1&gt;<\/span>/);
-        assert.match(html, /<span class="state state-running">Running<\/span>/);
+        assert.match(html, /<span class="state state-idle">Idle<\/span>/);
         assert.match(html, /<div class="message">All &lt;good&gt;<\/div>/);
     });
     test('the id stands in for a missing name, and no message draws none', () => {
@@ -304,6 +317,12 @@ describe('renderHeader', () => {
         assert.match(renderHeader(automation, 'Climate: 3 <alerts>'), /<span class="name">Climate: 3 &lt;alerts&gt;<\/span>/);
         assert.match(renderHeader(automation, null), /<span class="name">Climate<\/span>/);
         assert.match(renderHeader(automation, ''), /<span class="name">Climate<\/span>/);
+    });
+    test('the state shows the action that is running, as text', () => {
+        const automation = { id: 'climate', name: 'Climate', state: 'on', enabled: true, running_actions: ['toggle_frame'] };
+        assert.match(renderHeader(automation), /<span class="state state-running">toggle_frame<\/span>/);
+        assert.match(renderHeader({ ...automation, running_actions: ['<b>x</b>'] }), /state-running">&lt;b&gt;x&lt;\/b&gt;</);
+        assert.match(renderHeader({ ...automation, state: 'off' }), /state-stopped">Stopped</);
     });
     test('the header has no controls', () => {
         for (const state of ['on', 'off', 'error']) {
@@ -551,11 +570,19 @@ describe('panel pages', () => {
         ]);
         assert.match(html, /data-open="climate"/);
         assert.match(html, /<td>1.2.0<\/td>/);
-        assert.match(html, /state-running">Running/);
+        assert.match(html, /state-idle">Idle/);
         assert.match(html, /state-error">Error/);
         assert.match(html, /state-disabled">Disabled/);
         assert.match(html, /ok &lt;now&gt;/);
         assert.match(html, /<td class="name">off<div class="id">off<\/div>/);
+    });
+    test('the list shows what each running automation is doing', () => {
+        const html = renderList([
+            { id: 'a', name: 'A', state: 'on', enabled: true, running_actions: ['water'] },
+            { id: 'b', name: 'B', state: 'on', enabled: true, running_actions: [] },
+        ]);
+        assert.match(html, /state-running">water</);
+        assert.match(html, /state-idle">Idle</);
     });
     test('the empty list', () => {
         assert.match(renderList([]), /No automations yet/);
