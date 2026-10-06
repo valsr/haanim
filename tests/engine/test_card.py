@@ -22,6 +22,7 @@ from haanim.engine.card_elements import (
     IMAGE_ALIGNMENTS,
     MAX_BADGE_LENGTH,
     MAX_BLOCKS,
+    MAX_CAMERA_REFRESH,
     MAX_CAPTION_LENGTH,
     MAX_GRAPH_HOURS,
     MAX_GRAPH_POINTS,
@@ -124,6 +125,39 @@ class TestBlocks:
         assert card.blocks == [
             {"id": "pic", "type": "image", "url": "https://example.com/a.png", "alt": "", **PLAIN_IMAGE}
         ]
+
+    def test_image_of_a_camera(self, card: HAAnimCard) -> None:
+        """Test an image can be the live picture of a camera, fetched every ten seconds unless told otherwise."""
+        camera = put(card).image("door", entity_id="camera.front_door", alt="Front door")
+        assert card.blocks == [
+            {
+                "id": "door",
+                "type": "image",
+                "entity_id": "camera.front_door",
+                "refresh": 10.0,
+                "alt": "Front door",
+                **PLAIN_IMAGE,
+            }
+        ]
+        assert (camera.entity_id, camera.refresh, camera.url, camera.asset) == (
+            "camera.front_door",
+            10.0,
+            None,
+            None,
+        )
+        json.dumps(card.blocks)
+
+    @pytest.mark.parametrize("refresh", [1, 2.5, 60, MAX_CAMERA_REFRESH])
+    def test_camera_refresh(self, card: HAAnimCard, refresh: float) -> None:
+        """Test the time between two pictures is from a second to an hour."""
+        assert put(card).image("door", entity_id="camera.door", refresh=refresh, width=320).refresh == refresh
+
+    def test_image_without_a_camera_has_no_refresh(self, card: HAAnimCard) -> None:
+        """Test an image from an asset or a URL carries neither a camera nor a refresh time."""
+        image = put(card).image("logo", asset="logo.png")
+        assert (image.entity_id, image.refresh) == (None, None)
+        assert "refresh" not in card.blocks[0]
+        assert "entity_id" not in card.blocks[0]
 
     def test_image_size_alignment_and_caption(self, card: HAAnimCard) -> None:
         """Test an image can be given a size, a place in its row and a caption."""
@@ -790,6 +824,23 @@ class TestElements:
             {"id": "i", "type": "image", "url": "https://example.com/b.png", "alt": "Logo", **PLAIN_IMAGE}
         ]
 
+    def test_image_camera_setters(self, card: HAAnimCard) -> None:
+        """Test an image can change to a camera and back, and how often the camera's picture is fetched."""
+        image: ImageElement = put(card).image("i", asset="logo.png", caption="Door")
+        image.set_entity("camera.door")
+        assert (image.entity_id, image.refresh, image.asset, image.url) == ("camera.door", 10.0, None, None)
+        assert image.caption == "Door", "the look stays"
+        image.set_refresh(2)
+        image.set_entity("camera.garden")
+        assert (image.entity_id, image.refresh) == ("camera.garden", 2.0), "the refresh time stays"
+        image.set_entity("camera.door", refresh=30)
+        assert card.blocks[0]["refresh"] == 30.0
+        image.set_url("https://example.com/a.png")
+        assert (image.entity_id, image.refresh, image.url) == (None, None, "https://example.com/a.png")
+        image.set_entity("camera.door")
+        image.set_asset("logo.png")
+        assert (image.entity_id, image.asset) == (None, "logo.png")
+
     def test_image_look_setters(self, card: HAAnimCard) -> None:
         """Test the size, the alignment and the caption of an image are changed in place."""
         image: ImageElement = put(card).image("i", asset="logo.png")
@@ -964,6 +1015,10 @@ class TestElements:
             (lambda e: e["image"].set_asset("none.png"), FileNotFoundError, "no asset"),
             (lambda e: e["image"].set_asset("../main.py"), ValueError, "outside assets/"),
             (lambda e: e["image"].set_url(""), ValueError, "url must not be empty"),
+            (lambda e: e["image"].set_entity("light.door"), ValueError, "the picture of a camera entity"),
+            (lambda e: e["image"].set_entity(None), TypeError, "entity_id must be a string"),
+            (lambda e: e["image"].set_entity("camera.door", refresh=0), ValueError, "refresh must be from 1"),
+            (lambda e: e["image"].set_refresh(-1), ValueError, "refresh must be from 1 to 3600"),
             (lambda e: e["image"].set_size(width=0), ValueError, "width must be from 1 to 4000 pixels"),
             (lambda e: e["image"].set_size(width="wide"), ValueError, "a percentage from '1%' to '100%'"),
             (
@@ -1282,12 +1337,54 @@ INVALID: list[tuple[str, Any, type[Exception], str]] = [
     ("empty id", lambda c: c.create_text("", "x"), ValueError, "id must not be empty"),
     ("blank id", lambda c: c.create_text("  ", "x"), ValueError, "id must not be empty"),
     ("id not a string", lambda c: c.create_text(1, "x"), TypeError, "id must be a string"),
-    ("image without source", lambda c: c.create_image("i"), ValueError, "exactly one of asset and url"),
+    ("image without source", lambda c: c.create_image("i"), ValueError, "exactly one of asset, url and"),
+    (
+        "image with asset and camera",
+        lambda c: c.create_image("i", asset="logo.png", entity_id="camera.door"),
+        ValueError,
+        "exactly one of asset, url and entity_id",
+    ),
+    (
+        "image with url and camera",
+        lambda c: c.create_image("i", url="https://example.com/a.png", entity_id="camera.door"),
+        ValueError,
+        "exactly one of asset, url and entity_id",
+    ),
+    (
+        "image of an entity that is no camera",
+        lambda c: c.create_image("i", entity_id="sensor.door"),
+        ValueError,
+        "the picture of a camera entity \\(camera.\\*\\), not 'sensor.door'",
+    ),
+    (
+        "image of an invalid entity",
+        lambda c: c.create_image("i", entity_id="camera"),
+        ValueError,
+        "Invalid entity",
+    ),
+    (
+        "camera refresh too short",
+        lambda c: c.create_image("i", entity_id="camera.door", refresh=0.5),
+        ValueError,
+        "refresh must be from 1 to 3600 seconds, not 0.5",
+    ),
+    (
+        "camera refresh too long",
+        lambda c: c.create_image("i", entity_id="camera.door", refresh=3601),
+        ValueError,
+        "refresh must be from 1 to 3600 seconds",
+    ),
+    (
+        "refresh not a number",
+        lambda c: c.create_image("i", asset="logo.png", refresh="10"),
+        TypeError,
+        "refresh must be a number",
+    ),
     (
         "image with both",
         lambda c: c.create_image("i", asset="logo.png", url="https://x/y.png"),
         ValueError,
-        "exactly one of asset and url",
+        "exactly one of asset, url and entity_id",
     ),
     ("image asset missing", lambda c: c.create_image("i", asset="none.png"), FileNotFoundError, "no asset"),
     ("image asset outside", lambda c: c.create_image("i", asset="../main.py"), ValueError, "outside assets/"),

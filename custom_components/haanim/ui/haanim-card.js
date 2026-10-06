@@ -10,7 +10,7 @@
  */
 
 import { historyPoints } from './haanim-graph.js';
-import { automationPath, renderCard, serviceCall } from './haanim-render.js';
+import { automationPath, cameraUrl, renderCard, serviceCall } from './haanim-render.js';
 
 const DOMAIN = 'haanim';
 
@@ -51,6 +51,7 @@ const STYLES = `
     .block .label { color: var(--secondary-text-color); }
     .block .value { font-weight: 500; }
     .block img { max-width: 100%; border-radius: 4px; object-fit: contain; vertical-align: top; }
+    .block-image[data-more-info] img { cursor: pointer; }
     .block-image.align-center { text-align: center; }
     .block-image.align-right { text-align: right; }
     .block-image .caption { color: var(--secondary-text-color); font-size: 0.9em; margin-top: 4px; }
@@ -150,6 +151,12 @@ export class HAAnimCard extends HTMLElement {
         this._layout = null;
         this._images = {};
         this._history = {};
+        // Camera pictures: a clock that counts seconds while the card shows cameras, and the stamp of the
+        // picture each camera block last fetched
+        this._timer = null;
+        this._seconds = 0;
+        this._stampBase = Date.now();
+        this._stamps = {};
         this._showActions = false;
         this._error = null;
         this._unsubscribe = [];
@@ -174,7 +181,9 @@ export class HAAnimCard extends HTMLElement {
             this._options = null;
             this._layout = null;
             this._history = {};
+            this._stamps = {};
             this._showActions = false;
+            this._watchCameras();
             this._start();
         }
         this._render();
@@ -194,11 +203,13 @@ export class HAAnimCard extends HTMLElement {
     connectedCallback() {
         this._connected = true;
         this._start();
+        this._watchCameras();
         this._render();
     }
 
     disconnectedCallback() {
         this._connected = false;
+        this._watchCameras();
         this._stop();
     }
 
@@ -265,7 +276,49 @@ export class HAAnimCard extends HTMLElement {
         this._layout = Array.isArray(message.layout) ? message.layout : null;
         this._loadImages();
         this._loadHistory();
+        this._watchCameras();
         this._render();
+    }
+
+    /** The image blocks that show the picture of a camera. */
+    _cameras() {
+        return this._blocks.filter((block) => block.type === 'image' && block.entity_id);
+    }
+
+    /** Run the clock that fetches camera pictures while the card is on a page and shows a camera. */
+    _watchCameras() {
+        const wanted = this._connected && this._cameras().length > 0;
+        if (wanted && this._timer === null) {
+            this._timer = setInterval(() => this._onSecond(), 1000);
+        } else if (!wanted && this._timer !== null) {
+            clearInterval(this._timer);
+            this._timer = null;
+        }
+    }
+
+    /**
+     * Fetch the picture of every camera whose time has come.
+     *
+     * Only the address of the image is changed, so the old picture stays until the new one is there.
+     * Nothing is fetched while the page is not visible.
+     */
+    _onSecond() {
+        if (typeof document !== 'undefined' && document.hidden) return;
+        this._seconds += 1;
+        const due = new Map();
+        for (const block of this._cameras()) {
+            const every = Math.max(1, Math.round(Number(block.refresh) || 10));
+            if (this._seconds % every !== 0) continue;
+            this._stamps[block.id] = this._stampBase + this._seconds;
+            due.set(String(block.id), block);
+        }
+        if (due.size === 0) return;
+        const states = this._hass ? this._hass.states || {} : {};
+        for (const image of this.shadowRoot.querySelectorAll('img[data-camera]')) {
+            const block = due.get(image.dataset.camera);
+            const url = block ? cameraUrl(states[block.entity_id], this._stamps[block.id]) : null;
+            if (url) image.src = url;
+        }
     }
 
     /** Fetch asset images with the session's credentials: an <img> request would not carry them. */
@@ -460,6 +513,7 @@ export class HAAnimCard extends HTMLElement {
             layout: this._layout,
             states: this._hass ? this._hass.states : {},
             images: this._images,
+            stamps: this._stamps,
             history: this._history,
             showActions: this._showActions,
             error: this._config ? this._error : 'No automation configured',

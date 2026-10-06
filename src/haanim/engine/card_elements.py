@@ -23,6 +23,7 @@ from typing import Any, ClassVar, Protocol
 from haanim.engine.assets import AssetStore
 from haanim.engine.card_checks import (
     IMAGE_ALIGNMENTS,
+    MAX_CAMERA_REFRESH,
     MAX_CAPTION_LENGTH,
     MAX_GRAPH_HOURS,
     MAX_GRAPH_POINTS,
@@ -37,6 +38,7 @@ from haanim.engine.card_checks import (
     _graph_entities,
     _graph_marks,
     _graph_series,
+    _image_camera,
     _image_look,
 )
 
@@ -56,6 +58,7 @@ __all__ = [
     "ImageElement",
     "MAX_BADGE_LENGTH",
     "MAX_BLOCKS",
+    "MAX_CAMERA_REFRESH",
     "MAX_CAPTION_LENGTH",
     "MAX_GRAPH_HOURS",
     "MAX_GRAPH_POINTS",
@@ -201,15 +204,18 @@ class TextElement(CardElement):
 
 
 class ImageElement(CardElement):
-    """An image from the automation's ``assets/`` folder or from a URL."""
+    """An image from the automation's ``assets/`` folder, from a URL, or the live picture of a camera."""
 
     TYPE = "image"
 
     def _build(self, **arguments: Any) -> dict[str, Any]:
-        asset, url = arguments["asset"], arguments["url"]
-        if (asset is None) == (url is None):
-            raise ValueError("An image needs exactly one of asset and url")
+        asset, url, entity_id = arguments["asset"], arguments["url"], arguments["entity_id"]
+        if sum(source is not None for source in (asset, url, entity_id)) != 1:
+            raise ValueError("An image needs exactly one of asset, url and entity_id")
         look = {"alt": _check_str(arguments["alt"], "alt"), **_image_look(arguments)}
+        camera = _image_camera(entity_id, arguments["refresh"])
+        if camera:
+            return {**camera, **look}
         if asset is not None:
             return {"asset": asset, "url": self._card.assets.url(asset), **look}
         return {"url": _check_str(url, "url", empty=False), **look}
@@ -220,9 +226,20 @@ class ImageElement(CardElement):
         return _optional(self._content.get("asset"))
 
     @property
-    def url(self) -> str:
-        """The URL the image is loaded from."""
-        return str(self._content["url"])
+    def url(self) -> str | None:
+        """The URL the image is loaded from; None for the picture of a camera."""
+        return _optional(self._content.get("url"))
+
+    @property
+    def entity_id(self) -> str | None:
+        """The camera whose picture is shown; None for an image from an asset or a URL."""
+        return _optional(self._content.get("entity_id"))
+
+    @property
+    def refresh(self) -> float | None:
+        """The seconds between two pictures of the camera; None for an image from an asset or a URL."""
+        refresh: float | None = self._content.get("refresh")
+        return refresh
 
     @property
     def alt(self) -> str:
@@ -256,11 +273,27 @@ class ImageElement(CardElement):
             ValueError: If the name resolves outside ``assets/``.
             FileNotFoundError: If the asset does not exist.
         """
-        self._apply(asset=_check_str(asset, "asset"), url=None)
+        self._apply(asset=_check_str(asset, "asset"), url=None, entity_id=None)
 
     def set_url(self, url: str) -> None:
         """Show an image from a URL instead."""
-        self._apply(asset=None, url=_check_str(url, "url"))
+        self._apply(asset=None, url=_check_str(url, "url"), entity_id=None)
+
+    def set_entity(self, entity_id: str, refresh: float | None = None) -> None:
+        """Show the live picture of a camera instead.
+
+        Args:
+            entity_id: A ``camera.*`` entity.
+            refresh: The seconds between two pictures; as it was if omitted.
+        """
+        changes: dict[str, Any] = {"asset": None, "url": None, "entity_id": _check_entity_id(entity_id)}
+        if refresh is not None:
+            changes["refresh"] = refresh
+        self._apply(**changes)
+
+    def set_refresh(self, refresh: float) -> None:
+        """Change the seconds between two pictures of a camera."""
+        self._apply(refresh=refresh)
 
     def set_alt(self, alt: str) -> None:
         """Change the text shown in place of the image."""

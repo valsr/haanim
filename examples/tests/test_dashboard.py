@@ -10,7 +10,7 @@ DASHBOARD = Path(__file__).parents[1] / "dashboard"
 
 
 async def test_card_is_built_at_startup() -> None:
-    """The card has its seventeen elements in ten rows, with the logo from the automation's assets."""
+    """The card has its eighteen elements in eleven rows, with the logo from the automation's assets."""
     async with AutomationHarness(DASHBOARD) as automation:
         assert [(block["id"], block["type"]) for block in automation.card.blocks] == [
             ("intro", "text"),
@@ -23,6 +23,7 @@ async def test_card_is_built_at_startup() -> None:
             ("fan_state", "badge"),
             ("presses", "graph"),
             ("sun", "entity"),
+            ("camera", "image"),
             ("temperature", "graph"),
             ("fan", "icon"),
             ("sun_icon", "icon"),
@@ -39,6 +40,7 @@ async def test_card_is_built_at_startup() -> None:
             {"cells": 3, "elements": ["level", "fan_state"]},
             {"cells": 1, "elements": ["presses"]},
             {"cells": 1, "elements": ["sun"]},
+            {"cells": 1, "elements": ["camera"]},
             {"cells": 1, "elements": ["temperature"]},
             {"cells": 3, "elements": ["fan", "sun_icon", "info"]},
             {"cells": 3, "elements": ["add", "reset", "frame"]},
@@ -47,6 +49,8 @@ async def test_card_is_built_at_startup() -> None:
         assert logo["url"] == "/api/haanim/assets/dashboard/logo.svg"
         assert (logo["width"], logo["align"], logo["caption"]) == ("96px", "center", "Drawn by the card")
         assert automation.card.block("count")["value"] == 0
+        camera = automation.card.block("camera")
+        assert (camera["entity_id"], camera["refresh"], camera["width"]) == ("camera.demo", 5.0, "100%")
         assert automation.card.title == "Dashboard demo"
         assert automation.message == "Card ready"
 
@@ -130,7 +134,7 @@ async def test_bare_card_and_back() -> None:
         assert all(automation.card.options.values())
         assert await automation.press("frame") is False
         assert not any(automation.card.options.values())
-        assert len(automation.card.blocks) == 17, "the content stays"
+        assert len(automation.card.blocks) == 18, "the content stays"
         assert await automation.press("frame") is True
         assert all(automation.card.options.values())
 

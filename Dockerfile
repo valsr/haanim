@@ -26,6 +26,9 @@ COPY podman/container-config/.storage/auth_provider.homeassistant /config/.stora
 COPY podman/container-config/.storage/core.config_entries /config/.storage/core.config_entries
 COPY podman/container-config/.storage/frontend.user_data_admin_user_id_12345 /config/.storage/frontend.user_data_admin_user_id_12345
 
+# The still picture of the demo camera (camera.demo), which the dashboard example shows
+COPY podman/container-config/demo /config/demo
+
 # A dashboard with the card of each example automation
 COPY podman/container-config/ui-lovelace.yaml /config/ui-lovelace.yaml
 

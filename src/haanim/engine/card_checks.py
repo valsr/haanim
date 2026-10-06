@@ -20,6 +20,9 @@ IMAGE_ALIGNMENTS = ("left", "center", "right")
 MAX_IMAGE_SIZE = 4000
 """The largest width or height an image can be given, in pixels."""
 
+MAX_CAMERA_REFRESH = 3600
+"""The longest time between two pictures of a camera, in seconds."""
+
 MAX_CAPTION_LENGTH = 200
 """The most characters the caption of an image can have."""
 
@@ -243,3 +246,19 @@ def _image_look(arguments: Mapping[str, Any]) -> dict[str, Any]:
         "align": align,
         "caption": caption,
     }
+
+
+def _image_camera(entity_id: Any, refresh: Any) -> dict[str, Any]:
+    """Check the camera an image shows and how often its picture is fetched.
+
+    Returns:
+        What the block of a camera image carries; nothing for an image without a camera.
+    """
+    seconds = _check_number(refresh, "refresh")
+    if not 1 <= seconds <= MAX_CAMERA_REFRESH:
+        raise ValueError(f"refresh must be from 1 to {MAX_CAMERA_REFRESH} seconds, not {seconds:g}")
+    if entity_id is None:
+        return {}
+    if not _check_entity_id(entity_id).startswith("camera."):
+        raise ValueError(f"An image shows the picture of a camera entity (camera.*), not {entity_id!r}")
+    return {"entity_id": entity_id, "refresh": seconds}

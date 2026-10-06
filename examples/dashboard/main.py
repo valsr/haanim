@@ -6,7 +6,7 @@ what the automation does, a heading, a logo from the automation's assets, a
 counter that is kept across restarts next to an uptime, a progress bar towards
 a goal next to a dial that follows an entity, a row of badges, two graphs
 (numbers the automation keeps itself, and the history of entities), the live
-state of an entity, a row of icons that follow entities, and a row of three buttons, one of
+state of an entity, the live picture of a camera, a row of icons that follow entities, and a row of three buttons, one of
 which strips the card to a bare box and back. Add it to a dashboard with::
 
     type: custom:haanim-card
@@ -35,6 +35,7 @@ ENTITY = "sun.sun"
 TEMPERATURE = "sensor.temperature"
 HISTORY = 20
 GOAL = 10  # the progress bar is full at this many presses
+CAMERA = "camera.demo"  # any camera; while there is none, the card shows the image's alt text
 FAN = "input_boolean.fan"  # a Toggle helper called "Fan"; any entity that is on or off will do
 
 
@@ -107,6 +108,13 @@ def build_card(event: ActionEvent) -> None:
 
     layout.add_element(presses)
     layout.add_element(card.create_entity("sun", ENTITY))
+
+    # The live picture of a camera, fetched again every five seconds; a click opens the camera's dialog
+    layout.add_element(
+        card.create_image(
+            "camera", entity_id=CAMERA, refresh=5, alt="No camera", width="100%", caption="camera.demo, live"
+        )
+    )
 
     # A graph of what Home Assistant recorded for entities; it follows them from then on. The
     # temperature is numbers and is drawn as an area; the fan is on or off and becomes a timeline.

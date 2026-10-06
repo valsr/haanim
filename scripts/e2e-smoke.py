@@ -205,6 +205,7 @@ async def run(base: str) -> None:
                 "fan_state",
                 "presses",
                 "sun",
+                "camera",
                 "temperature",
                 "fan",
                 "sun_icon",

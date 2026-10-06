@@ -12,6 +12,8 @@ homeassistant:
   currency: CAD
   allowlist_external_dirs:
     - /config/custom_components
+    # The still picture of the demo camera (camera.demo), which scripts/demo-camera.py sets up
+    - /config/demo
   # Bypass authentication for development
   auth_providers:
     - type: homeassistant

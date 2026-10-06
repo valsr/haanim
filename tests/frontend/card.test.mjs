@@ -328,6 +328,135 @@ describe('haanim-card', () => {
         assert.match(card.shadowRoot.innerHTML, /width: 50.0%/);
     });
 
+    describe('camera pictures', () => {
+        const PICTURE = '/api/camera_proxy/camera.door?token=abc';
+        const camera = (token = 'abc', updated = '1') => ({
+            state: 'idle',
+            last_updated: updated,
+            attributes: { entity_picture: `/api/camera_proxy/camera.door?token=${token}` },
+        });
+        const door = (extra = {}) => ({ id: 'door', type: 'image', entity_id: 'camera.door', refresh: 2, alt: 'Door', ...extra });
+        let timers;
+
+        /** A clock the test moves by hand: `tick()` is one second. */
+        beforeEach(() => {
+            timers = [];
+            globalThis.setInterval = (callback, period) => {
+                const timer = { callback, period, running: true };
+                timers.push(timer);
+                return timer;
+            };
+            globalThis.clearInterval = (timer) => {
+                timer.running = false;
+            };
+            delete globalThis.document;
+        });
+        const running = () => timers.filter((timer) => timer.running);
+        const tick = (times = 1) => {
+            for (let turn = 0; turn < times; turn += 1) running().forEach((timer) => timer.callback());
+        };
+
+        test('no clock runs while the card shows no camera', async () => {
+            const { hass } = await mounted();
+            hass.push('haanim/card/subscribe', { blocks: [{ id: 'logo', type: 'image', url: '/a.png', alt: '' }] });
+            assert.deepEqual(timers, []);
+        });
+
+        test('the picture is shown at once, and fetched again when its time has come', async () => {
+            const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'camera.door': camera() });
+            hass.push('haanim/card/subscribe', { blocks: [door()] });
+            assert.match(card.shadowRoot.innerHTML, /<img src="\/api\/camera_proxy\/camera.door\?token=abc" alt="Door" data-camera="door">/);
+            assert.deepEqual(running().map((timer) => timer.period), [1000]);
+
+            const image = { dataset: { camera: 'door' }, src: PICTURE };
+            const other = { dataset: { camera: 'gone' }, src: 'kept' };
+            card.shadowRoot.found = { 'img[data-camera]': [image, other] };
+            tick();
+            assert.equal(image.src, PICTURE, 'after one second of two nothing is fetched');
+            tick();
+            assert.match(image.src, /^\/api\/camera_proxy\/camera.door\?token=abc&t=\d+$/);
+            assert.equal(other.src, 'kept');
+            const first = image.src;
+            tick(2);
+            assert.notEqual(image.src, first, 'every picture has an address of its own');
+        });
+
+        test('a redraw keeps the picture last fetched', async () => {
+            const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'camera.door': camera() });
+            hass.push('haanim/card/subscribe', { blocks: [door({ refresh: 1 })] });
+            tick();
+            hass.push('haanim/card/subscribe', { blocks: [door({ refresh: 1 })], title: 'Door' });
+            assert.match(card.shadowRoot.innerHTML, /token=abc&amp;t=\d+" alt="Door"/);
+            assert.equal(running().length, 1, 'one clock, however often the card changes');
+        });
+
+        test('follows the camera when Home Assistant gives it a new address', async () => {
+            const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'camera.door': camera() });
+            hass.push('haanim/card/subscribe', { blocks: [door()] });
+            hass.states = { ...hass.states, 'camera.door': camera('xyz', '2') };
+            card.hass = hass;
+            assert.match(card.shadowRoot.innerHTML, /camera.door\?token=xyz"/);
+        });
+
+        test('each camera has its own time, and one without a time gets ten seconds', async () => {
+            const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'camera.door': camera() });
+            hass.push('haanim/card/subscribe', { blocks: [door({ id: 'fast', refresh: 1 }), door({ id: 'slow', refresh: undefined })] });
+            const fast = { dataset: { camera: 'fast' }, src: '' };
+            const slow = { dataset: { camera: 'slow' }, src: '' };
+            card.shadowRoot.found = { 'img[data-camera]': [fast, slow] };
+            tick(9);
+            assert.match(fast.src, /&t=\d+$/);
+            assert.equal(slow.src, '');
+            tick();
+            assert.match(slow.src, /&t=\d+$/);
+        });
+
+        test('a camera without a picture is left alone', async () => {
+            const { card, hass } = await mounted({ [ENTITY]: entity('on') });
+            hass.push('haanim/card/subscribe', { blocks: [door({ refresh: 1 })] });
+            const image = { dataset: { camera: 'door' }, src: 'kept' };
+            card.shadowRoot.found = { 'img[data-camera]': [image] };
+            tick();
+            assert.equal(image.src, 'kept');
+            card._hass = null;
+            tick();
+            assert.equal(image.src, 'kept');
+        });
+
+        test('nothing is fetched while the page is hidden', async () => {
+            const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'camera.door': camera() });
+            hass.push('haanim/card/subscribe', { blocks: [door({ refresh: 1 })] });
+            const image = { dataset: { camera: 'door' }, src: 'kept' };
+            card.shadowRoot.found = { 'img[data-camera]': [image] };
+            globalThis.document = { hidden: true };
+            tick(3);
+            assert.equal(image.src, 'kept');
+            globalThis.document = { hidden: false };
+            tick();
+            assert.match(image.src, /&t=\d+$/);
+            delete globalThis.document;
+        });
+
+        test('the clock stops when the camera goes, the card leaves the page or shows another automation', async () => {
+            const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'camera.door': camera() });
+            hass.push('haanim/card/subscribe', { blocks: [door()] });
+            assert.equal(running().length, 1);
+            hass.push('haanim/card/subscribe', { blocks: [] });
+            assert.equal(running().length, 0);
+
+            hass.push('haanim/card/subscribe', { blocks: [door()] });
+            assert.equal(running().length, 1);
+            card.disconnectedCallback();
+            assert.equal(running().length, 0);
+            card.connectedCallback();
+            await settle();
+            assert.equal(running().length, 1);
+
+            card.setConfig({ automation_id: 'other' });
+            assert.equal(running().length, 0);
+        });
+    });
+
     test('an icon that does not follow its entity is not redrawn when the entity changes', async () => {
         const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'fan.bedroom': { state: 'off', last_updated: '1' } });
         hass.push('haanim/card/subscribe', {

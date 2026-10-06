@@ -7,6 +7,7 @@ import {
     MAX_ROW_CELLS,
     PANEL_PATH,
     automationPath,
+    cameraUrl,
     escapeHtml,
     formatNumber,
     formatTime,
@@ -289,6 +290,48 @@ describe('icon block', () => {
             assert.equal(iconColor(bad), null, String(bad));
         }
         assert.equal(iconColor('constructor'), 'constructor', 'a word that is no theme colour is passed on as a colour name');
+    });
+});
+
+describe('image of a camera', () => {
+    const PICTURE = '/api/camera_proxy/camera.door?token=abc';
+    const door = (attributes = { entity_picture: PICTURE }) => ({ 'camera.door': { state: 'idle', attributes } });
+    const block = (extra = {}) => ({ id: 'door', type: 'image', entity_id: 'camera.door', refresh: 10, alt: 'Door', align: 'left', ...extra });
+
+    test("the picture is the camera's own, and a click opens the camera's dialog", () => {
+        assert.equal(
+            renderBlock(block(), { states: door() }),
+            '<div class="block block-image align-left" data-block="door" data-more-info="camera.door">' +
+                '<img src="/api/camera_proxy/camera.door?token=abc" alt="Door" data-camera="door"></div>'
+        );
+    });
+    test('a fetched picture has its stamp in the address', () => {
+        const html = renderBlock(block(), { states: door(), stamps: { door: 42 } });
+        assert.match(html, /<img src="\/api\/camera_proxy\/camera.door\?token=abc&amp;t=42" alt="Door"/);
+    });
+    test('takes a size, a place and a caption like any image', () => {
+        const html = renderBlock(block({ width: '320px', align: 'center', caption: 'Front door' }), { states: door() });
+        assert.match(html, /align-center" data-block="door" data-more-info="camera.door">/);
+        assert.match(html, /data-camera="door" style="width: 320px"><div class="caption">Front door<\/div>/);
+    });
+    test('a camera without a picture shows its alt text, or its entity', () => {
+        assert.match(renderBlock(block(), { states: door({}) }), /<span class="image-pending">Door<\/span>/);
+        assert.match(renderBlock(block({ alt: '' }), { states: {} }), /<span class="image-pending">camera.door<\/span>/);
+        assert.match(renderBlock(block()), /data-more-info="camera.door"><span class="image-pending">Door</);
+    });
+    test('a picture address that is not safe is not used', () => {
+        const html = renderBlock(block(), { states: door({ entity_picture: 'javascript:alert(1)' }) });
+        assert.doesNotMatch(html, /<img|javascript/);
+    });
+    test('cameraUrl', () => {
+        const state = door()['camera.door'];
+        assert.equal(cameraUrl(state), PICTURE);
+        assert.equal(cameraUrl(state, null), PICTURE);
+        assert.equal(cameraUrl(state, 7), `${PICTURE}&t=7`);
+        assert.equal(cameraUrl({ attributes: { entity_picture: '/local/door.jpg' } }, 7), '/local/door.jpg?t=7');
+        assert.equal(cameraUrl({ attributes: {} }, 7), null);
+        assert.equal(cameraUrl({ state: 'idle' }), null);
+        assert.equal(cameraUrl(undefined, 7), null);
     });
 });
 

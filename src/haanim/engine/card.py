@@ -157,12 +157,19 @@ class HAAnimCard:
         url: str | None = None,
         alt: str = "",
         *,
+        entity_id: str | None = None,
+        refresh: float = 10,
         width: int | str | None = None,
         height: int | None = None,
         align: str = "left",
         caption: str | None = None,
     ) -> _elements.ImageElement:
-        """Create an image from the automation's ``assets/`` folder or from a URL.
+        """Create an image: a file of the automation's, an address, or the live picture of a camera.
+
+        Exactly one of ``asset``, ``url`` and ``entity_id`` is given. With
+        ``entity_id`` the image is the current picture of that camera, fetched
+        again every ``refresh`` seconds while the card is on screen; a click
+        on it opens the camera's own dialog with its live stream.
 
         Without a size the image is drawn at its own size, and never wider
         than the space it has. With only a width or only a height the other
@@ -174,15 +181,17 @@ class HAAnimCard:
             asset: The name of a file in the automation's ``assets/`` folder.
             url: The address of an image.
             alt: The text shown in place of the image.
+            entity_id: A ``camera.*`` entity whose picture is shown.
+            refresh: The seconds between two pictures of the camera: 1 to 3600.
             width: The width in pixels, or as a percentage of the space the image has (``"50%"``).
             height: The height in pixels.
             align: Where the image is in its row: ``"left"``, ``"center"`` or ``"right"``.
             caption: Text under the image.
 
         Raises:
-            ValueError: Unless exactly one of ``asset`` and ``url`` is given, or
-                the asset name resolves outside ``assets/``, or a size, the
-                alignment or the caption is not valid.
+            ValueError: Unless exactly one of ``asset``, ``url`` and ``entity_id`` is
+                given, or the asset name resolves outside ``assets/``, or the entity is
+                not a camera, or a size, the alignment or the caption is not valid.
             FileNotFoundError: If the asset does not exist.
         """
         return _elements.ImageElement(
@@ -191,6 +200,8 @@ class HAAnimCard:
             asset=asset,
             url=url,
             alt=alt,
+            entity_id=entity_id,
+            refresh=refresh,
             width=width,
             height=height,
             align=align,

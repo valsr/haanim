@@ -323,26 +323,53 @@ function imageSize(value) {
 }
 
 /**
+ * The address of a camera's current picture, or null while the camera has none.
+ *
+ * Home Assistant gives every camera a picture address that carries its own short-lived token. A stamp makes
+ * the address a new one, so that the browser fetches the picture again.
+ */
+export function cameraUrl(state, stamp = null) {
+    const picture = safeUrl(state && state.attributes ? state.attributes.entity_picture : null);
+    if (picture === null || stamp === null || stamp === undefined) return picture;
+    return `${picture}${picture.includes('?') ? '&' : '?'}t=${encodeURIComponent(stamp)}`;
+}
+
+/**
  * Render an image block.
  *
  * The image is drawn at its own size, and never wider than the space it has, unless the block gives a width,
  * a height or both; with both it is fitted into that box and keeps its shape. `align` puts it at the left
  * (the default), in the middle or at the right of its row, and the caption under it goes with it. Until
  * the picture can be shown, its alt text stands in for it.
+ *
+ * A block with an entity shows the current picture of that camera; `context.stamps` has, by block ID, the
+ * stamp of the picture last fetched. A click on it opens the camera's own dialog.
  */
 function renderImage(block, context, id) {
     const align = ALIGNMENTS.has(block.align) ? block.align : 'left';
-    const open = `<div class="block block-image align-${align}" data-block="${id}">`;
+    const camera = block.entity_id ? escapeHtml(block.entity_id) : null;
+    const more = camera ? ` data-more-info="${camera}"` : '';
+    const open = `<div class="block block-image align-${align}" data-block="${id}"${more}>`;
     const caption = block.caption ? `<div class="caption">${escapeHtml(block.caption)}</div>` : '';
-    const source = block.asset ? (context.images || {})[block.url] : safeUrl(block.url);
+    let source;
+    if (camera) {
+        source = cameraUrl((context.states || {})[block.entity_id], (context.stamps || {})[block.id]);
+    } else {
+        source = block.asset ? (context.images || {})[block.url] : safeUrl(block.url);
+    }
     if (!source) {
-        return `${open}<span class="image-pending">${escapeHtml(block.alt || '')}</span>${caption}</div>`;
+        const standIn = block.alt || (camera ? block.entity_id : '');
+        return `${open}<span class="image-pending">${escapeHtml(standIn)}</span>${caption}</div>`;
     }
     const width = imageSize(block.width);
     const height = imageSize(block.height);
     const sizes = [width ? `width: ${width}` : '', height ? `height: ${height}` : ''].filter(Boolean);
     const style = sizes.length ? ` style="${sizes.join('; ')}"` : '';
-    return `${open}<img src="${escapeHtml(source)}" alt="${escapeHtml(block.alt || '')}"${style}>${caption}</div>`;
+    const live = camera ? ` data-camera="${id}"` : '';
+    return (
+        `${open}<img src="${escapeHtml(source)}" alt="${escapeHtml(block.alt || '')}"${live}${style}>` +
+        `${caption}</div>`
+    );
 }
 
 /**

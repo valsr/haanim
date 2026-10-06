@@ -296,7 +296,7 @@ actions, which exist only once the file has run: create buttons in `@startup`.
 | Create it with                                              | It shows                                   | Change it with                                  |
 | ----------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------- |
 | `create_text(id, markdown)`                                 | Markdown text                              | `set_text`                                      |
-| `create_image(id, asset=None, url=None, alt="", ...)`       | An image from `assets/` or from a URL      | `set_asset`, `set_url`, `set_alt`, `set_size`, `set_align`, `set_caption` |
+| `create_image(id, asset=None, url=None, alt="", ...)`       | An image from `assets/`, from a URL, or a camera's live picture | `set_asset`, `set_url`, `set_entity`, `set_refresh`, `set_alt`, `set_size`, `set_align`, `set_caption` |
 | `create_value(id, label, value, unit="")`                   | A labelled value                           | `set_value`, `set_label`, `set_unit`            |
 | `create_entity(id, entity_id)`                              | The live state of an entity                | `set_entity`                                    |
 | `create_icon(id, entity_id=None, icon=None, ...)`           | An icon, driven by an entity by default    | `set_icon`, `set_color`, `set_spin`, `set_label`, `set_entity`, `set_follow_entity` |
@@ -374,6 +374,20 @@ logo.set_caption(None)
   fitted into that box and still keeps its shape.
 - `align` is `"left"`, `"center"` or `"right"`; the caption (plain text, at most 200 characters) goes with
   the image.
+
+With `entity_id=` the image is the live picture of a camera: the camera's current picture, fetched again
+every `refresh` seconds (10 unless given; 1 to 3600) while the card is on screen. A click opens the camera's
+own dialog, with its live stream. Size, alignment and caption work as for any image.
+
+```python
+door = haa.card.create_image("door", entity_id="camera.front_door", refresh=5, width="100%", caption="Front door")
+haa.card.add_element(door)
+door.set_refresh(1)                       # once a second, while somebody is at the door
+door.set_entity("camera.garden")          # another camera, same place on the card
+```
+
+An image has exactly one source: `asset`, `url` or `entity_id`. `set_asset()`, `set_url()` and `set_entity()`
+replace it.
 
 ### Icons
 
