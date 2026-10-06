@@ -40,6 +40,9 @@ _CALL_CHAIN: contextvars.ContextVar[tuple[ActionKey, ...]] = contextvars.Context
     "haanim_call_chain", default=()
 )
 
+# Told about the failure of an action a trigger fired: (action name, error).
+FailureHandler = Callable[[str, BaseException], None]
+
 # How long cancelled actions get to finish when the dispatcher shuts down.
 SHUTDOWN_WAIT_SECONDS = 1.0
 
@@ -127,6 +130,7 @@ class ActionDispatcher:
         self._default_timeout = default_timeout
         self._slots: dict[ActionKey, _Slot] = {}
         self._handlers: set[_Request] = set()
+        self._failure_handlers: dict[str, FailureHandler] = {}
         # Set each time a request ends or is removed; lets wait_idle() wake up and re-check.
         self._changed = asyncio.Event()
         self._shutting_down = False
@@ -235,6 +239,68 @@ class ActionDispatcher:
 
         slot.waiting.append(request)
         return await self._outcome(request)
+
+    def set_failure_handler(self, automation_id: str, handler: FailureHandler | None) -> None:
+        """Set who is told when an action of an automation fails with no caller to raise to.
+
+        Args:
+            automation_id: ID of the automation.
+            handler: Called with the action's name and the error. None removes the handler.
+        """
+        if handler is None:
+            self._failure_handlers.pop(automation_id, None)
+        else:
+            self._failure_handlers[automation_id] = handler
+
+    async def fire(
+        self,
+        automation_id: str,
+        action_name: str,
+        func: Callable[..., Any],
+        *args: Any,
+        mode: ActionMode = ActionMode.DROP,
+        timeout: float | None = None,
+    ) -> Any:
+        """Request an execution of an action on behalf of a trigger and wait for it.
+
+        A trigger has no caller to raise to. If the action raises, times out,
+        is dropped, finds its queue full or hits the concurrency limit, the
+        failure is reported to the automation's failure handler and nothing
+        is raised. A cancelled execution (the automation was stopped, or a
+        newer ``CANCEL`` request replaced it) is not a failure.
+
+        Args:
+            automation_id: ID of the automation the action belongs to.
+            action_name: The action's name (not an alias).
+            func: The action's function.
+            *args: What to call the function with.
+            mode: The action's execution mode.
+            timeout: As for ``dispatch()``.
+
+        Returns:
+            What the action returns; None if it failed or was cancelled.
+        """
+        try:
+            return await self.dispatch(
+                automation_id, action_name, func, *args, mode=mode, timeout=timeout, triggered=True
+            )
+        except ActionCancelledError as err:
+            if err.action_name != action_name:
+                # Raised by an action this one called, and not handled there
+                self._report_failure(automation_id, action_name, err)
+        except Exception as err:  # pylint: disable=broad-exception-caught
+            self._report_failure(automation_id, action_name, err)
+        return None
+
+    def _report_failure(self, automation_id: str, action_name: str, error: BaseException) -> None:
+        """Tell the automation's failure handler about a failure; log it if there is none."""
+        handler = self._failure_handlers.get(automation_id)
+        if handler is None:
+            _LOGGER.error(
+                "Action '%s' of '%s' failed: %s: %s", action_name, automation_id, type(error).__name__, error
+            )
+            return
+        handler(action_name, error)
 
     async def run_handler(
         self, automation_id: str, handler_name: str, func: Callable[..., Any], *args: Any

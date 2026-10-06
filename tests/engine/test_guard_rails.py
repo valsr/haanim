@@ -19,7 +19,7 @@ from haanim.const import (
 )
 from haanim.engine.ast_evaluator import AstEvaluator
 from haanim.engine.automation_module import AutomationModule
-from haanim.engine.errors import AutomationRuntimeError, AutomationSecurityError, AutomationSyntaxError
+from haanim.engine.errors import AutomationSecurityError, AutomationSyntaxError
 from haanim.engine.guards import Guarded, guard_loop, guard_module
 from haanim.engine.import_controller import ImportController
 from haanim.engine.logging_wrapper import LoggerWrapper
@@ -211,11 +211,8 @@ class TestAllowedImports:
 
     async def test_missing_name_is_an_import_error(self) -> None:
         """Importing a name the module does not have fails as in Python."""
-        with pytest.raises(AutomationRuntimeError) as raised:
+        with pytest.raises(ImportError, match="cannot import name 'no_such_name' from 'math'"):
             await load("from math import no_such_name\n")
-
-        assert isinstance(raised.value.__cause__, ImportError)
-        assert "cannot import name 'no_such_name' from 'math'" in str(raised.value)
 
     def test_blocked_import_at_run_time(self) -> None:
         """An import the static check did not see is still refused when it runs."""
@@ -562,7 +559,7 @@ class TestEngineSuppliedModules:
         path.write_text("import hass\n", encoding="utf-8")
         context = make_context(str(path))
 
-        with pytest.raises(AutomationRuntimeError, match="No module named 'hass'"):
+        with pytest.raises(ModuleNotFoundError, match="No module named 'hass'"):
             await load_and_run(context)
 
     async def test_haanim_module_is_supplied(self, tmp_path: Path) -> None:
@@ -675,12 +672,8 @@ class TestRelativeImports:
         files = FakeFileSystem()
         files.write(Path("/auto/main.py"), "from . import nothing\n")
 
-        with pytest.raises(
-            AutomationRuntimeError, match="No module named '.nothing' in automation 'auto'"
-        ) as raised:
+        with pytest.raises(ModuleNotFoundError, match="No module named '.nothing' in automation 'auto'"):
             await self.run(files)
-
-        assert isinstance(raised.value.__cause__, ModuleNotFoundError)
 
     async def test_missing_name(self) -> None:
         """Importing a name the file does not define fails as in Python."""
@@ -688,7 +681,7 @@ class TestRelativeImports:
         files.write(Path("/auto/main.py"), "from .helper import nothing\n")
         files.write(Path("/auto/helper.py"), "x = 1\n")
 
-        with pytest.raises(AutomationRuntimeError, match="cannot import name 'nothing' from '.helper'"):
+        with pytest.raises(ImportError, match="cannot import name 'nothing' from '.helper'"):
             await self.run(files)
 
     async def test_module_does_not_expose_builtins(self) -> None:
@@ -741,7 +734,7 @@ class TestRelativeImports:
 
     async def test_not_available_without_files(self) -> None:
         """An evaluator that was not given the automation's files cannot import them."""
-        with pytest.raises(AutomationRuntimeError, match="relative imports are not available"):
+        with pytest.raises(ImportError, match="relative imports are not available"):
             await load("from . import helper\n")
 
     async def test_in_a_loaded_automation(self, tmp_path: Path) -> None:

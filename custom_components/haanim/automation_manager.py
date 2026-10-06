@@ -39,7 +39,6 @@ from haanim.engine.hot_reload import HotReloader
 from haanim.interfaces import Host
 from haanim.engine.control import AutomationControl, EnabledFlags
 from haanim.engine.errors import (
-    ActionNotFoundError,
     HAAnimError,
     NonExistingAutomationError,
 )
@@ -485,15 +484,12 @@ class AutomationManager:
             The result of the action.
 
         Raises:
-            HAAnimError: If the automation or the action is not found.
+            NonExistingAutomationError: If there is no automation with that ID.
+            ActionNotFoundError: If the automation has no such action, or it is disabled.
             AutomationNotRunningError: If the automation is not running.
+            Exception: Whatever the action raises, unchanged.
         """
-        try:
-            return await self._automation(automation_id).call_action(action_name, data)
-        except NonExistingAutomationError as err:
-            raise HAAnimError(f"Automation '{automation_id}' not found") from err
-        except ActionNotFoundError as err:
-            raise HAAnimError(f"Action '{action_name}' not found in automation '{automation_id}'") from err
+        return await self._automation(automation_id).call_action(action_name, data)
 
     def _automation(self, automation_id: str) -> Automation:
         """Return the automation with an ID.

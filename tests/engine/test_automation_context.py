@@ -300,7 +300,7 @@ def my_action():
         automation_path.write_text("from haanim import ShutdownTimeoutError\n")
 
         context = make_context(str(automation_path))
-        with pytest.raises(HAAnimError):
+        with pytest.raises(ImportError, match="cannot import name 'ShutdownTimeoutError' from 'haanim'"):
             await load_and_run(context)
 
     async def test_load_automation_with_triggers(self, mock_hass: MagicMock, tmp_path: Any) -> None:

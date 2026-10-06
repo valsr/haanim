@@ -743,7 +743,7 @@ class TestAstEvaluatorAdvanced:
     async def test_execute_assert_fail(self, evaluator: AstEvaluator) -> None:
         """Test assert statement that fails."""
         evaluator.parse('assert False, "custom message"')
-        with pytest.raises(AutomationRuntimeError, match="custom message"):
+        with pytest.raises(AssertionError, match="custom message"):
             await evaluator.execute()
 
     async def test_execute_delete_name(self, evaluator: AstEvaluator) -> None:
@@ -773,7 +773,7 @@ del d['a']
     async def test_execute_raise(self, evaluator: AstEvaluator) -> None:
         """Test raise statement."""
         evaluator.parse('raise ValueError("test error")')
-        with pytest.raises(AutomationRuntimeError, match="test error"):
+        with pytest.raises(ValueError, match="test error"):
             await evaluator.execute()
 
     async def test_execute_global_statement(self, evaluator: AstEvaluator) -> None:

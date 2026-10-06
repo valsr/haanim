@@ -26,7 +26,6 @@ from haanim.engine.import_controller import ImportController
 from haanim.engine.safe_builtins import SafeBuiltins
 from haanim.engine.symbol_table import SCOPE_CLASS, SCOPE_COMPREHENSION, SCOPE_MODULE, SymbolTable
 from haanim.engine.errors import (
-    HAAnimError,
     AutomationRuntimeError,
     AutomationSecurityError,
 )
@@ -196,15 +195,9 @@ class AstEvaluator:
         if self._ast is None:
             raise AutomationRuntimeError("No AST to execute. Call parse() first.")
 
-        try:
-            for node in self._ast.body:
-                await self.aeval(node, self._global_symbols)
-        except Exception as err:
-            if isinstance(err, HAAnimError):
-                self._logger.error("Automation execution error: %s", err)
-                raise
-            self._logger.exception("Unexpected error during automation execution")
-            raise AutomationRuntimeError(f"Runtime error: {err}") from err
+        # An exception raised by the automation's code reaches the caller as it is
+        for node in self._ast.body:
+            await self.aeval(node, self._global_symbols)
 
         return self._global_symbols.as_dict()
 

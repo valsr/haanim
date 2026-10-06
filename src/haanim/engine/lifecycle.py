@@ -11,12 +11,19 @@ import contextvars
 import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
 
-from haanim.const import DEFAULT_SHUTDOWN_TIMEOUT, DEFAULT_STARTUP_TIMEOUT, DEFAULT_STOP_GRACE_PERIOD
+from haanim.const import (
+    DEFAULT_SHUTDOWN_TIMEOUT,
+    DEFAULT_STARTUP_TIMEOUT,
+    DEFAULT_STOP_GRACE_PERIOD,
+    EVENT_ACTION_ERROR,
+)
 from haanim.engine.callables import event_arguments
 from haanim.engine.errors import (
+    ActionDroppedError,
     ActionNotFoundError,
     AutomationAlreadyRunningError,
     AutomationDefinitionError,
@@ -101,6 +108,31 @@ class LifecycleSettings:
     stop_grace_period: float = DEFAULT_STOP_GRACE_PERIOD
 
 
+@dataclass(frozen=True)
+class ActionFailure:
+    """A failure that left the automation running: the value of ``last_error``.
+
+    Args:
+        time: When it happened.
+        action: Name of the action, or ``"@shutdown"``.
+        error_type: Name of the exception class.
+        message: The exception's message.
+    """
+
+    time: datetime
+    action: str
+    error_type: str
+    message: str
+
+    def __str__(self) -> str:
+        """Describe the failure in one line."""
+        return (
+            f"{self.action}: {self.error_type}: {self.message}"
+            if self.message
+            else f"{self.action}: {self.error_type}"
+        )
+
+
 def _seconds(value: float) -> str:
     """Format a number of seconds for a message."""
     return f"{value:g} second" if value == 1 else f"{value:g} seconds"
@@ -143,7 +175,7 @@ class Automation:
         self._clock = context.host.clock
         self._state = AutomationState.UNAVAILABLE
         self._message: str | None = None
-        self._last_error: str | None = None
+        self._last_error: ActionFailure | None = None
         # Whether @startup or @shutdown is running; it may call the automation's own actions.
         self._handler_running = False
         self._stopping = False
@@ -164,8 +196,12 @@ class Automation:
         return self._message
 
     @property
-    def last_error(self) -> str | None:
-        """The most recent failure that did not change the state, such as a failing ``@shutdown``."""
+    def last_error(self) -> ActionFailure | None:
+        """The most recent failure that did not change the state.
+
+        That is an action that failed when a trigger called it, or a failing
+        ``@shutdown``. None if there was none.
+        """
         return self._last_error
 
     def _set_state(self, state: AutomationState, message: str | None = None) -> None:
@@ -236,6 +272,7 @@ class Automation:
         try:
             await self.context.execute()
             await self._run_startup()
+            self._dispatcher.set_failure_handler(self.automation_id, self.record_action_failure)
             for trigger in self.context.get_triggers():
                 await self._triggers.register_trigger(trigger)
         except Exception as err:  # pylint: disable=broad-exception-caught
@@ -282,6 +319,7 @@ class Automation:
     async def _abandon_start(self) -> None:
         """Undo a start that failed part-way."""
         await self._triggers.unregister_automation_triggers(self.automation_id)
+        self._dispatcher.set_failure_handler(self.automation_id, None)
         self._dispatcher.remove_queued(self.automation_id, REASON_START_FAILED)
         self._dispatcher.cancel_running(self.automation_id, REASON_START_FAILED)
         self.context.discard()
@@ -308,6 +346,7 @@ class Automation:
             await self._run_shutdown()
         finally:
             self._stopping = False
+            self._dispatcher.set_failure_handler(self.automation_id, None)
             self.context.discard()
             self._set_state(AutomationState.OFF)
 
@@ -347,17 +386,47 @@ class Automation:
                 timeout,
             )
         except TimeoutError:
-            self._record_error(f"@shutdown did not finish within {_seconds(timeout)}")
+            self._record_failure(
+                "@shutdown", "TimeoutError", f"@shutdown did not finish within {_seconds(timeout)}"
+            )
         except Exception as err:  # pylint: disable=broad-exception-caught
-            self._record_error(f"@shutdown failed: {_describe(err)}")
+            self._record_failure("@shutdown", type(err).__name__, str(err))
         finally:
             _HANDLER_OF.reset(token)
             self._handler_running = False
 
-    def _record_error(self, message: str) -> None:
-        """Record a failure that does not change the state."""
-        _LOGGER.error("Automation '%s': %s", self.automation_id, message)
-        self._last_error = message
+    def _record_failure(
+        self, action: str, error_type: str, message: str, level: int = logging.ERROR
+    ) -> ActionFailure:
+        """Record a failure that does not change the state: log it and set ``last_error``."""
+        failure = ActionFailure(self._clock.now(), action, error_type, message)
+        self.context.logger.log(level, "Automation '%s': %s", self.automation_id, failure)
+        self._last_error = failure
+        return failure
+
+    def record_action_failure(self, action_name: str, error: BaseException) -> None:
+        """Record the failure of an action that a trigger called.
+
+        There is no caller to raise to, so the failure is logged to the
+        automation's logger, kept as ``last_error`` and announced with a
+        ``haanim_action_error`` event. The automation stays ``on``.
+
+        Args:
+            action_name: The action's name.
+            error: What the action raised, or the error that kept it from running.
+        """
+        # A dropped request is the DROP mode doing its work, not a fault in the action
+        level = logging.WARNING if isinstance(error, ActionDroppedError) else logging.ERROR
+        failure = self._record_failure(action_name, type(error).__name__, str(error), level)
+        self.context.host.events.fire(
+            EVENT_ACTION_ERROR,
+            {
+                "automation_id": self.automation_id,
+                "action": failure.action,
+                "error_type": failure.error_type,
+                "message": failure.message,
+            },
+        )
 
     # --- Unload -------------------------------------------------------------------
 

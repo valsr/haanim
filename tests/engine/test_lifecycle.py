@@ -24,6 +24,7 @@ from haanim.engine.errors import (
     NonExistingAutomationError,
 )
 from haanim.engine.lifecycle import (
+    ActionFailure,
     Automation,
     AutomationState,
     LifecycleSettings,
@@ -449,11 +450,11 @@ class TestStartFailure:
         "main.py raises": (
             "from haanim import shutdown, on_state\n\n@shutdown\ndef on_stop():\n    record('shutdown')\n\n"
             "@on_state(\"sensor.a == 'on'\")\ndef on_a():\n    pass\n\nraise KeyError('boom')\n",
-            "AutomationRuntimeError: Runtime error: 'boom'",
+            "KeyError: 'boom'",
         ),
         "name not imported": (
             "@action\ndef go():\n    pass\n",
-            "AutomationRuntimeError: Runtime error: name 'action' is not defined",
+            "NameError: name 'action' is not defined",
         ),
         "@startup raises": (
             "from haanim import startup, shutdown, on_state\n\n@startup\ndef on_start():\n    raise KeyError('boom')\n\n"
@@ -727,12 +728,12 @@ class TestStop:
     @pytest.mark.parametrize(
         ("body", "error"),
         [
-            ("    raise KeyError('boom')\n", "@shutdown failed: KeyError: 'boom'"),
-            ("    raise RuntimeError\n", "@shutdown failed: RuntimeError"),
+            ("    raise KeyError('boom')\n", ("KeyError", "'boom'", "@shutdown: KeyError: 'boom'")),
+            ("    raise RuntimeError\n", ("RuntimeError", "", "@shutdown: RuntimeError")),
         ],
         ids=["with message", "without message"],
     )
-    async def test_failing_shutdown(self, world: World, body: str, error: str) -> None:
+    async def test_failing_shutdown(self, world: World, body: str, error: tuple[str, str, str]) -> None:
         """A @shutdown that raises is recorded in last_error and stopping continues."""
         automation = await world.started(
             "lights", "from haanim import shutdown, on_state\n\n@shutdown\ndef on_stop():\n" + body
@@ -742,7 +743,10 @@ class TestStop:
 
         assert automation.state is OFF
         assert automation.message is None
-        assert automation.last_error == error
+        failure = automation.last_error
+        assert failure is not None
+        assert (failure.action, failure.error_type, failure.message, str(failure)) == ("@shutdown", *error)
+        assert failure.time == world.clock.now()
         assert not automation.context.is_executed
 
     async def test_shutdown_timeout(self, world: World) -> None:
@@ -760,7 +764,9 @@ class TestStop:
         await world.clock.advance(seconds=1)
         await stopping
         assert automation.state is OFF
-        assert automation.last_error == "@shutdown did not finish within 10 seconds"
+        assert automation.last_error == ActionFailure(
+            world.clock.now(), "@shutdown", "TimeoutError", "@shutdown did not finish within 10 seconds"
+        )
         assert world.log == ["cancelled"]
 
     async def test_namespace_is_discarded(self, world: World) -> None:

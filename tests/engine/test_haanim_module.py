@@ -13,10 +13,11 @@ from typing import Any
 import pytest
 
 import haanim.engine
+from haanim.engine.callables import as_coroutine_function
 from haanim.engine import decorators
 from haanim.engine.automation_context import AutomationContext
 from haanim.engine.decorators import get_metadata
-from haanim.engine.errors import PUBLIC_ERRORS, AutomationRuntimeError
+from haanim.engine.errors import PUBLIC_ERRORS
 from haanim.engine.haanim_api import HAAnim
 from haanim.engine.haanim_module import DECORATORS, EVENT_CLASSES, DecoratorRegistry, build_haanim_module
 from haanim.engine.logging_wrapper import LoggerWrapper
@@ -140,10 +141,8 @@ class TestNothingIsInjected:
         path.write_text(f"value = {name}\n", encoding="utf-8")
         context = make_context(str(path))
 
-        with pytest.raises(AutomationRuntimeError, match=f"name '{name}' is not defined") as raised:
+        with pytest.raises(NameError, match=f"name '{name}' is not defined"):
             await load_and_run(context)
-
-        assert isinstance(raised.value.__cause__, NameError)
 
     @pytest.mark.parametrize("name", FORMERLY_INJECTED)
     async def test_name_can_be_imported(self, tmp_path: Path, name: str) -> None:
@@ -158,7 +157,7 @@ class TestNothingIsInjected:
         path = automation_file(tmp_path, "auto")
         path.write_text(f"from haanim import {name}\n", encoding="utf-8")
 
-        with pytest.raises(AutomationRuntimeError, match=f"cannot import name '{name}' from 'haanim'"):
+        with pytest.raises(ImportError, match=f"cannot import name '{name}' from 'haanim'"):
             await load_and_run(make_context(str(path)))
 
         assert name not in DECORATORS
@@ -169,7 +168,7 @@ class TestNothingIsInjected:
         path = automation_file(tmp_path, "auto")
         path.write_text("@action\ndef go():\n    pass\n", encoding="utf-8")
 
-        with pytest.raises(AutomationRuntimeError, match="name 'action' is not defined"):
+        with pytest.raises(NameError, match="name 'action' is not defined"):
             await load_and_run(make_context(str(path)))
 
     async def test_namespace_starts_with_builtins_only(self, tmp_path: Path) -> None:
@@ -242,7 +241,7 @@ class TestModuleContents:
         path = automation_file(tmp_path, "auto")
         path.write_text("from haanim import no_such_name\n", encoding="utf-8")
 
-        with pytest.raises(AutomationRuntimeError, match="cannot import name 'no_such_name' from 'haanim'"):
+        with pytest.raises(ImportError, match="cannot import name 'no_such_name' from 'haanim'"):
             await load_and_run(make_context(str(path)))
 
 
@@ -391,7 +390,7 @@ class TestDecoratorRegistry:
         )
 
         assert [action.name for action in context.get_actions()] == ["go"]
-        assert await context.run_function("helper") == 1
+        assert await as_coroutine_function(context.get_symbol("helper"))() == 1
 
 
 class TestSubModules:

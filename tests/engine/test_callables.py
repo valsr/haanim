@@ -154,9 +154,9 @@ class TestAutomationFunctionsActuallyRun:
         assert await context.run_action(action, {"value": 5}) == expected
         assert context.get_symbol("calls") == [recorded]
 
-    async def test_context_run_function(self, context: Any) -> None:
-        """Test AutomationContext.run_function runs a plain helper function."""
-        assert await context.run_function("helper", 1) == 101
+    async def test_plain_helper_function(self, context: Any) -> None:
+        """Test a plain helper function of the automation runs as a coroutine function."""
+        assert await as_coroutine_function(context.get_symbol("helper"))(1) == 101
 
     @pytest.mark.parametrize(
         ("action", "expected", "recorded"),

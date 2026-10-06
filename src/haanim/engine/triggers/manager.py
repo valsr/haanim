@@ -624,15 +624,15 @@ class TriggerManager:
         try:
             event = self._event(trigger_def, notification)
 
-            # A trigger function is an action: its execution mode applies
-            await self.dispatcher.dispatch(
+            # A trigger function is an action: its execution mode applies.
+            # Its failures are recorded by the dispatcher; there is no caller to raise to
+            await self.dispatcher.fire(
                 trigger_def.automation_id or "",
                 trigger_def.action_name or trigger_def.func_name,
                 trigger_def.func,
                 *event_arguments(trigger_def.func, event),
                 mode=trigger_def.execution_mode,
                 timeout=trigger_def.timeout,
-                triggered=True,
             )
 
         except Exception as err:

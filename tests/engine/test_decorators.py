@@ -699,7 +699,7 @@ class TestDefinitions:
 
     async def test_invalid_decorator_argument_fails_the_execution(self, tmp_path: Path) -> None:
         """A wrong decorator argument stops the automation's code where it is written."""
-        with pytest.raises(AutomationRuntimeError, match="@action: timeout must not be negative"):
+        with pytest.raises(ValueError, match="@action: timeout must not be negative"):
             await executed(
                 tmp_path, "from haanim import action\n\n@action(timeout=-5)\ndef go():\n    pass\n"
             )

@@ -17,6 +17,7 @@ __all__ = [
     "CONSTRAINT_STATE",
     # Host events
     "EVENT_HOST_STARTED",
+    "EVENT_ACTION_ERROR",
     # Defaults
     "DEFAULT_ACTION_QUEUE_SIZE",
     "DEFAULT_ACTION_TIMEOUT",
@@ -60,6 +61,9 @@ CONSTRAINT_STATE: Final = "state"
 
 # Event the host fires once it has finished starting
 EVENT_HOST_STARTED: Final = "homeassistant_started"
+
+# Fired when an action called by a trigger fails (see "Trigger Functions Are Actions" in the design)
+EVENT_ACTION_ERROR: Final = "haanim_action_error"
 
 # Default action settings
 DEFAULT_ACTION_QUEUE_SIZE: Final = 100

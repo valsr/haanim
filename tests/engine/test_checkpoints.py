@@ -412,7 +412,7 @@ class TestSingleLoop:
         context.set_symbol("record", lambda: threads.append(threading.get_ident()))
 
         await context.run_action("where")
-        await context.run_function("where")
+        await as_coroutine_function(context.get_symbol("where"))()
 
         assert threads == [threading.get_ident()] * 2
 

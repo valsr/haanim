@@ -613,7 +613,7 @@ class TestReloadSequence:
         [
             ("def broken(:\n", "main.py:1: invalid syntax"),
             ("import os\n", "main.py:1: import of module 'os' is not allowed"),
-            ("raise KeyError('boom')\n", "AutomationRuntimeError: Runtime error: 'boom'"),
+            ("raise KeyError('boom')\n", "KeyError: 'boom'"),
             (
                 "from haanim import startup\n\n@startup\ndef s():\n    raise KeyError('x')\n",
                 "@startup failed: KeyError: 'x'",

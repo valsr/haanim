@@ -695,7 +695,7 @@ class TestAutomationManagerRunAction:
 
         manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
 
-        with pytest.raises(HAAnimError, match="not found"):
+        with pytest.raises(NonExistingAutomationError):
             await manager.async_run_action("nonexistent", "some_action")
 
     @patch("custom_components.haanim.automation_manager.get_config_manager")

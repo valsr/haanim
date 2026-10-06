@@ -211,7 +211,6 @@ class AutomationContext:
         self._action_names: dict[str, ActionDefinition] = {}
         self._startup_name = self._shutdown_name = ""
         self._triggers: list[TriggerDefinition] = []
-        self._functions: dict[str, Callable[..., Any]] = {}
 
         # Lifecycle handlers
         self._startup_func: Callable[..., Any] | None = None
@@ -286,7 +285,6 @@ class AutomationContext:
         self._actions = {}
         self._action_names = {}
         self._triggers = []
-        self._functions = {}
         self._startup_func = None
         self._shutdown_func = None
         self._startup_name = self._shutdown_name = ""
@@ -423,11 +421,6 @@ class AutomationContext:
             if metadata is not None:
                 self._process_function_metadata(getattr(func, "__name__", repr(func)), func, metadata)
 
-        # Every module-level callable of the main file can be run by name
-        for name, obj in self._global_symbols.as_dict().items():
-            if callable(obj) and not name.startswith("_"):
-                self._functions[name] = obj
-
     def _process_function_metadata(
         self,
         func_name: str,
@@ -532,6 +525,11 @@ class AutomationContext:
             return ActionEvent(source=SOURCE_TRIGGER, **fields)
         return ManualEvent(**fields)
 
+    @property
+    def logger(self) -> logging.Logger:
+        """The automation's logger: where its own log calls and its failures are written."""
+        return self._logger
+
     async def run_action(
         self,
         action_name: str,
@@ -561,33 +559,6 @@ class AutomationContext:
         event = self.make_event(caller=caller, data=data)
         self._logger.info("Running action '%s' (%s)", action.name, event.source)
         return await as_coroutine_function(action.func)(*event_arguments(action.func, event))
-
-    async def run_function(
-        self,
-        func_name: str,
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """Run any function defined in the automation by name.
-
-        Args:
-            func_name: The name of the function to run.
-            *args: Positional arguments.
-            **kwargs: Keyword arguments.
-
-        Returns:
-            The return value of the function.
-        """
-        if func_name not in self._functions:
-            raise HAAnimError(f"Function '{func_name}' not found in automation '{self.automation_id}'")
-
-        func = self._functions[func_name]
-
-        try:
-            return await as_coroutine_function(func)(*args, **kwargs)
-        except Exception as err:
-            self._logger.error("Function '%s' failed: %s", func_name, err)
-            raise HAAnimError(f"Function '{func_name}' failed: {err}") from err
 
     def get_action(self, name: str) -> ActionDefinition | None:
         """Get one action by its name or one of its aliases.
