@@ -6,12 +6,10 @@ import asyncio
 import logging
 import re
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from datetime import datetime, time
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from haanim import const
 from haanim.engine.callables import as_coroutine_function, event_arguments
+from haanim.engine.constraints.rules import Constraints
 from haanim.events import SOURCE_TRIGGER, ActionEvent
 from haanim.interfaces import EventBus, Host, StateProvider
 
@@ -55,7 +53,7 @@ class BaseTrigger(ABC):
 
         self._task: asyncio.Task[None] | None = None
         self._enabled = True
-        self._constraints: list[dict[str, Any]] = []
+        self._constraints = Constraints.parse(trigger_def.constraints)
         self._logger = trigger_def.logger or logging.getLogger(
             f"{__name__}.{trigger_def.automation_id}.{trigger_def.func_name}"
         )
@@ -68,126 +66,13 @@ class BaseTrigger(ABC):
     async def async_stop(self) -> None:
         """Stop the trigger."""
 
-    def set_constraints(self, constraints: list[dict[str, Any]]) -> None:
-        """Set constraints for this trigger.
-
-        Args:
-            constraints: List of constraint definitions.
-        """
-        self._constraints = constraints
-
     async def _check_constraints(self) -> bool:
-        """Check if all constraints are satisfied.
+        """Return whether this trigger's constraints allow it to fire now.
 
-        Returns:
-            True if all constraints pass, False otherwise.
+        The constraints are those of this trigger's decorator; they are
+        evaluated in the host's time zone at the moment the trigger fires.
         """
-        for constraint in self._constraints:
-            constraint_type = constraint.get("type")
-
-            if constraint_type == const.CONSTRAINT_TIME:
-                if not await self._check_time_constraint(constraint):
-                    return False
-
-            elif constraint_type == const.CONSTRAINT_STATE:
-                if not await self._check_state_constraint(constraint):
-                    return False
-
-        return True
-
-    async def _check_time_constraint(self, constraint: dict[str, Any]) -> bool:
-        """Check a time constraint.
-
-        Args:
-            constraint: The constraint definition.
-
-        Returns:
-            True if constraint is satisfied.
-        """
-        specs = constraint.get("specs", [])
-        now = self.host.clock.now()
-
-        for spec in specs:
-            if self._evaluate_time_spec(spec, now):
-                return True
-
-        return len(specs) == 0  # No specs means always active
-
-    def _evaluate_time_spec(self, spec: str, now: datetime) -> bool:
-        """Evaluate a time specification.
-
-        Args:
-            spec: Time specification string.
-            now: Current datetime.
-
-        Returns:
-            True if current time matches spec.
-        """
-        # Handle range(start, end)
-        range_match = re.match(r"range\(([^,]+),\s*([^)]+)\)", spec)
-        if range_match:
-            start_str, end_str = range_match.groups()
-            start_time = self._parse_time_value(start_str.strip(), now)
-            end_time = self._parse_time_value(end_str.strip(), now)
-
-            if start_time and end_time:
-                current_time = now.time()
-                if start_time <= end_time:
-                    return start_time <= current_time <= end_time
-                else:
-                    # Overnight range (e.g., 22:00 to 06:00)
-                    return current_time >= start_time or current_time <= end_time
-
-        return False
-
-    def _parse_time_value(self, value: str, now: datetime) -> time | None:
-        """Parse a time value (HH:MM, sunrise, sunset, etc.).
-
-        Args:
-            value: Time value string.
-            now: Current datetime for sun calculations.
-
-        Returns:
-            Time object, or None if parsing fails.
-        """
-        # Handle sunrise/sunset
-        if "sunrise" in value.lower():
-            sun_time = self.host.sun.next_event("sunrise", now)
-            if sun_time:
-                return sun_time.time()
-            return None
-
-        if "sunset" in value.lower():
-            sun_time = self.host.sun.next_event("sunset", now)
-            if sun_time:
-                return sun_time.time()
-            return None
-
-        # Handle HH:MM format
-        time_match = re.match(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", value)
-        if time_match:
-            hour, minute = int(time_match.group(1)), int(time_match.group(2))
-            second = int(time_match.group(3)) if time_match.group(3) else 0
-            return time(hour, minute, second)
-
-        return None
-
-    async def _check_state_constraint(self, constraint: dict[str, Any]) -> bool:
-        """Check a state constraint.
-
-        Args:
-            constraint: The constraint definition.
-
-        Returns:
-            True if constraint is satisfied.
-        """
-        exprs = constraint.get("exprs", [])
-
-        for expr in exprs:
-            if not self._evaluate_state_expr(expr):
-                return False
-
-        return True
+        return self._constraints.allows(self.host.clock.now(), self.state_manager.get, self.host.sun)
 
     def _evaluate_state_expr(self, expr: str) -> bool:
         """Evaluate a state expression.

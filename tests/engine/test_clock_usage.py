@@ -355,22 +355,20 @@ class TestIntervalAndCronDetails:
 
         states = FakeStateProvider(clock)
         states.set_state("input_boolean.enabled", "off")
-        trigger = IntervalTrigger(
-            make_host(clock=clock, states=states),
-            trigger_definition(TRIGGER_INTERVAL, "60", on_trigger),
-        )
-        trigger.set_constraints([{"type": "state", "exprs": ["input_boolean.enabled == 'on'"]}])
+        definition = trigger_definition(TRIGGER_INTERVAL, "60", on_trigger)
+        definition.constraints = {"when": "input_boolean.enabled == 'on'"}
+        trigger = IntervalTrigger(make_host(clock=clock, states=states), definition)
         await trigger.async_start()
 
         await clock.advance(minutes=2)
         assert fired == []
-        assert trigger._execution_count == 0
+        assert trigger.execution_count == 0
 
         states.set_state("input_boolean.enabled", "on")
         await clock.advance(minutes=1)
         await trigger.async_stop()
         assert fired == [DEFAULT_NOW + timedelta(minutes=3)]
-        assert trigger._execution_count == 1
+        assert trigger.execution_count == 1
 
     async def test_interval_keeps_running_after_a_failing_function(self, clock: FakeClock) -> None:
         """Test a function that raises does not stop the interval; it fires again next time."""

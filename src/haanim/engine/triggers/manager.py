@@ -10,14 +10,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 
 from haanim import const
 from haanim.engine.action_dispatcher import ActionDispatcher
 from haanim.engine.callables import event_arguments
-from haanim.engine.constraints import ConstraintChecker
+from haanim.engine.constraints import ConstraintChecker, Constraints
 from haanim.engine.triggers.base import BaseTrigger
 from haanim.engine.triggers.cron_trigger import CronTrigger
 from haanim.engine.triggers.interval_trigger import IntervalTrigger
@@ -137,16 +136,11 @@ class TriggerManager:
         self._event_triggers.clear()
         self._hold_tasks.clear()
 
-    async def register_trigger(
-        self,
-        trigger_def: TriggerDefinition,
-        constraints: list[dict[str, Any]] | None = None,
-    ) -> str:
+    async def register_trigger(self, trigger_def: TriggerDefinition) -> str:
         """Register a trigger.
 
         Args:
-            trigger_def: The trigger definition.
-            constraints: Optional constraints for the trigger.
+            trigger_def: The trigger definition. Its constraints are those of its decorator.
 
         Returns:
             Unique ID for the registered trigger.
@@ -155,9 +149,7 @@ class TriggerManager:
         self._triggers[trigger_id] = trigger_def
 
         # Store metadata
-        metadata: dict[str, Any] = {
-            "constraints": constraints or [],
-        }
+        metadata: dict[str, Any] = {}
 
         # Handle different trigger types
         if trigger_def.trigger_type == const.TRIGGER_STATE:
@@ -501,9 +493,11 @@ class TriggerManager:
         Returns:
             True if all constraints are met.
         """
-        metadata = self._trigger_metadata.get(trigger_id, {})
-        constraints = metadata.get("constraints", [])
-        return await self.constraint_checker.check_constraints(constraints)
+        trigger_def = self._triggers.get(trigger_id)
+        if trigger_def is None:
+            return False
+        constraints = Constraints.parse(trigger_def.constraints)
+        return constraints.allows(self.host.clock.now(), self.state_manager.get, self.host.sun)
 
     # =========================================================================
     # Trigger Execution

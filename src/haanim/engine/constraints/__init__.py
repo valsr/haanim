@@ -1,5 +1,6 @@
-"""Evaluation of the constraints that limit when a trigger fires."""
+"""Constraints: when a trigger that is due may fire."""
 
 from haanim.engine.constraints.checker import ConstraintChecker
+from haanim.engine.constraints.rules import Constraints
 
-__all__ = ["ConstraintChecker"]
+__all__ = ["ConstraintChecker", "Constraints"]

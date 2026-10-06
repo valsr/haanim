@@ -142,6 +142,29 @@ def parse_time_expression(text: Any) -> TimeExpression:
     return TimeExpression(source=text, time=parsed_time or MIDNIGHT, date=parsed_date, offset=offset)
 
 
+def parse_date_expression(text: Any) -> DateSpec:
+    """Parse a date on its own: a full date or one of the short forms.
+
+    Args:
+        text: The date, such as ``"2024-12-25"``, ``"April 1"`` or ``"12-25"``.
+
+    Returns:
+        The parsed date.
+
+    Raises:
+        ValueError: If the text is not a date. The message names it.
+    """
+    if not isinstance(text, str):
+        raise ValueError(f"a date is a string, not {type(text).__name__}")
+    try:
+        spec = _try_date(" ".join(text.split()))
+    except ValueError as err:
+        raise ValueError(str(err)) from None
+    if spec is None:
+        raise ValueError(f"'{text}' is not a date")
+    return spec
+
+
 def _split_offset(source: str) -> tuple[str, timedelta]:
     """Separate ``<base> +/- <amount> <unit>`` into the base and the offset."""
     match = _OFFSET.fullmatch(source)

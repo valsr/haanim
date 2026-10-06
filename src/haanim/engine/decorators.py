@@ -19,7 +19,7 @@ from typing import Any, TypeVar, overload
 
 from haanim.engine.cron_schedule import validate_cron
 from haanim.engine.durations import parse_duration
-from haanim.engine.time_expr import parse_day_of_week
+from haanim.engine.constraints.rules import Constraints
 from haanim.engine.time_schedule import TimeSchedule
 from haanim.const import (
     TRIGGER_CRON,
@@ -45,6 +45,10 @@ CONSTRAINT_ARGUMENTS = (
     "when",
     "when_not",
 )
+
+
+# The constraints that are state expressions
+STATE_CONSTRAINTS = ("when", "when_not")
 
 
 @dataclass
@@ -294,8 +298,8 @@ def shutdown(func: F) -> F:
 def _constraints(decorator: str, given: dict[str, Any]) -> dict[str, Any]:
     """Return the constraint arguments that were given, checking their types.
 
-    The values are stored as written. They are parsed and evaluated when the
-    trigger fires.
+    The values are stored as written; the trigger parses them again when it
+    is registered and evaluates them each time it fires.
     """
     constraints: dict[str, Any] = {}
     for name in CONSTRAINT_ARGUMENTS:
@@ -305,12 +309,16 @@ def _constraints(decorator: str, given: dict[str, Any]) -> dict[str, Any]:
         allowed: tuple[type, ...] = (str, int) if name == "day_of_week" else (str,)
         if isinstance(value, bool) or not isinstance(value, allowed):
             raise TypeError(f"@{decorator}: {name} must be a string, not {type(value).__name__}")
-        if name == "day_of_week":
-            try:
-                parse_day_of_week(value)
-            except ValueError as err:
-                raise ValueError(f"@{decorator}: {err}") from None
         constraints[name] = value
+
+    # Times, dates, days and ranges are checked now, so that a mistake stops the start.
+    # The state expressions of when and when_not are checked with the trigger's own.
+    try:
+        Constraints.parse(
+            {name: value for name, value in constraints.items() if name not in STATE_CONSTRAINTS}
+        )
+    except ValueError as err:
+        raise ValueError(f"@{decorator}: {err}") from None
     return constraints
 
 

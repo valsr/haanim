@@ -69,9 +69,7 @@ class AutomationState(Enum):
 class TriggerRegistrar(Protocol):
     """Where the triggers of running automations are registered."""
 
-    async def register_trigger(
-        self, trigger_def: TriggerDefinition, constraints: list[dict[str, Any]] | None = None
-    ) -> str:
+    async def register_trigger(self, trigger_def: TriggerDefinition) -> str:
         """Start firing a trigger. Returns an ID for it."""
 
     async def unregister_automation_triggers(self, automation_id: str) -> int:
@@ -81,9 +79,7 @@ class TriggerRegistrar(Protocol):
 class NoTriggers:
     """A registrar for a host that fires no triggers: registering does nothing."""
 
-    async def register_trigger(
-        self, trigger_def: TriggerDefinition, constraints: list[dict[str, Any]] | None = None
-    ) -> str:
+    async def register_trigger(self, trigger_def: TriggerDefinition) -> str:
         """Accept a trigger without ever firing it."""
         return ""
 
