@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "haanim"
-version = "0.1.0"
-description = "A Home Assistant custom component for HAAnim integration"
+dynamic = ["version"]
+description = "Python automations for Home Assistant: the HAAnim engine and its test harness"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Your Name", email = "your.email@example.com" }]
@@ -17,14 +17,16 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
 ]
+# The engine and the harness do not need Home Assistant; the integration in custom_components does.
 dependencies = [
     "croniter>=1.3.0",
-    "homeassistant>=2025.11.3",
     "python-slugify>=8.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "homeassistant>=2025.11.3",
+    "pyright>=1.1.380",
     "black>=24.0.0",
     "pylint>=3.0.0",
     "flake8>=7.0.0",
@@ -35,8 +37,14 @@ dev = [
     "pytest-xdist>=3.5.0",
 ]
 
+[tool.hatch.version]
+path = "src/haanim/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/haanim"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/haanim", "README.md", "LICENSE"]
 
 [project.urls]
 Homepage = "https://github.com/valsr/haanim"
@@ -46,6 +54,8 @@ Issues = "https://github.com/valsr/haanim/issues"
 
 [dependency-groups]
 dev = [
+    "homeassistant>=2025.11.3",
+    "pyright>=1.1.380",
     "black>=24.0.0",
     "pylint>=3.0.0",
     "flake8>=7.0.0",
@@ -76,7 +86,7 @@ exclude = '''
 
 [tool.pylint.main]
 py-version = "3.13"
-ignore = [".venv", "venv", ".pytest_cache", "stubs"]
+ignore = [".venv", "venv", ".pytest_cache"]
 source-roots = [".", "src"]
 max-line-length = 110
 
@@ -97,10 +107,10 @@ disable = [
     "unused-argument",       # W0613: Fixtures injected but not directly used
 ]
 
-# Per-path configuration for stubs
+# Automations in the development container are checked without the container's Home Assistant
 [tool.pylint."messages_control:podman/**"]
 disable=[
-    "import-error",        # E0401: Stubs may reference modules not present at runtime
+    "import-error",
 ]
 
 [tool.mypy]
@@ -114,14 +124,11 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 explicit_package_bases = true
 mypy_path = "src"
-exclude = ["stubs/"]
 
 [tool.pyright]
 pythonVersion = "3.13"
-stubPath = "stubs"
-extraPaths = ["stubs", "podman/container-config/haanim"]
-exclude = [".venv", "venv", ".pytest_cache", "stubs/", "**/__pycache__"]
-ignore = ["stubs/"]
+extraPaths = ["src"]
+exclude = [".venv", "venv", ".pytest_cache", "**/__pycache__", "htmlcov", "out"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -143,7 +150,8 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov",
     "--cov-report=xml:coverage.xml",
-    # Ratchet: raised at the end of each phase in _implementation.md, never lowered. Target is 80.
+    # Never lowered. The design asks for 80; the public automation-facing API is held at 100%
+    # by scripts/check-public-api-coverage.py.
     "--cov-fail-under=96",
 ]
 markers = [
@@ -169,6 +177,7 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
     "@abstractmethod",
+    "@overload",
     "@abc.abstractmethod",
 ]
 fail_under = 95

@@ -39,7 +39,7 @@ async def high_temperature_alert(event: StateEvent):
     alert_count += 1
     haa.set_variable("alert_count", alert_count)
 
-    temp = float(event.new_state.state)
+    temp = float(haa.entity.sensor.temperature)
     await haa.service.notify.mobile_app(
         message=f"High temperature: {temp}°C (Alert #{alert_count})"
     )

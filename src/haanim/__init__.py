@@ -1,14 +1,138 @@
 """HAAnim: Python automations for Home Assistant.
 
-This package holds the automation engine. The Home Assistant integration in
-``custom_components/haanim`` is the glue that connects it to a running instance.
+This package holds the automation engine and the test harness
+(``haanim.testing``). The Home Assistant integration in
+``custom_components/haanim`` is the glue that connects the engine to a running
+instance. Importing this package does not import Home Assistant.
 
-Importing this package does not import Home Assistant.
+It also carries the type information for what an automation imports::
+
+    from haanim import haa, action, on_state, StateEvent
+
+Inside Home Assistant, and inside the test harness, each automation gets these
+names from the interpreter, bound to that automation. Here they are the same
+classes and decorators, so editors and type checkers see the real signatures.
+``haa``, ``hass``, ``logging`` and ``sleep`` belong to a running automation and
+exist here for type checking only.
 """
 
+from typing import TYPE_CHECKING, Any
+
 from haanim.const import ActionMode
-from haanim.engine.errors import PUBLIC_ERRORS, HAAnimError
+from haanim.engine.card import HAAnimCard
+from haanim.engine.decorators import (
+    action,
+    on_cron,
+    on_event,
+    on_interval,
+    on_state,
+    on_time,
+    shutdown,
+    startup,
+)
+from haanim.engine.errors import (
+    PUBLIC_ERRORS,
+    ActionCancelledError,
+    ActionDroppedError,
+    ActionNotFoundError,
+    ActionTimeOutError,
+    AutomationAlreadyRunningError,
+    AutomationDisabledError,
+    AutomationNotLoadedError,
+    AutomationNotRunningError,
+    AutomationSecurityError,
+    AutomationSyntaxError,
+    HAAnimError,
+    NonExistingAutomationError,
+    NonExistingEntityError,
+    NonExistingServiceError,
+    PoolExhaustedError,
+    QueueFullError,
+)
+from haanim.engine.haanim_api import HAAnim, HAAnimAutomationProxy, HAAnimServiceCall, HAAnimServiceProxy
+from haanim.engine.logging_wrapper import LoggerWrapper
+from haanim.entity import HAAnimEntity
+from haanim.events import (
+    ActionEvent,
+    AutomationEvent,
+    CronEvent,
+    EventTriggerEvent,
+    IntervalEvent,
+    ManualEvent,
+    StateEvent,
+    TimeEvent,
+)
 
 __version__ = "0.1.0"
 
-__all__ = ["ActionMode", "HAAnimError", "PUBLIC_ERRORS", "__version__"]
+RUNTIME_ONLY = ("haa", "hass", "logging", "sleep")
+"""Names an automation imports that exist only while it runs: the interpreter supplies them."""
+
+if TYPE_CHECKING:
+    haa: HAAnim
+    hass: Any
+    logging: LoggerWrapper
+
+    async def sleep(duration: str | float) -> None:
+        """Suspend the action for a duration: seconds, or text such as ``"5s"`` or ``"00:01:30"``."""
+
+
+def __getattr__(name: str) -> Any:
+    """Explain why a name of a running automation is not here."""
+    if name in RUNTIME_ONLY:
+        raise AttributeError(
+            f"'{name}' exists only inside a running automation: Home Assistant and the test harness "
+            "(haanim.testing.AutomationHarness) supply it to each automation they load"
+        )
+    raise AttributeError(f"module 'haanim' has no attribute '{name}'")
+
+
+__all__ = [
+    "PUBLIC_ERRORS",
+    "RUNTIME_ONLY",
+    "ActionCancelledError",
+    "ActionDroppedError",
+    "ActionEvent",
+    "ActionMode",
+    "ActionNotFoundError",
+    "ActionTimeOutError",
+    "AutomationAlreadyRunningError",
+    "AutomationDisabledError",
+    "AutomationEvent",
+    "AutomationNotLoadedError",
+    "AutomationNotRunningError",
+    "AutomationSecurityError",
+    "AutomationSyntaxError",
+    "CronEvent",
+    "EventTriggerEvent",
+    "HAAnim",
+    "HAAnimAutomationProxy",
+    "HAAnimCard",
+    "HAAnimEntity",
+    "HAAnimError",
+    "HAAnimServiceCall",
+    "HAAnimServiceProxy",
+    "IntervalEvent",
+    "LoggerWrapper",
+    "ManualEvent",
+    "NonExistingAutomationError",
+    "NonExistingEntityError",
+    "NonExistingServiceError",
+    "PoolExhaustedError",
+    "QueueFullError",
+    "StateEvent",
+    "TimeEvent",
+    "__version__",
+    "action",
+    "haa",
+    "hass",
+    "logging",
+    "on_cron",
+    "on_event",
+    "on_interval",
+    "on_state",
+    "on_time",
+    "shutdown",
+    "sleep",
+    "startup",
+]

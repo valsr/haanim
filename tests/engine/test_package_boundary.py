@@ -164,11 +164,11 @@ class TestImportWithoutHomeAssistant:
         from haanim.const import ActionMode  # pylint: disable=import-outside-toplevel
         from haanim.engine.errors import PUBLIC_ERRORS, HAAnimError  # pylint: disable=import-outside-toplevel
 
-        assert haanim.__version__ == "0.1.0"
+        assert haanim.__version__
         assert haanim.ActionMode is ActionMode
         assert haanim.HAAnimError is HAAnimError
         assert haanim.PUBLIC_ERRORS is PUBLIC_ERRORS
-        assert set(haanim.__all__) == {"ActionMode", "HAAnimError", "PUBLIC_ERRORS", "__version__"}
+        assert {"ActionMode", "HAAnimError", "PUBLIC_ERRORS", "__version__"} <= set(haanim.__all__)
 
 
 class TestEngineTestsWithoutHomeAssistant:

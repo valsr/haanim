@@ -2,6 +2,7 @@
 
 from typing import Final
 
+from haanim import __version__ as _engine_version
 from haanim import const as _engine_const
 from haanim.const import (  # pylint: disable=unused-import
     CONSTRAINT_STATE,
@@ -63,7 +64,8 @@ __all__ += _engine_const.__all__
 
 DOMAIN: Final = "haanim"
 NAME: Final = "HAAnim"
-VERSION: Final = "0.1.0"
+# One version for the package and the integration: the package's
+VERSION: Final = _engine_version
 
 
 # Events

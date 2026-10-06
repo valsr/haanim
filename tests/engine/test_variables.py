@@ -5,6 +5,7 @@ See "Persistent Storage" in the design.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 from datetime import datetime
@@ -15,7 +16,7 @@ import pytest
 
 from haanim.engine.haanim_api import HAAnim
 from haanim.engine.variables import SAVE_DELAY_SECONDS, VariableStore, storage_key
-from haanim.testing import FakeClock, FakeStorage
+from haanim.testing import FakeAutomationRegistry, FakeClock, FakeStorage, make_host
 from tests.engine.test_lifecycle import World, world  # noqa: F401  pylint: disable=unused-import
 
 
@@ -449,3 +450,55 @@ class TestLifetime:
         await backend.save("automation.lights", ["not", "a", "dictionary"])
         await store.load()
         assert store.keys() == []
+
+
+class TestHaaMethods:
+    """The four methods on haa are the store's."""
+
+    def test_unset_and_clear(self, backend: FakeStorage, clock: FakeClock) -> None:
+        """Test haa.unset_variable removes one variable and haa.clear_variables all of them."""
+        haa = HAAnim(make_host(storage=backend, clock=clock), "lights", FakeAutomationRegistry())
+        haa.set_variable("a", 1)
+        haa.set_variable("b", 2)
+        haa.unset_variable("a")
+        haa.unset_variable("never_set")
+        assert haa.get_variable("a") is None
+        assert haa.get_variable("b") == 2
+        haa.clear_variables()
+        assert haa.get_variable("b", "gone") == "gone"
+
+
+class TestFlushDuringAWrite:
+    """A flush while a delayed write is still on its way waits for it."""
+
+    async def test_flush_waits_for_the_write_in_progress(self, clock: FakeClock) -> None:
+        """Test the change made during a slow write is written by the flush, after that write."""
+        saved: list[dict[str, Any]] = []
+        release = asyncio.Event()
+
+        class SlowStorage(FakeStorage):
+            async def save(self, key: str, data: Any) -> None:
+                snapshot = dict(data)
+                if not saved:
+                    saved.append(snapshot)
+                    await release.wait()
+                else:
+                    saved.append(snapshot)
+                await super().save(key, data)
+
+        backend = SlowStorage()
+        store = VariableStore("lights", backend, clock)
+        store.set("a", 1)
+        await clock.advance(seconds=SAVE_DELAY_SECONDS)
+        store.set("b", 2)
+
+        flush = asyncio.ensure_future(store.flush())
+        await clock.settle()
+        assert not flush.done()
+        release.set()
+        await flush
+
+        assert saved == [{"a": 1}, {"a": 1, "b": 2}]
+        assert backend.peek("automation.lights") == {"a": 1, "b": 2}
+        assert store.is_dirty is False
+        assert clock.pending_timers == 0

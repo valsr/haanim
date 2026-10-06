@@ -482,6 +482,9 @@ class TestComparisonParity:
         assert Expression("'alert' in sensor.x").evaluate(lookup_for(x="red alert")).result is True
         assert ("alert" in HAAnimEntity("sensor.x", "red alert")) is True
         assert ("alert" in HAAnimEntity("sensor.x")) is False
+        assert (HAAnimEntity("sensor.y", "alert") in HAAnimEntity("sensor.x", "red alert")) is True
+        assert (HAAnimEntity("sensor.y", "green") in HAAnimEntity("sensor.x", "red alert")) is False
+        assert (HAAnimEntity("sensor.y") in HAAnimEntity("sensor.x", "red alert")) is False
         assert (5 in HAAnimEntity("sensor.x", "5")) is False
 
     def test_attribute_values_are_plain_python_values(self) -> None:
