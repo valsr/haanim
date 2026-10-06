@@ -48,40 +48,96 @@
     },
     "services": {
         "run_action": {
-            "name": "Run Action",
-            "description": "Manually run an action defined in a HAAnim automation",
+            "name": "Run action",
+            "description": "Runs an action of an automation as a manual call and returns its result as response data.",
             "fields": {
                 "automation_id": {
-                    "name": "Automation Name",
-                    "description": "Name of the automation containing the action"
+                    "name": "Automation ID",
+                    "description": "ID of the automation"
                 },
-                "action_name": {
-                    "name": "Action Name",
-                    "description": "Name of the action to run"
+                "action": {
+                    "name": "Action",
+                    "description": "Name or alias of the action"
+                },
+                "data": {
+                    "name": "Data",
+                    "description": "Arguments of the call; the action gets them as event.data"
                 }
             }
         },
-        "reload_automations": {
-            "name": "Reload Automations",
-            "description": "Reload all HAAnim automations from the automation folder"
+        "enable": {
+            "name": "Enable",
+            "description": "Enables and starts the automation.",
+            "fields": {
+                "automation_id": {
+                    "name": "Automation ID",
+                    "description": "ID of the automation"
+                }
+            }
+        },
+        "disable": {
+            "name": "Disable",
+            "description": "Stops and disables the automation.",
+            "fields": {
+                "automation_id": {
+                    "name": "Automation ID",
+                    "description": "ID of the automation"
+                }
+            }
+        },
+        "start": {
+            "name": "Start",
+            "description": "Starts the automation.",
+            "fields": {
+                "automation_id": {
+                    "name": "Automation ID",
+                    "description": "ID of the automation"
+                }
+            }
+        },
+        "stop": {
+            "name": "Stop",
+            "description": "Stops the automation.",
+            "fields": {
+                "automation_id": {
+                    "name": "Automation ID",
+                    "description": "ID of the automation"
+                }
+            }
+        },
+        "restart": {
+            "name": "Restart",
+            "description": "Restarts the automation.",
+            "fields": {
+                "automation_id": {
+                    "name": "Automation ID",
+                    "description": "ID of the automation"
+                }
+            }
+        },
+        "reload": {
+            "name": "Reload",
+            "description": "Rescans now and reloads one automation, or all if no ID is given.",
+            "fields": {
+                "automation_id": {
+                    "name": "Automation ID",
+                    "description": "ID of the automation to reload; all automations if left out"
+                }
+            }
         },
         "list_automations": {
-            "name": "List Automations",
-            "description": "Get a list of all loaded automations"
+            "name": "List automations",
+            "description": "Returns ID, name, state and enabled flag of every automation."
         },
         "list_actions": {
-            "name": "List Actions",
-            "description": "Get a list of all available actions",
+            "name": "List actions",
+            "description": "Returns the automation's actions with name, aliases and description.",
             "fields": {
                 "automation_id": {
-                    "name": "Automation Name",
-                    "description": "Optional: filter actions by automation name"
+                    "name": "Automation ID",
+                    "description": "ID of the automation"
                 }
             }
-        },
-        "get_config": {
-            "name": "Get Config",
-            "description": "Get the current HAAnim configuration"
         }
     },
     "issues": {

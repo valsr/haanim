@@ -1,44 +1,77 @@
-# Services for HAAnim integration
+# Services of the HAAnim integration. See "Home Assistant Services" in the design.
 
 run_action:
-  name: Run Action
-  description: Run a specific action from a HAAnim automation.
   fields:
     automation_id:
-      name: Automation Name
-      description: The name of the automation containing the action.
       required: true
       example: 'my_automation'
       selector:
         text:
-    action_name:
-      name: Action Name
-      description: The name of the action to run.
+    action:
       required: true
       example: 'my_action'
       selector:
         text:
+    data:
+      required: false
+      example: '{"room": "hall"}'
+      selector:
+        object:
 
-reload_automations:
-  name: Reload Automations
-  description: Reload all HAAnim automations from the automation directory.
-
-list_automations:
-  name: List Automations
-  description: Get a list of all loaded HAAnim automations and their metadata.
-
-list_actions:
-  name: List Actions
-  description: Get a list of all available actions, optionally filtered by automation.
+enable:
   fields:
     automation_id:
-      name: Automation Name
-      description: Optional automation name to filter actions.
+      required: true
+      example: 'my_automation'
+      selector:
+        text:
+
+disable:
+  fields:
+    automation_id:
+      required: true
+      example: 'my_automation'
+      selector:
+        text:
+
+start:
+  fields:
+    automation_id:
+      required: true
+      example: 'my_automation'
+      selector:
+        text:
+
+stop:
+  fields:
+    automation_id:
+      required: true
+      example: 'my_automation'
+      selector:
+        text:
+
+restart:
+  fields:
+    automation_id:
+      required: true
+      example: 'my_automation'
+      selector:
+        text:
+
+reload:
+  fields:
+    automation_id:
       required: false
       example: 'my_automation'
       selector:
         text:
 
-get_config:
-  name: Get Configuration
-  description: Get the current HAAnim configuration values.
+list_automations:
+
+list_actions:
+  fields:
+    automation_id:
+      required: true
+      example: 'my_automation'
+      selector:
+        text:

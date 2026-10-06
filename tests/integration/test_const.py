@@ -5,7 +5,8 @@ from __future__ import annotations
 from custom_components.haanim.const import (
     ATTRIBUTE_MANUAL,
     ATTRIBUTE_AUTOMATION_PATH,
-    ATTRIBUTE_ACTION_NAME,
+    ATTRIBUTE_ACTION,
+    ATTRIBUTE_DATA,
     ATTRIBUTE_AUTOMATION_ID,
     CONFIG_ALLOW_ALL_IMPORTS,
     CONFIG_IMPORT_ALLOWLIST,
@@ -30,10 +31,9 @@ from custom_components.haanim.const import (
     EVENT_AUTOMATION_UNLOADED,
     NAME,
     RESTRICTED_BUILTINS,
-    SERVICE_GET_CONFIG,
+    SERVICE_RELOAD,
     SERVICE_LIST_ACTIONS,
     SERVICE_LIST_AUTOMATIONS,
-    SERVICE_RELOAD_AUTOMATIONS,
     SERVICE_RUN_ACTION,
     VERSION,
 )
@@ -83,11 +83,10 @@ class TestServiceConstants:
 
     def test_service_names(self) -> None:
         """Test all service name constants."""
-        assert SERVICE_RELOAD_AUTOMATIONS == "reload_automations"
+        assert SERVICE_RELOAD == "reload"
         assert SERVICE_RUN_ACTION == "run_action"
         assert SERVICE_LIST_AUTOMATIONS == "list_automations"
         assert SERVICE_LIST_ACTIONS == "list_actions"
-        assert SERVICE_GET_CONFIG == "get_config"
 
 
 class TestAttributeConstants:
@@ -97,7 +96,8 @@ class TestAttributeConstants:
         """Test all attribute name constants."""
         assert ATTRIBUTE_AUTOMATION_ID == "automation_id"
         assert ATTRIBUTE_AUTOMATION_PATH == "automation_path"
-        assert ATTRIBUTE_ACTION_NAME == "action_name"
+        assert ATTRIBUTE_ACTION == "action"
+        assert ATTRIBUTE_DATA == "data"
         assert ATTRIBUTE_MANUAL == "manual"
 
 

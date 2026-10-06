@@ -161,7 +161,9 @@ class AutomationEntities:
     @callback
     def automations_loaded(self) -> None:
         """Remove the entities of automations whose folders went away while HAAnim was not running."""
-        known = {unique_id_of(automation_id) for automation_id in self._manager.automation_ids()}
+        ids = set(self._manager.automation_ids())
+        known = {unique_id_of(automation_id) for automation_id in ids}
+        self._entities = {key: entity for key, entity in self._entities.items() if key in ids}
         registry = er.async_get(self._hass)
         for registered in er.async_entries_for_config_entry(registry, self._entry.entry_id):
             if registered.domain == "sensor" and registered.unique_id not in known:

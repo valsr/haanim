@@ -37,14 +37,19 @@ __all__ = [
     "EVENT_AUTOMATION_UNLOADED",
     "EVENT_AUTOMATION_ERROR",
     "EVENT_AUTOMATION_EXECUTED",
-    "SERVICE_RELOAD_AUTOMATIONS",
     "SERVICE_RUN_ACTION",
+    "SERVICE_ENABLE",
+    "SERVICE_DISABLE",
+    "SERVICE_START",
+    "SERVICE_STOP",
+    "SERVICE_RESTART",
+    "SERVICE_RELOAD",
     "SERVICE_LIST_AUTOMATIONS",
     "SERVICE_LIST_ACTIONS",
-    "SERVICE_GET_CONFIG",
     "ATTRIBUTE_AUTOMATION_ID",
     "ATTRIBUTE_AUTOMATION_PATH",
-    "ATTRIBUTE_ACTION_NAME",
+    "ATTRIBUTE_ACTION",
+    "ATTRIBUTE_DATA",
     "ATTRIBUTE_MANUAL",
     "CONFIG_AUTOMATION_PATH",
     "CONFIG_IMPORT_ALLOWLIST",
@@ -68,16 +73,21 @@ EVENT_AUTOMATION_ERROR: Final = f"{DOMAIN}_automation_error"
 EVENT_AUTOMATION_EXECUTED: Final = f"{DOMAIN}_automation_executed"
 
 # Services
-SERVICE_RELOAD_AUTOMATIONS: Final = "reload_automations"
 SERVICE_RUN_ACTION: Final = "run_action"
+SERVICE_ENABLE: Final = "enable"
+SERVICE_DISABLE: Final = "disable"
+SERVICE_START: Final = "start"
+SERVICE_STOP: Final = "stop"
+SERVICE_RESTART: Final = "restart"
+SERVICE_RELOAD: Final = "reload"
 SERVICE_LIST_AUTOMATIONS: Final = "list_automations"
 SERVICE_LIST_ACTIONS: Final = "list_actions"
-SERVICE_GET_CONFIG: Final = "get_config"
 
 # Attributes for automation metadata
 ATTRIBUTE_AUTOMATION_ID: Final = "automation_id"
 ATTRIBUTE_AUTOMATION_PATH: Final = "automation_path"
-ATTRIBUTE_ACTION_NAME: Final = "action_name"
+ATTRIBUTE_ACTION: Final = "action"
+ATTRIBUTE_DATA: Final = "data"
 ATTRIBUTE_MANUAL: Final = "manual"
 
 # Configuration keys

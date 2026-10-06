@@ -437,6 +437,38 @@ class AutomationManager:
         await self.async_unload_all_automations()
         return await self.async_load_all_automations()
 
+    async def async_reload(self, automation_id: str | None = None) -> None:
+        """Rescan now and reload one automation, or all of them without an ID.
+
+        Raises:
+            NonExistingAutomationError: If there is no automation with the ID.
+            HAAnimError: If the one automation cannot be loaded; it is then in the error state.
+        """
+        if automation_id is None:
+            await self.async_reload_all_automations()
+            for listener in list(self._listeners):
+                listener.automations_loaded()
+            return
+        path = next(
+            (
+                path
+                for path, automation in self._automations.items()
+                if automation.automation_id == automation_id
+            ),
+            None,
+        )
+        if path is None:
+            raise NonExistingAutomationError(automation_id)
+        await self.async_load_automation(path)
+
+    def automation_actions(self, automation_id: str) -> list[ActionDefinition]:
+        """Return the actions of an automation; none while its code is not running.
+
+        Raises:
+            NonExistingAutomationError: If there is no automation with the ID.
+        """
+        return self._automation(automation_id).context.get_actions()
+
     # --- ReloadTarget: what the hot reloader keeps in step with the files ----------
 
     def folders(self) -> list[Path]:

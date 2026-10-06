@@ -7,30 +7,55 @@ expose automation functions as Home Assistant services.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 
+from custom_components.haanim.automation_manager import AutomationManager, async_get_manager
 from custom_components.haanim.const import (
-    ATTRIBUTE_ACTION_NAME,
+    ATTRIBUTE_ACTION,
     ATTRIBUTE_AUTOMATION_ID,
+    ATTRIBUTE_DATA,
     DOMAIN,
-    SERVICE_GET_CONFIG,
+    SERVICE_DISABLE,
+    SERVICE_ENABLE,
     SERVICE_LIST_ACTIONS,
     SERVICE_LIST_AUTOMATIONS,
-    SERVICE_RELOAD_AUTOMATIONS,
+    SERVICE_RELOAD,
+    SERVICE_RESTART,
     SERVICE_RUN_ACTION,
-    VERSION,
+    SERVICE_START,
+    SERVICE_STOP,
 )
 from haanim.engine.callables import as_coroutine_function
-
-from custom_components.haanim.automation_manager import async_get_manager, get_config_manager
+from haanim.engine.errors import HAAnimError
 
 _LOGGER = logging.getLogger(__name__)
+
+CONTROL_SERVICES = (SERVICE_ENABLE, SERVICE_DISABLE, SERVICE_START, SERVICE_STOP, SERVICE_RESTART)
+SERVICES = (
+    SERVICE_RUN_ACTION,
+    *CONTROL_SERVICES,
+    SERVICE_RELOAD,
+    SERVICE_LIST_AUTOMATIONS,
+    SERVICE_LIST_ACTIONS,
+)
+"""The nine services of the design's table."""
+
+
+@contextmanager
+def service_errors() -> Iterator[None]:
+    """Turn a HAAnim error into a service error carrying the error's type and message."""
+    try:
+        yield
+    except HAAnimError as err:
+        raise HomeAssistantError(f"{type(err).__name__}: {err}") from err
 
 
 class ServiceManager:
@@ -50,187 +75,128 @@ class ServiceManager:
         self._registered_services: dict[str, dict[str, Any]] = {}
 
     async def async_setup(self) -> None:
-        """Set up the service manager and register core services."""
-        # Register the run_action service
-        self.hass.services.async_register(
+        """Set up the service manager and register the HAAnim services."""
+        automation = vol.Schema({vol.Required(ATTRIBUTE_AUTOMATION_ID): cv.string})
+        register = self.hass.services.async_register
+
+        register(
             DOMAIN,
             SERVICE_RUN_ACTION,
-            service_func=self._handle_run_action,
+            self._handle_run_action,
             schema=vol.Schema(
                 {
                     vol.Required(ATTRIBUTE_AUTOMATION_ID): cv.string,
-                    vol.Required(ATTRIBUTE_ACTION_NAME): cv.string,
+                    vol.Required(ATTRIBUTE_ACTION): cv.string,
+                    vol.Optional(ATTRIBUTE_DATA, default=dict): dict,
                 }
             ),
+            supports_response=SupportsResponse.OPTIONAL,
         )
-
-        # Register the reload_automations service
-        self.hass.services.async_register(
+        for service in CONTROL_SERVICES:
+            register(DOMAIN, service, self._handle_control, schema=automation)
+        register(
             DOMAIN,
-            SERVICE_RELOAD_AUTOMATIONS,
-            service_func=self._handle_reload_automations,
-            schema=vol.Schema({}),
+            SERVICE_RELOAD,
+            self._handle_reload,
+            schema=vol.Schema({vol.Optional(ATTRIBUTE_AUTOMATION_ID): cv.string}),
         )
-
-        # Register the list_automations service
-        self.hass.services.async_register(
+        register(
             DOMAIN,
             SERVICE_LIST_AUTOMATIONS,
             self._handle_list_automations,
             schema=vol.Schema({}),
+            supports_response=SupportsResponse.ONLY,
         )
-
-        # Register the list_actions service
-        self.hass.services.async_register(
+        register(
             DOMAIN,
             SERVICE_LIST_ACTIONS,
             self._handle_list_actions,
-            schema=vol.Schema(
-                {
-                    vol.Optional(ATTRIBUTE_AUTOMATION_ID): cv.string,
-                }
-            ),
-        )
-
-        # Register the get_config service
-        self.hass.services.async_register(
-            DOMAIN,
-            SERVICE_GET_CONFIG,
-            self._handle_get_config,
-            schema=vol.Schema({}),
+            schema=automation,
+            supports_response=SupportsResponse.ONLY,
         )
 
         _LOGGER.debug("Service manager set up")
 
     async def async_teardown(self) -> None:
         """Tear down the service manager."""
-        # Unregister core services
-        self.hass.services.async_remove(DOMAIN, SERVICE_RUN_ACTION)
-        self.hass.services.async_remove(DOMAIN, SERVICE_RELOAD_AUTOMATIONS)
-        self.hass.services.async_remove(DOMAIN, SERVICE_LIST_AUTOMATIONS)
-        self.hass.services.async_remove(DOMAIN, SERVICE_LIST_ACTIONS)
-        self.hass.services.async_remove(DOMAIN, SERVICE_GET_CONFIG)
+        for service in SERVICES:
+            self.hass.services.async_remove(DOMAIN, service)
 
         # Unregister automation services
         for service_name in list(self._registered_services.keys()):
             await self.async_unregister_service(service_name)
 
-    async def _handle_run_action(self, call: ServiceCall) -> None:
-        """Handle the run_action service call.
+    async def _manager(self) -> AutomationManager:
+        """Return the automation manager.
 
-        Args:
-            call: The service call.
-        """
-
-        automation_id = call.data[ATTRIBUTE_AUTOMATION_ID]
-        action_name = call.data[ATTRIBUTE_ACTION_NAME]
-
-        manager = await async_get_manager(self.hass)
-        if not manager:
-            _LOGGER.error("Automation manager not available")
-            return
-
-        try:
-            await manager.async_run_action(automation_id, action_name)
-        except Exception as err:
-            _LOGGER.error("Failed to run action %s.%s: %s", automation_id, action_name, err)
-            raise
-
-    async def _handle_reload_automations(self, _: ServiceCall) -> None:
-        """Handle the reload_automations service call.
-
-        Args:
-            call: The service call.
+        Raises:
+            HomeAssistantError: If HAAnim is not set up.
         """
         manager = await async_get_manager(self.hass)
-        if not manager:
-            _LOGGER.error("Automation manager not available")
-            return
+        if manager is None:
+            raise HomeAssistantError("HAAnim is not set up")
+        return manager
 
-        await manager.async_reload_all_automations()
-
-    async def _handle_list_automations(self, _: ServiceCall) -> dict[str, Any]:
-        """Handle the list_automations service call.
-
-        Args:
-            call: The service call.
-
-        Returns:
-            Dictionary with automation information.
-        """
-        manager = await async_get_manager(self.hass)
-        if not manager:
-            return {"automations": []}
-
-        automations: list[dict[str, Any]] = []
-        for metadata in manager.get_all_metadata():
-            automations.append(
-                {
-                    "name": metadata.id,
-                    "path": metadata.path,
-                    "actions": [{"name": a.name, "func_name": a.func_name} for a in metadata.actions],
-                    "triggers": len(metadata.triggers),
-                    "enabled": metadata.enabled,
-                }
+    async def _handle_run_action(self, call: ServiceCall) -> ServiceResponse:
+        """Run an action as a manual call and return its result as response data."""
+        manager = await self._manager()
+        with service_errors():
+            result = await manager.async_call_action(
+                call.data[ATTRIBUTE_AUTOMATION_ID],
+                call.data[ATTRIBUTE_ACTION],
+                dict(call.data[ATTRIBUTE_DATA]),
             )
+        return {"result": result} if call.return_response else None
 
-        return {"automations": automations}
+    async def _handle_control(self, call: ServiceCall) -> None:
+        """Enable, disable, start, stop or restart an automation."""
+        manager = await self._manager()
+        operation = {
+            SERVICE_ENABLE: manager.async_enable_automation,
+            SERVICE_DISABLE: manager.async_disable_automation,
+            SERVICE_START: manager.async_start_automation,
+            SERVICE_STOP: manager.async_stop_automation,
+            SERVICE_RESTART: manager.async_restart_automation,
+        }[call.service]
+        with service_errors():
+            await operation(call.data[ATTRIBUTE_AUTOMATION_ID])
 
-    async def _handle_list_actions(self, call: ServiceCall) -> dict[str, Any]:
-        """Handle the list_actions service call.
+    async def _handle_reload(self, call: ServiceCall) -> None:
+        """Rescan now and reload one automation, or all without an ID."""
+        manager = await self._manager()
+        with service_errors():
+            await manager.async_reload(call.data.get(ATTRIBUTE_AUTOMATION_ID))
 
-        Args:
-            call: The service call.
+    async def _handle_list_automations(self, _: ServiceCall) -> ServiceResponse:
+        """Return ID, name, state and enabled flag of every automation."""
+        manager = await self._manager()
+        return {
+            "automations": [
+                {
+                    "id": automation_id,
+                    "name": manager.automation_name(automation_id),
+                    "state": manager.automation_state(automation_id),
+                    "enabled": manager.is_automation_enabled(automation_id),
+                }
+                for automation_id in manager.automation_ids()
+            ]
+        }
 
-        Returns:
-            Dictionary with action information.
-        """
-        manager = await async_get_manager(self.hass)
-        if not manager:
-            return {"actions": []}
-
-        automation_id = call.data.get(ATTRIBUTE_AUTOMATION_ID)
-
-        actions: list[dict[str, Any]] = []
-        for action in manager.get_all_actions():
-            if automation_id and action.automation_id != automation_id:
-                continue
-
-            actions.append(
+    async def _handle_list_actions(self, call: ServiceCall) -> ServiceResponse:
+        """Return the actions of an automation with name, aliases and description."""
+        manager = await self._manager()
+        with service_errors():
+            actions = manager.automation_actions(call.data[ATTRIBUTE_AUTOMATION_ID])
+        return {
+            "actions": [
                 {
                     "name": action.name,
-                    "func_name": action.func_name,
-                    "automation_id": action.automation_id,
-                    "description": action.description,
+                    "aliases": list(action.aliases),
+                    "description": action.description or "",
                 }
-            )
-
-        return {"actions": actions}
-
-    async def _handle_get_config(self, _: ServiceCall) -> dict[str, Any]:
-        """Handle the get_config service call.
-
-        Args:
-            call: The service call.
-
-        Returns:
-            Dictionary with configuration values.
-        """
-        config_manager = get_config_manager()
-        # Get the config entry data
-        for _, data in self.hass.data.get(DOMAIN, {}).items():
-            if isinstance(data, dict) and "entry" in data:
-                entry = data["entry"]  # type: ignore
-                if isinstance(entry, ConfigEntry):
-                    config_manager.load_from_dict(entry.data, entry.options)
-                    break
-                break
-
-        # Return all config values plus version
-        config = config_manager.get_all()
-        config["version"] = VERSION
-
-        return config
+                for action in actions
+            ]
+        }
 
     async def call(
         self,
