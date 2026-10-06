@@ -106,6 +106,7 @@ const STYLES = `
     .dial-fill { transition: stroke-dasharray 0.3s ease; }
     .dial-value { fill: var(--primary-text-color, #212121); font-size: 18px; font-weight: 500; }
     .dial-unit { font-size: 10px; font-weight: 400; fill: var(--secondary-text-color, #727272); }
+    .block-badge { display: flex; }
     .badge {
         display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 12px;
         background: var(--primary-color); color: white; font-size: 0.85em; font-weight: 500;
