@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP
@@ -43,6 +43,7 @@ from haanim.engine.errors import (
     NonExistingAutomationError,
 )
 from haanim.engine.lifecycle import (
+    ActionFailure,
     Automation,
     AutomationState,
     NoTriggers,
@@ -52,6 +53,19 @@ from haanim.engine.lifecycle import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class AutomationListener(Protocol):
+    """Told when automations appear, change and go away: what the entity platform implements."""
+
+    def automation_changed(self, automation_id: str) -> None:
+        """Something about an automation has changed, or the automation is new."""
+
+    def automation_removed(self, automation_id: str) -> None:
+        """The folder of an automation is gone."""
+
+    def automations_loaded(self) -> None:
+        """Every automation folder has been loaded after Home Assistant started."""
 
 
 class AutomationManager:
@@ -127,6 +141,47 @@ class AutomationManager:
         # State
         self._started = False
 
+        # Who shows the automations: told about every change of every automation
+        self._listeners: list[AutomationListener] = []
+        self._status_manager.add_listener(self._on_changed)
+
+    def add_listener(self, listener: AutomationListener) -> Callable[[], None]:
+        """Tell a listener when automations appear, change and go away.
+
+        Returns:
+            A function that removes the listener.
+        """
+        self._listeners = [*self._listeners, listener]
+        return lambda: setattr(self, "_listeners", [kept for kept in self._listeners if kept is not listener])
+
+    def _on_changed(self, automation_id: str) -> None:
+        """Pass a change of an automation on to the listeners."""
+        for listener in list(self._listeners):
+            listener.automation_changed(automation_id)
+
+    def automation_ids(self) -> list[str]:
+        """Return the ID of every automation that is loaded or failed to load, sorted."""
+        return sorted(automation.automation_id for automation in self._automations.values())
+
+    def automation_name(self, automation_id: str) -> str:
+        """Return the name of an automation from its metadata, or its ID if it has none."""
+        context = self.get_context_by_name(automation_id)
+        metadata = context.get_metadata() if context else None
+        return (metadata.name if metadata else None) or automation_id
+
+    def automation_status_message(self, automation_id: str) -> str | None:
+        """Return the message an automation set with ``haa.set_message()``, or None."""
+        context = self.get_context_by_name(automation_id)
+        metadata = context.get_metadata() if context else None
+        return metadata.message if metadata else None
+
+    def automation_last_error(self, automation_id: str) -> ActionFailure | None:
+        """Return the most recent action failure of an automation, or None."""
+        try:
+            return self._automation(automation_id).last_error
+        except NonExistingAutomationError:
+            return None
+
     async def async_setup(self) -> None:
         """Set up the automation manager.
 
@@ -158,6 +213,8 @@ class AutomationManager:
         await self.async_load_all_automations()
         await start_all(self._automations.values(), self._control.is_enabled)
         self._started = True
+        for listener in list(self._listeners):
+            listener.automations_loaded()
 
         # Start hot reloading from the files as they are now
         await self._reloader.prime()
@@ -315,6 +372,8 @@ class AutomationManager:
             },
         )
 
+        # The name and the enabled flag are known only now
+        self._status_manager.notify(automation.automation_id)
         return metadata
 
     async def async_unload_automation(self, automation_path: str) -> bool:
@@ -396,8 +455,12 @@ class AutomationManager:
     async def remove(self, folder: Path) -> None:
         """Stop and unload the automation of a folder that is gone."""
         automation_path = str(folder)
+        automation = self._automations.get(automation_path)
         await self.async_unload_automation(automation_path)
         self._automation_ids.pop(automation_path, None)
+        if automation is not None:
+            for listener in list(self._listeners):
+                listener.automation_removed(automation.automation_id)
 
     def report_rejected(self, rejected: Sequence[RejectedFolder]) -> None:
         """Raise and clear the repair issues of folders that are not loaded because of their name."""
@@ -554,7 +617,10 @@ class AutomationManager:
             NonExistingAutomationError: If automation not found.
         """
         await self._load_flags()
-        await self._control.enable(self._automation(automation_id))
+        try:
+            await self._control.enable(self._automation(automation_id))
+        finally:
+            self._status_manager.notify(automation_id)
         _LOGGER.info("Enabled automation: %s", automation_id)
 
     async def async_disable_automation(self, automation_id: str) -> None:
@@ -567,7 +633,10 @@ class AutomationManager:
             NonExistingAutomationError: If automation not found.
         """
         await self._load_flags()
-        await self._control.disable(self._automation(automation_id))
+        try:
+            await self._control.disable(self._automation(automation_id))
+        finally:
+            self._status_manager.notify(automation_id)
         _LOGGER.info("Disabled automation: %s", automation_id)
 
     async def async_start_automation(self, automation_id: str) -> None:

@@ -216,6 +216,7 @@ class Automation:
             )
         self._state = state
         self._message = message
+        self.context.status_manager.notify(self.automation_id)
 
     def _fail(self, message: str) -> None:
         """Move to the ``error`` state with a reason."""
@@ -420,6 +421,7 @@ class Automation:
         failure = ActionFailure(self._clock.now(), action, error_type, message)
         self.context.logger.log(level, "Automation '%s': %s", self.automation_id, failure)
         self._last_error = failure
+        self.context.status_manager.notify(self.automation_id)
         return failure
 
     def record_action_failure(self, action_name: str, error: BaseException) -> None:

@@ -23,7 +23,7 @@ from haanim.engine.triggers import TriggerManager
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = []  # Add platforms like Platform.SENSOR, Platform.SWITCH, etc.
+PLATFORMS: list[Platform] = [Platform.SENSOR]  # One enum sensor per automation
 
 from .config import get_config_manager
 

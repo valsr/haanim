@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -32,12 +33,14 @@ class AutomationStatus:
         run_state: Current run state.
         running_actions: Dictionary of currently running actions by execution_id.
         last_error: Last error message if any.
+        last_action: Name of the action that most recently started executing.
     """
 
     automation_id: str
     run_state: AutomationRunState = AutomationRunState.IDLE
     running_actions: dict[str, str] = field(default_factory=dict)
     last_error: str | None = None
+    last_action: str | None = None
 
     @property
     def is_running(self) -> bool:
@@ -52,6 +55,31 @@ class AutomationStatusManager:
         """Initialize the status manager."""
         self._statuses: dict[str, AutomationStatus] = {}
         self._lock = asyncio.Lock()
+        self._listeners: list[Callable[[str], None]] = []
+
+    def add_listener(self, listener: Callable[[str], None]) -> Callable[[], None]:
+        """Call ``listener(automation_id)`` whenever something about an automation has changed.
+
+        That is its state, its message, its failures and the actions it is running.
+
+        Returns:
+            A function that removes the listener.
+        """
+        self._listeners.append(listener)
+
+        def remove() -> None:
+            if listener in self._listeners:
+                self._listeners.remove(listener)
+
+        return remove
+
+    def notify(self, automation_id: str) -> None:
+        """Tell the listeners that something about an automation has changed."""
+        for listener in list(self._listeners):
+            try:
+                listener(automation_id)
+            except Exception:  # pylint: disable=broad-exception-caught
+                _LOGGER.exception("A status listener failed for automation '%s'", automation_id)
 
     def get_status(self, automation_id: str) -> AutomationStatus:
         """Get the status for an automation.
@@ -92,6 +120,8 @@ class AutomationStatusManager:
             status.run_state = AutomationRunState.SHUTDOWN
         else:
             status.run_state = AutomationRunState.RUNNING
+            status.last_action = action_name
+        self.notify(automation_id)
 
     def remove_running_action(self, automation_id: str, execution_id: str, error: str | None = None) -> None:
         """Remove a running action from the automation status.
@@ -110,6 +140,7 @@ class AutomationStatusManager:
         # Update run state based on remaining actions
         if not status.running_actions:
             status.run_state = AutomationRunState.IDLE
+        self.notify(automation_id)
 
     def set_idle(self, automation_id: str, error: str | None = None) -> None:
         """Set an automation to idle state.

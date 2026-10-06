@@ -591,6 +591,7 @@ class HAAnim:
         context = self._manager.get_context_by_name(self._automation_id)
         if context and context._metadata:
             context._metadata.message = message
+            context.status_manager.notify(self._automation_id)
 
     # --- Persistent storage: synchronous, on the in-memory store -------------------
 

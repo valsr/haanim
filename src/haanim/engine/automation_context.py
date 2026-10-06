@@ -184,6 +184,8 @@ class AutomationContext:
         """
         self.host = host
         self._status_manager = status_manager
+        # Public: the lifecycle and haa tell it when something about the automation has changed
+        self.status_manager = status_manager
         self._registry = registry
         self.automation_path = automation_path
         self.folder = Path(automation_path)

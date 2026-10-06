@@ -160,3 +160,63 @@ class TestAutomationStatusManager:
         assert set(statuses) == {"a", "b"}
         statuses.clear()
         assert set(manager.get_all_statuses()) == {"a", "b"}
+
+
+class TestListeners:
+    """Listeners are told when something about an automation changes."""
+
+    def test_running_actions_notify(self) -> None:
+        """Test an action starting and ending each tell the listeners."""
+        manager = AutomationStatusManager()
+        seen: list[tuple[str, list[str]]] = []
+        manager.add_listener(
+            lambda automation_id: seen.append(
+                (automation_id, list(manager.get_status(automation_id).running_actions.values()))
+            )
+        )
+
+        manager.add_running_action("lights", "toggle", "e1")
+        manager.remove_running_action("lights", "e1")
+
+        assert seen == [("lights", ["toggle"]), ("lights", [])]
+
+    def test_last_action(self) -> None:
+        """Test last_action is the action that most recently started; lifecycle handlers do not count."""
+        manager = AutomationStatusManager()
+        assert manager.get_status("lights").last_action is None
+        manager.add_running_action("lights", "toggle", "e1")
+        manager.add_running_action("lights", "dim", "e2")
+        manager.add_running_action("lights", "__shutdown__", "e3", is_shutdown=True)
+        manager.remove_running_action("lights", "e2")
+        assert manager.get_status("lights").last_action == "dim"
+
+    def test_notify_and_remove(self) -> None:
+        """Test notify reaches every listener until it is removed; removing twice is harmless."""
+        manager = AutomationStatusManager()
+        first: list[str] = []
+        second: list[str] = []
+        remove = manager.add_listener(first.append)
+        manager.add_listener(second.append)
+
+        manager.notify("a")
+        remove()
+        remove()
+        manager.notify("b")
+
+        assert first == ["a"]
+        assert second == ["a", "b"]
+
+    def test_failing_listener_does_not_stop_the_others(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test a listener that raises is logged and the next one is still told."""
+        manager = AutomationStatusManager()
+        seen: list[str] = []
+
+        def broken(automation_id: str) -> None:
+            raise RuntimeError("no")
+
+        manager.add_listener(broken)
+        manager.add_listener(seen.append)
+        manager.notify("lights")
+
+        assert seen == ["lights"]
+        assert "A status listener failed for automation 'lights'" in caplog.text
