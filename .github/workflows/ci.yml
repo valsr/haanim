@@ -91,19 +91,19 @@ jobs:
         run: uv sync --all-extras
 
       - name: Check code formatting with Black
-        run: uv run black --check --line-length 110 custom_components/haanim/ src/haanim/
+        run: uv run black --check .
 
-      - name: Lint with Pylint
-        run: uv run pylint custom_components/haanim/ src/haanim/ || true
+      - name: Lint with Pylint (no messages allowed)
+        run: uv run pylint custom_components/haanim/ src/haanim/
 
       - name: Lint with Flake8
         run: uv run flake8 custom_components/haanim/ src/haanim/ || true
 
-      - name: Type check with mypy
-        run: uv run mypy custom_components/haanim/ src/haanim/ || true
+      - name: Type check with mypy (no errors allowed)
+        run: uv run mypy custom_components/haanim/ src/haanim/
 
-      - name: Type check the engine package with pyright
-        run: uv run pyright src/haanim || true
+      - name: Type check with pyright (no errors allowed)
+        run: uv run pyright src custom_components examples
 
   secret-detection:
     name: Secret Detection

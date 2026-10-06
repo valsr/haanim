@@ -365,7 +365,7 @@ class ServiceDomainProxy:
         return HAAnimServiceProxy(self._host, self._domain, service_name)
 
 
-class HAAnim:
+class HAAnim:  # pylint: disable=too-many-public-methods  # The methods are the API the design lists
     """Main HAAnim API object providing access to Home Assistant and automations.
 
     This object is injected into automation namespaces as `haa` and provides

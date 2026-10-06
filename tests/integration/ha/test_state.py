@@ -413,25 +413,28 @@ class TestStateManager:
         """Test subscribing to specific entity."""
         queue = state_manager.subscribe("sensor.test")
         assert isinstance(queue, asyncio.Queue)
-        assert "sensor.test" in state_manager._listeners
+        assert state_manager._subscriptions.has_key("sensor.test")
 
     def test_subscribe_global(self, state_manager: StateManager) -> None:
         """Test subscribing to all entities."""
         queue = state_manager.subscribe()
         assert isinstance(queue, asyncio.Queue)
-        assert queue in state_manager._global_listeners
+        state_manager._subscriptions.deliver_to_all("change")  # type: ignore[arg-type]
+        assert queue.get_nowait() == "change"
 
     def test_unsubscribe_entity(self, state_manager: StateManager) -> None:
         """Test unsubscribing from specific entity."""
         queue = state_manager.subscribe("sensor.test")
         state_manager.unsubscribe(queue, "sensor.test")
-        assert queue not in state_manager._listeners.get("sensor.test", [])
+        state_manager._subscriptions.deliver("sensor.test", "change")  # type: ignore[arg-type]
+        assert queue.empty()
 
     def test_unsubscribe_global(self, state_manager: StateManager) -> None:
         """Test unsubscribing from global listener."""
         queue = state_manager.subscribe()
         state_manager.unsubscribe(queue)
-        assert queue not in state_manager._global_listeners
+        state_manager._subscriptions.deliver_to_all("change")  # type: ignore[arg-type]
+        assert queue.empty()
 
     def test_exists_true(self, state_manager: StateManager, mock_hass: MagicMock) -> None:
         """Test exists returns True for existing entity."""
@@ -558,8 +561,8 @@ class TestStateManagerEdgeCases:
         await state_manager.async_teardown()
 
         # All listeners should be cleared
-        assert len(state_manager._listeners) == 0
-        assert len(state_manager._global_listeners) == 0
+        assert not state_manager._subscriptions.has_key("sensor.test1")
+        assert not state_manager._subscriptions.has_key("sensor.test2")
 
     @pytest.mark.parametrize("domain", ["light", "sensor"])
     def test_get_all_domain_filter(

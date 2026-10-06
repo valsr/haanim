@@ -1511,7 +1511,6 @@ class TestAutomationManagerHotReload:
         mock_config.get_automation_path.return_value = str(self.ROOT)
         mock_config.get_import_allowlist.return_value = []
         mock_config.get_allow_all_imports.return_value = False
-        mock_config.get_automation_refresh_interval.return_value = 10
         with patch(
             "custom_components.haanim.automation_manager.get_config_manager", return_value=mock_config
         ):

@@ -236,6 +236,38 @@ class TestEventBusContract:
         await event_setup.settle()
         assert queue.empty() is not delivered
 
+    async def test_each_subscriber_has_its_own_filter(self, event_setup: EventSetup) -> None:
+        """Test subscribers of one event type with different filters each get what they asked for."""
+        toggles = event_setup.bus.subscribe("contract_event", {"command": "toggle"})
+        ons = event_setup.bus.subscribe("contract_event", {"command": "on"})
+        everything = event_setup.bus.subscribe("contract_event")
+        event_setup.bus.fire("contract_event", {"command": "on"})
+        await event_setup.settle()
+
+        assert toggles.empty()
+        assert ons.qsize() == 1
+        assert everything.qsize() == 1
+
+    async def test_subscription_to_all_events(self, event_setup: EventSetup) -> None:
+        """Test a subscriber of all events gets an event of any type, once, also one others subscribed to."""
+        queue = event_setup.bus.subscribe()
+        event_setup.bus.subscribe("contract_event")
+        event_setup.bus.fire("contract_event", {"n": 1})
+        event_setup.bus.fire("contract_unheard_of", {"n": 2})
+        await event_setup.settle()
+
+        received = []
+        while not queue.empty():
+            event = queue.get_nowait()
+            if event is not None and event.event_type.startswith("contract_"):
+                received.append((event.event_type, event.data))
+        assert received == [("contract_event", {"n": 1}), ("contract_unheard_of", {"n": 2})]
+
+        event_setup.bus.unsubscribe(queue)
+        event_setup.bus.fire("contract_event")
+        await event_setup.settle()
+        assert queue.empty()
+
     async def test_fire_without_data(self, event_setup: EventSetup) -> None:
         """Test an event fired without data is delivered with an empty dictionary."""
         queue = event_setup.bus.subscribe("contract_event")

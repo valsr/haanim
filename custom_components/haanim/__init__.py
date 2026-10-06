@@ -13,6 +13,7 @@ from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 
 from custom_components.haanim.api import async_register_api
+from custom_components.haanim.config import get_config_manager
 from custom_components.haanim.const import DOMAIN, NAME, VERSION
 from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.ha.host import HAServiceCaller, build_host
@@ -27,8 +28,6 @@ from haanim.engine.triggers import TriggerManager
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]  # One enum sensor per automation
-
-from .config import get_config_manager
 
 CARD_URL = f"/{DOMAIN}/ui/haanim-card.js?v={VERSION}"
 """Where the frontend loads ``custom:haanim-card`` from."""

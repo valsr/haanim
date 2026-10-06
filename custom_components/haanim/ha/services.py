@@ -203,6 +203,7 @@ class ServiceManager:
         domain: str,
         service: str,
         service_data: dict[str, Any] | None = None,
+        *,
         blocking: bool = True,
         return_response: bool = False,
     ) -> Any:

@@ -29,9 +29,6 @@ DEFAULT_NAME = NAME  # Use integration NAME as default name
 
 _LOGGER = logging.getLogger(__name__)
 
-# FIXME: ConfigFlow doesn't seem to be working, check what needs to be done to be fixed (if we need to fix
-# it) - https://developers.home-assistant.io/docs/config_entries_config_flow_handler
-
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input.

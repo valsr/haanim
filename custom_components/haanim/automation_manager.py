@@ -61,15 +61,20 @@ class AutomationListener(Protocol):
 
     def automation_changed(self, automation_id: str) -> None:
         """Something about an automation has changed, or the automation is new."""
+        ...
 
     def automation_removed(self, automation_id: str) -> None:
         """The folder of an automation is gone."""
+        ...
 
     def automations_loaded(self) -> None:
         """Every automation folder has been loaded after Home Assistant started."""
+        ...
 
 
-class AutomationManager:
+# The manager is three interfaces in one object: the engine's AutomationRegistry, the hot reloader's
+# target, and what the entity, the services and the websocket commands ask.
+class AutomationManager:  # pylint: disable=too-many-public-methods
     """Manages loading, watching, and lifecycle of HAAnim automations.
 
     This is the central manager for all automation operations. It handles:
@@ -832,7 +837,7 @@ async def async_get_manager(hass: HomeAssistant) -> AutomationManager | None:
     data = hass.data[DOMAIN]
     for entry_data in data.values():
         if isinstance(entry_data, dict) and "manager" in entry_data:
-            manager = entry_data["manager"]  # type: ignore
+            manager = entry_data["manager"]
             if isinstance(manager, AutomationManager):
                 return manager
             return None

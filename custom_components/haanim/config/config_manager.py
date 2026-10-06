@@ -196,7 +196,7 @@ class ConfigManager:
         _LOGGER.debug("Loading configuration from entry: %s", self._entry_id)
         data = self._hass.data.get(const.DOMAIN, {}).get(self._entry_id, {})
         if isinstance(data, dict) and "entry" in data:
-            entry = data["entry"]  # type: ignore
+            entry = data["entry"]
             if not isinstance(entry, ConfigEntry):
                 _LOGGER.warning("Invalid entry type in data: %s", type(entry))
                 return
@@ -418,6 +418,7 @@ class ConfigManager:
             validator = cv.string
 
         # Create the schema key
+        key: vol.Marker
         if option.required:
             key = vol.Required(option.key, default=default)
         else:
@@ -460,7 +461,7 @@ class ConfigManager:
         Returns:
             Absolute path to the automation folder.
         """
-        path = self.get(const.CONFIG_AUTOMATION_PATH, const.DEFAULT_AUTOMATION_PATH)
+        path = str(self.get(const.CONFIG_AUTOMATION_PATH, const.DEFAULT_AUTOMATION_PATH))
 
         if not self._hass:
             return path
@@ -480,7 +481,7 @@ class ConfigManager:
         if not isinstance(allowlist, list):
             _LOGGER.warning("Import allowlist is not a list, returning empty list")
             return []
-        return [str(item) for item in allowlist]  # type: ignore[misc]
+        return [str(item) for item in allowlist]
 
     def get_allow_all_imports(self) -> bool:
         """Check if all imports are allowed.
@@ -489,60 +490,6 @@ class ConfigManager:
             True if all imports are allowed, False otherwise.
         """
         return bool(self.get(const.CONFIG_ALLOW_ALL_IMPORTS, const.DEFAULT_ALLOW_ALL_IMPORTS))
-
-    def get_automation_refresh_interval(self) -> int:
-        """Get the automation refresh interval in seconds.
-
-        Returns:
-            Refresh interval in seconds.
-        """
-        interval: Any = self.get(
-            const.CONFIG_AUTOMATION_REFRESH_INTERVAL, const.DEFAULT_AUTOMATION_REFRESH_INTERVAL
-        )
-        try:
-            return int(interval)
-        except (ValueError, TypeError):
-            _LOGGER.warning(
-                "Invalid automation refresh interval: %s, defaulting to %d seconds",
-                interval,
-                const.DEFAULT_AUTOMATION_REFRESH_INTERVAL,
-            )
-            return const.DEFAULT_AUTOMATION_REFRESH_INTERVAL
-
-    def get_max_concurrent_actions(self):
-        """Get the maximum number of concurrent actions.
-
-        Returns:
-            Maximum number of concurrent actions.
-        """
-        max_actions: Any = self.get(const.CONFIG_MAX_CONCURRENT_ACTIONS, const.DEFAULT_MAX_CONCURRENT_ACTIONS)
-        try:
-            value = int(max_actions)
-            return max(1, value)
-        except (ValueError, TypeError):
-            _LOGGER.warning(
-                "Invalid max concurrent actions: %s, defaulting to %d",
-                max_actions,
-                const.DEFAULT_MAX_CONCURRENT_ACTIONS,
-            )
-            return const.DEFAULT_MAX_CONCURRENT_ACTIONS
-
-    def get_worker_shutdown_timeout(self) -> float:
-        """Get the worker shutdown timeout in seconds.
-
-        Returns:
-            Worker shutdown timeout in seconds.
-        """
-        timeout: Any = self.get(const.CONFIG_WORKER_SHUTDOWN_TIMEOUT, const.DEFAULT_WORKER_SHUTDOWN_TIMEOUT)
-        try:
-            return float(timeout)
-        except (ValueError, TypeError):
-            _LOGGER.warning(
-                "Invalid worker shutdown timeout: %s, defaulting to %.2f seconds",
-                timeout,
-                const.DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
-            )
-            return const.DEFAULT_WORKER_SHUTDOWN_TIMEOUT
 
 
 def get_config_manager() -> ConfigManager:

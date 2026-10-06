@@ -99,6 +99,7 @@ class AutomationStatusManager:
         automation_id: str,
         action_name: str,
         execution_id: str,
+        *,
         is_startup: bool = False,
         is_shutdown: bool = False,
     ) -> None:

@@ -290,13 +290,27 @@ class TestConfigManagerHelpers:
         manager.set("allow_all_imports", True)
         assert manager.get_allow_all_imports() is True
 
-    def test_get_automation_refresh_interval(self, reset_config_manager: None) -> None:
-        """Test getting automation refresh interval."""
-        manager = ConfigManager()
-        interval = manager.get_automation_refresh_interval()
+    def test_load_entry_resets_what_the_entry_does_not_store(self, reset_config_manager: None) -> None:
+        """Test load_entry takes the entry's values and gives every other option its default.
 
-        assert isinstance(interval, int)
-        assert interval > 0
+        The manager is a singleton: without the reset, the values of the entry
+        loaded before would stay for the options the new entry does not store.
+        """
+        manager = ConfigManager()
+        manager.load_entry(
+            {"automation_path": "/first"}, {"allow_all_imports": True, "import_allowlist": ["a"]}
+        )
+        assert manager.get_allow_all_imports() is True
+        assert manager.get_import_allowlist() == ["a"]
+
+        manager.load_entry({"automation_path": "/second"}, {})
+        assert manager.get("automation_path") == "/second"
+        assert manager.get_allow_all_imports() is False
+        assert manager.get_import_allowlist() == []
+
+        manager.get_import_allowlist().append("leak")
+        manager.load_entry({}, None)
+        assert manager.get_import_allowlist() == []
 
     def test_get_automation_path_absolute(self, reset_config_manager: None) -> None:
         """Test getting absolute automation path."""

@@ -12,9 +12,10 @@ from collections.abc import Callable
 from typing import Any
 
 from homeassistant.const import EVENT_STATE_CHANGED
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
+from custom_components.haanim.ha.subscriptions import Subscriptions
 from haanim.types import StateChangedEvent, StateVal
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,8 +37,7 @@ class StateManager:
             hass: Home Assistant instance.
         """
         self.hass = hass
-        self._listeners: dict[str, list[asyncio.Queue[StateChangedEvent | None]]] = {}
-        self._global_listeners: list[asyncio.Queue[StateChangedEvent | None]] = []
+        self._subscriptions: Subscriptions[StateChangedEvent] = Subscriptions("state")
         self._unsub_state_changed: Callable[[], None] | None = None
 
     async def async_setup(self) -> None:
@@ -54,19 +54,10 @@ class StateManager:
             self._unsub_state_changed()
             self._unsub_state_changed = None
 
-        # Clear all queues
-        for queues in self._listeners.values():
-            for queue in queues:
-                # Put None to signal shutdown
-                await queue.put(None)
-        self._listeners.clear()
-
-        for queue in self._global_listeners:
-            await queue.put(None)
-        self._global_listeners.clear()
+        await self._subscriptions.close()
 
     @callback
-    def _handle_state_changed(self, event: Event) -> None:
+    def _handle_state_changed(self, event: Event[EventStateChangedData]) -> None:
         """Handle a state changed event.
 
         Args:
@@ -89,20 +80,8 @@ class StateManager:
             new_state=new_val,
         )
 
-        # Notify entity-specific listeners
-        if entity_id in self._listeners:
-            for queue in self._listeners[entity_id]:
-                try:
-                    queue.put_nowait(notification)
-                except asyncio.QueueFull:
-                    _LOGGER.warning("State notification queue full for %s", entity_id)
-
-        # Notify global listeners
-        for queue in self._global_listeners:
-            try:
-                queue.put_nowait(notification)
-            except asyncio.QueueFull:
-                _LOGGER.warning("Global state notification queue full")
+        self._subscriptions.deliver(entity_id, notification)
+        self._subscriptions.deliver_to_all(notification)
 
     def get(self, entity_id: str) -> StateVal:
         """Get the current state of an entity.
@@ -163,16 +142,7 @@ class StateManager:
         Returns:
             Queue that receives state change notifications (StateChangedEvent or None on shutdown).
         """
-        queue: asyncio.Queue[StateChangedEvent | None] = asyncio.Queue(maxsize=100)
-
-        if entity_id:
-            if entity_id not in self._listeners:
-                self._listeners[entity_id] = []
-            self._listeners[entity_id].append(queue)
-        else:
-            self._global_listeners.append(queue)
-
-        return queue
+        return self._subscriptions.add(entity_id)
 
     def unsubscribe(
         self, queue: asyncio.Queue[StateChangedEvent | None], entity_id: str | None = None
@@ -183,16 +153,7 @@ class StateManager:
             queue: The queue to remove.
             entity_id: Entity ID if subscribed to specific entity.
         """
-        if entity_id and entity_id in self._listeners:
-            try:
-                self._listeners[entity_id].remove(queue)
-            except ValueError:
-                pass
-        else:
-            try:
-                self._global_listeners.remove(queue)
-            except ValueError:
-                pass
+        self._subscriptions.remove(queue, entity_id)
 
     def exists(self, entity_id: str) -> bool:
         """Check if an entity exists.

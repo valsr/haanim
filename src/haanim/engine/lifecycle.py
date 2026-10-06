@@ -72,9 +72,11 @@ class TriggerRegistrar(Protocol):
 
     async def register_trigger(self, trigger_def: TriggerDefinition) -> str:
         """Start firing a trigger. Returns an ID for it."""
+        ...
 
     async def unregister_automation_triggers(self, automation_id: str) -> int:
         """Stop firing every trigger of an automation and discard its pending timers."""
+        ...
 
 
 class NoTriggers:

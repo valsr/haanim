@@ -49,6 +49,7 @@ class ReloadTarget(Protocol):
 
     def folders(self) -> list[Path]:
         """Return the folder of every automation that is loaded or failed to load."""
+        ...
 
     async def reload(self, found: DiscoveredAutomation) -> None:
         """Bring an automation in line with its files.
@@ -57,12 +58,15 @@ class ReloadTarget(Protocol):
         enabled and loaded without error. Must not raise for a problem of the
         automation: that leaves the automation in the ``error`` state.
         """
+        ...
 
     async def remove(self, folder: Path) -> None:
         """Stop and unload the automation of a folder that is gone."""
+        ...
 
     def report_rejected(self, rejected: Sequence[RejectedFolder]) -> None:
         """Take note of the folders that are not loaded because of their name."""
+        ...
 
 
 class HotReloader:

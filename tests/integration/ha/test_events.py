@@ -8,7 +8,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from homeassistant.const import MATCH_ALL
 
+from custom_components.haanim.ha.subscriptions import QUEUE_SIZE
 from custom_components.haanim.ha.events import (
     EventData,
     EventManager,
@@ -106,38 +108,26 @@ class TestEventManager:
         """Test subscribing to specific event type."""
         queue = event_manager.subscribe("test_event")
         assert isinstance(queue, asyncio.Queue)
-        assert "test_event" in event_manager._listeners
         mock_hass.bus.async_listen.assert_called_once()
+        assert mock_hass.bus.async_listen.call_args.args[0] == "test_event"
 
-    def test_subscribe_global(self, event_manager: EventManager) -> None:
-        """Test subscribing to all events."""
+    def test_subscribe_global(self, event_manager: EventManager, mock_hass: MagicMock) -> None:
+        """Test subscribing to all events listens to every event type, once."""
         queue = event_manager.subscribe()
+        event_manager.subscribe()
         assert isinstance(queue, asyncio.Queue)
-        assert queue in event_manager._global_listeners
+        mock_hass.bus.async_listen.assert_called_once()
+        assert mock_hass.bus.async_listen.call_args.args[0] == MATCH_ALL
 
     def test_subscribe_same_event_multiple_times(
         self, event_manager: EventManager, mock_hass: MagicMock
     ) -> None:
         """Test subscribing to same event type multiple times."""
-        queue1 = event_manager.subscribe("test_event")
-        queue2 = event_manager.subscribe("test_event")
+        event_manager.subscribe("test_event")
+        event_manager.subscribe("test_event")
 
-        assert queue1 in event_manager._listeners["test_event"]
-        assert queue2 in event_manager._listeners["test_event"]
         # Only one listener registered with HA
         assert mock_hass.bus.async_listen.call_count == 1
-
-    def test_unsubscribe_specific_event(self, event_manager: EventManager) -> None:
-        """Test unsubscribing from specific event."""
-        queue = event_manager.subscribe("test_event")
-        event_manager.unsubscribe(queue, "test_event")
-        assert queue not in event_manager._listeners.get("test_event", [])
-
-    def test_unsubscribe_global(self, event_manager: EventManager) -> None:
-        """Test unsubscribing from global listener."""
-        queue = event_manager.subscribe()
-        event_manager.unsubscribe(queue)
-        assert queue not in event_manager._global_listeners
 
     def test_unsubscribe_nonexistent(self, event_manager: EventManager) -> None:
         """Test unsubscribing non-existent queue doesn't error."""
@@ -253,64 +243,100 @@ class TestEventManagerHandleEvent:
     def test_handle_event_notifies_listeners(
         self, event_manager: EventManager, mock_event: MagicMock
     ) -> None:
-        """Test _handle_event notifies type-specific listeners."""
-        queue = event_manager.subscribe("test_event")
-        # Subscribe creates internal listener with filter
-        event_manager._listeners["test_event"] = [queue]
+        """Test an event reaches every subscriber of its type, and nobody else."""
+        first = event_manager.subscribe("test_event")
+        second = event_manager.subscribe("test_event")
+        other = event_manager.subscribe("other_event")
+        everything = event_manager.subscribe()
 
-        event_manager._handle_event(mock_event, "test_event", None)
+        event_manager._handle_event(mock_event)
 
-        assert not queue.empty()
-        notification = queue.get_nowait()
+        notification = first.get_nowait()
         assert isinstance(notification, EventData)
         assert notification.event_type == "test_event"
+        assert second.get_nowait() == notification
+        assert other.empty()
+        assert everything.empty(), "the listener for all events delivers to those subscribers"
 
     def test_handle_event_notifies_global_listeners(
         self, event_manager: EventManager, mock_event: MagicMock
     ) -> None:
-        """Test _handle_event notifies global listeners."""
+        """Test an event of any type reaches the subscribers of all events, once."""
         queue = event_manager.subscribe()
+        typed = event_manager.subscribe("test_event")
 
-        event_manager._handle_event(mock_event, "test_event", None)
+        event_manager._handle_any_event(mock_event)
 
-        assert not queue.empty()
-        notification = queue.get_nowait()
-        assert isinstance(notification, EventData)
+        assert isinstance(queue.get_nowait(), EventData)
+        assert queue.empty()
+        assert typed.empty()
 
     def test_handle_event_applies_filter(self, event_manager: EventManager, mock_event: MagicMock) -> None:
-        """Test _handle_event applies event filter."""
-        queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=100)
-        event_manager._listeners["test_event"] = [queue]
+        """Test a subscriber whose filter does not match gets nothing."""
+        queue = event_manager.subscribe("test_event", {"key": "other_value"})
+        missing_key = event_manager.subscribe("test_event", {"absent": "value"})
 
-        # Filter for different value
-        event_manager._handle_event(mock_event, "test_event", {"key": "other_value"})
+        event_manager._handle_event(mock_event)
 
         assert queue.empty()
+        assert missing_key.empty()
 
     def test_handle_event_filter_matches(self, event_manager: EventManager, mock_event: MagicMock) -> None:
-        """Test _handle_event passes when filter matches."""
-        queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=100)
-        event_manager._listeners["test_event"] = [queue]
+        """Test a subscriber whose filter matches gets the event."""
+        queue = event_manager.subscribe("test_event", {"key": "value"})
 
-        event_manager._handle_event(mock_event, "test_event", {"key": "value"})
+        event_manager._handle_event(mock_event)
 
         assert not queue.empty()
 
-    def test_handle_event_queue_full(self, event_manager: EventManager, mock_event: MagicMock) -> None:
-        """Test _handle_event handles full queue gracefully."""
-        queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=1)
-        queue.put_nowait(
-            EventData(
-                event_type="filler",
-                data={},
-                origin=None,
-                time_fired=datetime(2024, 1, 15, 12, 0, 0),
-                context_id="ctx",
-                context_parent_id=None,
-                context_user_id=None,
-            )
-        )
-        event_manager._listeners["test_event"] = [queue]
+    def test_each_subscriber_has_its_own_filter(
+        self, event_manager: EventManager, mock_event: MagicMock
+    ) -> None:
+        """Test two subscribers of one event type with different filters each get only what they asked for.
 
-        # Should not raise, just log warning
-        event_manager._handle_event(mock_event, "test_event", None)
+        The filter of the first subscriber used to be applied to all of them.
+        """
+        matching = event_manager.subscribe("test_event", {"key": "value"})
+        other = event_manager.subscribe("test_event", {"key": "other_value"})
+        unfiltered = event_manager.subscribe("test_event")
+
+        event_manager._handle_event(mock_event)
+
+        assert not matching.empty()
+        assert other.empty()
+        assert not unfiltered.empty()
+
+    def test_unsubscribed_gets_nothing(self, event_manager: EventManager, mock_event: MagicMock) -> None:
+        """Test a subscriber that unsubscribed gets no further events; the others still do."""
+        gone = event_manager.subscribe("test_event")
+        stays = event_manager.subscribe("test_event")
+        everything = event_manager.subscribe()
+        event_manager.unsubscribe(gone, "test_event")
+        event_manager.unsubscribe(everything)
+        event_manager.unsubscribe(everything)
+
+        event_manager._handle_event(mock_event)
+        event_manager._handle_any_event(mock_event)
+
+        assert gone.empty()
+        assert everything.empty()
+        assert not stays.empty()
+
+    def test_handle_event_queue_full(
+        self, event_manager: EventManager, mock_event: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test a subscriber that fell behind loses the event, with a warning, and the others get it."""
+        slow = event_manager.subscribe("test_event")
+        fast = event_manager.subscribe("test_event")
+        everything = event_manager.subscribe()
+        for _ in range(QUEUE_SIZE):
+            slow.put_nowait(None)
+            everything.put_nowait(None)
+
+        event_manager._handle_event(mock_event)
+        event_manager._handle_any_event(mock_event)
+
+        assert slow.qsize() == QUEUE_SIZE
+        assert not fast.empty()
+        assert "Event notification queue full for test_event" in caplog.text
+        assert "Event notification queue full for everything" in caplog.text

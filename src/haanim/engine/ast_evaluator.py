@@ -962,7 +962,11 @@ class AstEvaluator:
     async def _eval_type_alias(self, node: ast.TypeAlias, scope: SymbolTable) -> None:
         """Evaluate a type alias statement."""
         value = await self.aeval(node.value, scope)
-        scope.set(node.name.id, typing.TypeAliasType(node.name.id, value))
+        # The alias is the automation's, made at run time under the name the automation gave it
+        scope.set(
+            node.name.id,
+            typing.TypeAliasType(node.name.id, value),  # pyright: ignore[reportGeneralTypeIssues]
+        )
 
     def get_global_symbols(self) -> SymbolTable:
         """Get the global symbol table.

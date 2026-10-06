@@ -48,9 +48,11 @@ class StateProvider(Protocol):
 
         A missing entity gives a ``StateVal`` whose ``state`` is ``None``.
         """
+        ...
 
     def exists(self, entity_id: str) -> bool:
         """Return whether the entity exists."""
+        ...
 
     def subscribe(self, entity_id: str | None = None) -> asyncio.Queue[StateChangedEvent | None]:
         """Subscribe to changes of one entity, or of all entities if ``entity_id`` is ``None``.
@@ -58,11 +60,13 @@ class StateProvider(Protocol):
         The returned queue receives a ``StateChangedEvent`` per change, and
         ``None`` when the provider shuts down.
         """
+        ...
 
     def unsubscribe(
         self, queue: asyncio.Queue[StateChangedEvent | None], entity_id: str | None = None
     ) -> None:
         """Remove a subscription. ``entity_id`` must match the value used to subscribe."""
+        ...
 
 
 class EventBus(Protocol):
@@ -79,12 +83,15 @@ class EventBus(Protocol):
         with an equal value are delivered. The queue receives ``None`` when the
         bus shuts down.
         """
+        ...
 
     def unsubscribe(self, queue: asyncio.Queue[EventData | None], event_type: str | None = None) -> None:
         """Remove a subscription. ``event_type`` must match the value used to subscribe."""
+        ...
 
     def fire(self, event_type: str, event_data: dict[str, Any] | None = None) -> None:
         """Fire an event."""
+        ...
 
     def listen_once(self, event_type: str, callback_func: Callable[[Any], Any]) -> Callable[[], None]:
         """Call ``callback_func`` the next time the event fires, then stop listening.
@@ -92,6 +99,7 @@ class EventBus(Protocol):
         The callback receives the host's event object and may be a coroutine
         function. Returns a function that cancels the listener.
         """
+        ...
 
 
 class ServiceCaller(Protocol):
@@ -99,9 +107,11 @@ class ServiceCaller(Protocol):
 
     def has_service(self, domain: str, service: str) -> bool:
         """Return whether the service exists."""
+        ...
 
     def services(self) -> list[ServiceInfo]:
         """Return a description of every available service."""
+        ...
 
     async def async_call(
         self,
@@ -121,6 +131,7 @@ class ServiceCaller(Protocol):
                 the same way; callers that need to tell the two apart check
                 ``has_service`` first.
         """
+        ...
 
 
 class TimerHandle(Protocol):
@@ -128,6 +139,7 @@ class TimerHandle(Protocol):
 
     def cancel(self) -> None:
         """Stop the callback from running. Does nothing if it already ran or was cancelled."""
+        ...
 
 
 class Clock(Protocol):
@@ -141,12 +153,14 @@ class Clock(Protocol):
 
     def now(self) -> datetime:
         """Return the current time as a timezone-aware datetime in the host's time zone."""
+        ...
 
     async def sleep(self, seconds: float) -> None:
         """Suspend the caller for the given time.
 
         A value of zero or less yields to the event loop once and returns.
         """
+        ...
 
     def call_later(self, delay: float, callback: Callable[[], Any]) -> TimerHandle:
         """Call ``callback`` once, ``delay`` seconds from now.
@@ -154,12 +168,14 @@ class Clock(Protocol):
         The callback is a plain function, not a coroutine function, and is
         called on the event loop. A delay of zero or less means as soon as possible.
         """
+        ...
 
     def call_at(self, when: datetime, callback: Callable[[], Any]) -> TimerHandle:
         """Call ``callback`` once, at the given timezone-aware time.
 
         A time that is not in the future means as soon as possible.
         """
+        ...
 
     async def wait_for(self, awaitable: Awaitable[T], timeout: float) -> T:
         """Wait for an awaitable, giving up after ``timeout`` seconds.
@@ -171,6 +187,7 @@ class Clock(Protocol):
         Raises:
             TimeoutError: If the awaitable did not finish in time.
         """
+        ...
 
 
 class SunProvider(Protocol):
@@ -181,6 +198,7 @@ class SunProvider(Protocol):
 
         Returns ``None`` if the event cannot be determined.
         """
+        ...
 
 
 class FileSystem(Protocol):
@@ -188,6 +206,7 @@ class FileSystem(Protocol):
 
     def exists(self, path: Path) -> bool:
         """Return whether the path exists."""
+        ...
 
     def modified_time(self, path: Path) -> datetime:
         """Return when the file was last modified.
@@ -195,6 +214,7 @@ class FileSystem(Protocol):
         Raises:
             OSError: If the file cannot be inspected.
         """
+        ...
 
     def size(self, path: Path) -> int:
         """Return the size of the file in bytes.
@@ -202,6 +222,7 @@ class FileSystem(Protocol):
         Raises:
             OSError: If the file cannot be inspected.
         """
+        ...
 
     async def read_text(self, path: Path) -> str:
         """Return the file's contents decoded as UTF-8.
@@ -209,6 +230,7 @@ class FileSystem(Protocol):
         Raises:
             OSError: If the file cannot be read.
         """
+        ...
 
     async def read_bytes(self, path: Path) -> bytes:
         """Return the file's contents.
@@ -216,9 +238,11 @@ class FileSystem(Protocol):
         Raises:
             OSError: If the file cannot be read.
         """
+        ...
 
     def is_dir(self, path: Path) -> bool:
         """Return whether the path is an existing directory."""
+        ...
 
     async def list_dir(self, path: Path) -> list[Path]:
         """Return the paths of the files and directories directly in a directory, sorted.
@@ -226,6 +250,7 @@ class FileSystem(Protocol):
         Raises:
             OSError: If the path is not a directory that can be read.
         """
+        ...
 
 
 class AssetSigner(Protocol):
@@ -233,6 +258,7 @@ class AssetSigner(Protocol):
 
     def sign(self, path: str, expires: float) -> str:
         """Return a signed form of a URL path, valid for ``expires`` seconds."""
+        ...
 
 
 class CardSink(Protocol):
@@ -247,6 +273,7 @@ class CardSink(Protocol):
                 values with ``id``, ``type`` and the block's content. Empty when
                 the card was cleared or the automation stopped. The receiver owns it.
         """
+        ...
 
 
 class StorageBackend(Protocol):
@@ -260,6 +287,7 @@ class StorageBackend(Protocol):
 
         The caller owns what is returned: changing it does not change what is stored.
         """
+        ...
 
     async def save(self, key: str, data: Any) -> None:
         """Save a document under a key, replacing what was there.
@@ -268,6 +296,7 @@ class StorageBackend(Protocol):
             key: Identifies the document.
             data: Any JSON value. Later changes to it by the caller are not stored.
         """
+        ...
 
 
 class IssueReporter(Protocol):
@@ -284,9 +313,11 @@ class IssueReporter(Protocol):
             key: The kind of issue, which selects the text shown.
             placeholders: Values to put into that text.
         """
+        ...
 
     def clear(self, issue_id: str) -> None:
         """Remove an issue. Does nothing if it is not raised."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -312,9 +343,11 @@ class AutomationRegistry(Protocol):
 
     def get_all_contexts(self) -> list[AutomationContext]:
         """Return the context of every loaded automation."""
+        ...
 
     def get_context_by_name(self, automation_id: str) -> AutomationContext | None:
         """Return the context of the automation with the given ID, or ``None``."""
+        ...
 
     async def async_call_action(
         self,
@@ -332,33 +365,43 @@ class AutomationRegistry(Protocol):
             data: The arguments of the call; the action gets them as ``event.data``.
             caller: ID of the calling automation. Without it the call is a manual one.
         """
+        ...
 
     async def async_enable_automation(self, automation_id: str) -> None:
         """Enable and start an automation."""
+        ...
 
     async def async_disable_automation(self, automation_id: str) -> None:
         """Stop and disable an automation."""
+        ...
 
     async def async_start_automation(self, automation_id: str) -> None:
         """Start an automation."""
+        ...
 
     async def async_stop_automation(self, automation_id: str) -> None:
         """Stop an automation."""
+        ...
 
     async def async_restart_automation(self, automation_id: str) -> None:
         """Restart an automation."""
+        ...
 
     def automation_state(self, automation_id: str) -> str:
         """Return the state of an automation: ``unavailable``, ``off``, ``on`` or ``error``."""
+        ...
 
     def automation_message(self, automation_id: str) -> str | None:
         """Return why an automation is in the ``error`` state, or None."""
+        ...
 
     def is_automation_enabled(self, automation_id: str) -> bool:
         """Return whether an automation is enabled."""
+        ...
 
     def automation_times(self, automation_id: str) -> AutomationTimes:
         """Return when an automation was loaded, last started and last ran an action."""
+        ...
 
 
 @dataclass(frozen=True)

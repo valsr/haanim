@@ -21,22 +21,27 @@ class RawState(Protocol):
     @property
     def entity_id(self) -> str:
         """Entity ID."""
+        ...
 
     @property
     def state(self) -> str:
         """State value."""
+        ...
 
     @property
     def attributes(self) -> Any:
         """Mapping of attribute names to values."""
+        ...
 
     @property
     def last_changed(self) -> datetime:
         """When the state last changed."""
+        ...
 
     @property
     def last_updated(self) -> datetime:
         """When the state or an attribute last changed."""
+        ...
 
 
 @dataclass

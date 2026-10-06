@@ -46,30 +46,3 @@ def get_allow_all_imports() -> bool:
         True if all imports are allowed, False otherwise.
     """
     return get_config_manager().get_allow_all_imports()
-
-
-def get_automation_refresh_interval() -> int:
-    """Get the automation refresh interval in seconds.
-
-    Returns:
-        Refresh interval in seconds.
-    """
-    return get_config_manager().get_automation_refresh_interval()
-
-
-def get_max_concurrent_actions():
-    """Get the maximum number of concurrent actions.
-
-    Returns:
-        Maximum number of concurrent actions.
-    """
-    return get_config_manager().get_max_concurrent_actions()
-
-
-def get_worker_shutdown_timeout() -> float:
-    """Get the worker shutdown timeout in seconds.
-
-    Returns:
-        Worker shutdown timeout in seconds.
-    """
-    return get_config_manager().get_worker_shutdown_timeout()

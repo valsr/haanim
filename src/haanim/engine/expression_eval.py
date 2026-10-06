@@ -58,10 +58,12 @@ class EntityState(Protocol):
     @property
     def state(self) -> str | None:
         """The entity's state."""
+        ...
 
     @property
     def attributes(self) -> Mapping[str, Any]:
         """The entity's attributes."""
+        ...
 
 
 # Returns the state of an entity, or None if the entity does not exist.

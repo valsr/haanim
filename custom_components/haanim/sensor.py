@@ -72,23 +72,23 @@ class AutomationSensor(SensorEntity):
         self.added = False
 
     @property
-    def name(self) -> str:
+    def name(self) -> str:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The automation's name from its metadata."""
         return self._manager.automation_name(self._automation_id)
 
     @property
-    def available(self) -> bool:
+    def available(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride]
         """Whether the automation is loaded."""
         return self._manager.automation_state(self._automation_id) in STATE_OPTIONS
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> str | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The automation's lifecycle state."""
         state = self._manager.automation_state(self._automation_id)
         return state if state in STATE_OPTIONS else None
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The attributes of the design's table."""
         manager = self._manager
         automation_id = self._automation_id

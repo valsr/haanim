@@ -12,7 +12,10 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.components import websocket_api
+from homeassistant.components.websocket_api import async_register_command
+from homeassistant.components.websocket_api.connection import ActiveConnection
+from homeassistant.components.websocket_api.decorators import async_response, websocket_command
+from homeassistant.components.websocket_api.messages import event_message
 from homeassistant.core import HomeAssistant, callback
 
 from custom_components.haanim.automation_manager import AutomationManager, async_get_manager
@@ -69,7 +72,7 @@ def _detail(manager: AutomationManager, automation_id: str) -> dict[str, Any]:
 
 
 async def _manager_for(
-    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> AutomationManager | None:
     """Return the manager, or answer with an error and return None.
 
@@ -86,11 +89,9 @@ async def _manager_for(
     return manager
 
 
-@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/automations/list"})
-@websocket_api.async_response
-async def ws_list_automations(
-    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
-) -> None:
+@websocket_command({vol.Required("type"): f"{DOMAIN}/automations/list"})
+@async_response
+async def ws_list_automations(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Answer with every automation, sorted by ID."""
     manager = await _manager_for(hass, connection, msg)
     if manager is not None:
@@ -99,26 +100,18 @@ async def ws_list_automations(
         )
 
 
-@websocket_api.websocket_command(
-    {vol.Required("type"): f"{DOMAIN}/automations/get", vol.Required("automation_id"): str}
-)
-@websocket_api.async_response
-async def ws_get_automation(
-    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
-) -> None:
+@websocket_command({vol.Required("type"): f"{DOMAIN}/automations/get", vol.Required("automation_id"): str})
+@async_response
+async def ws_get_automation(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Answer with the details of one automation."""
     manager = await _manager_for(hass, connection, msg)
     if manager is not None:
         connection.send_result(msg["id"], _detail(manager, msg["automation_id"]))
 
 
-@websocket_api.websocket_command(
-    {vol.Required("type"): f"{DOMAIN}/card/subscribe", vol.Required("automation_id"): str}
-)
-@websocket_api.async_response
-async def ws_subscribe_card(
-    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
-) -> None:
+@websocket_command({vol.Required("type"): f"{DOMAIN}/card/subscribe", vol.Required("automation_id"): str})
+@async_response
+async def ws_subscribe_card(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Send the card content of an automation now and whenever it changes."""
     manager = await _manager_for(hass, connection, msg)
     if manager is None:
@@ -130,20 +123,16 @@ async def ws_subscribe_card(
 
     @callback
     def forward(blocks: list[dict[str, Any]]) -> None:
-        connection.send_message(websocket_api.event_message(msg["id"], {"blocks": blocks}))
+        connection.send_message(event_message(msg["id"], {"blocks": blocks}))
 
     connection.subscriptions[msg["id"]] = sink.subscribe(msg["automation_id"], forward)
     connection.send_result(msg["id"])
     forward(sink.blocks(msg["automation_id"]))
 
 
-@websocket_api.websocket_command(
-    {vol.Required("type"): f"{DOMAIN}/logs/subscribe", vol.Required("automation_id"): str}
-)
-@websocket_api.async_response
-async def ws_subscribe_logs(
-    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
-) -> None:
+@websocket_command({vol.Required("type"): f"{DOMAIN}/logs/subscribe", vol.Required("automation_id"): str})
+@async_response
+async def ws_subscribe_logs(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Send the recent log records of an automation as one event, then each new one."""
     if await _manager_for(hass, connection, msg) is None:
         return
@@ -161,21 +150,17 @@ async def ws_subscribe_logs(
 
     @callback
     def forward(record: dict[str, Any]) -> None:
-        connection.send_message(websocket_api.event_message(msg["id"], {"record": record}))
+        connection.send_message(event_message(msg["id"], {"record": record}))
 
     connection.subscriptions[msg["id"]] = buffer.subscribe(msg["automation_id"], forward)
     connection.send_result(msg["id"])
     # The frontend's subscription helper only passes events on, so the kept records go as the first event
-    connection.send_message(
-        websocket_api.event_message(msg["id"], {"records": buffer.records(msg["automation_id"])})
-    )
+    connection.send_message(event_message(msg["id"], {"records": buffer.records(msg["automation_id"])}))
 
 
-@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/config/get"})
-@websocket_api.async_response
-async def ws_get_config(
-    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
-) -> None:
+@websocket_command({vol.Required("type"): f"{DOMAIN}/config/get"})
+@async_response
+async def ws_get_config(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Answer with the integration's version and its options as they are in effect."""
     manager = await _manager_for(hass, connection, msg)
     if manager is not None:
@@ -185,8 +170,8 @@ async def ws_get_config(
 @callback
 def async_register_websocket(hass: HomeAssistant) -> None:
     """Register the websocket commands."""
-    websocket_api.async_register_command(hass, ws_list_automations)
-    websocket_api.async_register_command(hass, ws_get_automation)
-    websocket_api.async_register_command(hass, ws_subscribe_card)
-    websocket_api.async_register_command(hass, ws_subscribe_logs)
-    websocket_api.async_register_command(hass, ws_get_config)
+    async_register_command(hass, ws_list_automations)
+    async_register_command(hass, ws_get_automation)
+    async_register_command(hass, ws_subscribe_card)
+    async_register_command(hass, ws_subscribe_logs)
+    async_register_command(hass, ws_get_config)
