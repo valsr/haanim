@@ -514,9 +514,9 @@ class TestEdgeCases:
         await state_world.set("light.living_room", "off")
         automation = state_world.add(
             "lights",
-            "from haanim import on_state, sleep\n\n"
+            "from haanim import on_state, haa\n\n"
             + LIGHT
-            + "\nasync def react(event):\n    await sleep(60)\n",
+            + "\nasync def react(event):\n    await haa.sleep(60)\n",
         )
         assert await automation.load() and await automation.start()
         for state in ("on", "off", "on"):

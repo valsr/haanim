@@ -26,8 +26,17 @@ COPY podman/container-config/.storage/auth_provider.homeassistant /config/.stora
 COPY podman/container-config/.storage/core.config_entries /config/.storage/core.config_entries
 COPY podman/container-config/.storage/frontend.user_data_admin_user_id_12345 /config/.storage/frontend.user_data_admin_user_id_12345
 
-# Note: HAAnim integration is mounted as a volume from the host
-# This allows live code changes without rebuilding the container
+# A dashboard with the card of each example automation
+COPY podman/container-config/ui-lovelace.yaml /config/ui-lovelace.yaml
+
+# The integration requires the haanim package (see its manifest). Install it from this repository, so
+# Home Assistant finds the requirement satisfied; start.sh then mounts src/haanim over it with PYTHONPATH,
+# which allows live code changes without rebuilding the container.
+COPY pyproject.toml README.md LICENSE /opt/haanim-package/
+COPY src /opt/haanim-package/src
+RUN pip install --no-cache-dir /opt/haanim-package
+
+# Note: the HAAnim integration and the example automations are mounted as volumes from the host
 
 # Set proper permissions
 RUN chown -R root:root /config

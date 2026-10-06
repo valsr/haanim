@@ -355,8 +355,8 @@ class TestStart:
         """Start does not finish, and the automation is not on, until @startup returns."""
         automation = world.add(
             "lights",
-            "from haanim import startup, sleep\ndone = []\n\n@startup\nasync def on_start():\n"
-            "    await sleep(5)\n    done.append(1)\n",
+            "from haanim import startup, haa\ndone = []\n\n@startup\nasync def on_start():\n"
+            "    await haa.sleep(5)\n    done.append(1)\n",
         )
         await automation.load()
 
@@ -400,8 +400,8 @@ class TestStart:
         """While @startup runs the automation is off for everyone else."""
         automation = world.add(
             "lights",
-            "from haanim import action, startup, sleep\n\n@action\ndef ping():\n    return 'pong'\n\n"
-            "@startup\nasync def on_start():\n    await sleep(5)\n",
+            "from haanim import action, startup, haa\n\n@action\ndef ping():\n    return 'pong'\n\n"
+            "@startup\nasync def on_start():\n    await haa.sleep(5)\n",
         )
         await automation.load()
         starting = asyncio.create_task(automation.start())
@@ -489,8 +489,8 @@ class TestStartFailure:
         """A @startup that takes longer than the startup timeout fails the start."""
         automation = world.add(
             "lights",
-            "from haanim import startup, shutdown, sleep, on_state\nlog = []\n\n@startup\nasync def on_start():\n"
-            "    try:\n        await sleep(1000)\n    finally:\n        log.append('cancelled')\n\n"
+            "from haanim import startup, shutdown, on_state, haa\nlog = []\n\n@startup\nasync def on_start():\n"
+            "    try:\n        await haa.sleep(1000)\n    finally:\n        log.append('cancelled')\n\n"
             "@shutdown\ndef on_stop():\n    log.append('shutdown')\n\n@on_state(\"sensor.a == 'on'\")\ndef on_a():\n    pass\n",
         )
         await automation.load()
@@ -551,7 +551,7 @@ class TestStartFailure:
         """Cancelling a start (not a failure of the automation) cleans up without an error state."""
         automation = world.add(
             "lights",
-            "from haanim import startup, sleep\n\n@startup\nasync def on_start():\n    await sleep(5)\n",
+            "from haanim import startup, haa\n\n@startup\nasync def on_start():\n    await haa.sleep(5)\n",
         )
         await automation.load()
         starting = asyncio.create_task(automation.start())
@@ -577,14 +577,14 @@ class TestStartFailure:
 
 
 RUNNING = """
-from haanim import action, shutdown, sleep, on_state, haa
+from haanim import action, shutdown, on_state, haa
 
 @action
 async def work(event):
     seconds = event.data["seconds"]
     log.append("work started")
     try:
-        await sleep(seconds)
+        await haa.sleep(seconds)
         log.append("work finished")
         return "finished"
     except BaseException as err:
@@ -713,8 +713,8 @@ class TestStop:
         """@shutdown runs to its end before the automation is off, and can call the automation's actions."""
         automation = await world.started(
             "lights",
-            "from haanim import action, shutdown, sleep, haa\n\n@action\ndef ping():\n    return 'pong'\n\n"
-            "@shutdown\nasync def on_stop():\n    await sleep(3)\n    log.append(await haa.call('ping'))\n",
+            "from haanim import action, shutdown, haa\n\n@action\ndef ping():\n    return 'pong'\n\n"
+            "@shutdown\nasync def on_stop():\n    await haa.sleep(3)\n    log.append(await haa.call('ping'))\n",
         )
 
         stopping = asyncio.create_task(automation.stop())
@@ -755,7 +755,7 @@ class TestStop:
         """A @shutdown that takes longer than the shutdown timeout is ended and recorded."""
         automation = await world.started(
             "lights",
-            "from haanim import shutdown, sleep\n\n@shutdown\nasync def on_stop():\n    try:\n        await sleep(1000)\n"
+            "from haanim import shutdown, haa\n\n@shutdown\nasync def on_stop():\n    try:\n        await haa.sleep(1000)\n"
             "    finally:\n        log.append('cancelled')\n",
         )
 
@@ -817,9 +817,9 @@ class TestStop:
         """An action that swallows its cancellation does not keep the automation from stopping."""
         automation = await world.started(
             "lights",
-            "from haanim import action, sleep\n\n@action\nasync def stubborn():\n    try:\n"
-            "        await sleep(100)\n    except BaseException:\n        log.append('ignored')\n"
-            "    await sleep(100)\n    log.append('finished anyway')\n",
+            "from haanim import action, haa\n\n@action\nasync def stubborn():\n    try:\n"
+            "        await haa.sleep(100)\n    except BaseException:\n        log.append('ignored')\n"
+            "    await haa.sleep(100)\n    log.append('finished anyway')\n",
         )
         call = asyncio.create_task(automation.call_action("stubborn"))
         await world.clock.settle()
@@ -982,7 +982,7 @@ class TestOrder:
         """An automation is not started until the one before it has finished starting."""
         slow = world.add(
             "alpha",
-            "from haanim import startup, sleep\n\n@startup\nasync def on_start():\n    await sleep(5)\n",
+            "from haanim import startup, haa\n\n@startup\nasync def on_start():\n    await haa.sleep(5)\n",
         )
         fast = world.add("beta", "x = 1\n")
         await load_all([slow, fast])

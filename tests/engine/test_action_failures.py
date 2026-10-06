@@ -176,7 +176,7 @@ class TestOriginalExceptionReachesTheCaller:
 
 
 TRIGGERED_SOURCE = """
-from haanim import ActionMode, action, haa, on_state, sleep
+from haanim import ActionMode, action, haa, on_state
 
 @on_state("sensor.a == 'on'")
 def raises():
@@ -189,24 +189,24 @@ def raises_without_message():
 @on_state("sensor.a == 'on'")
 @action(name="slow", timeout=5)
 async def too_slow():
-    await sleep(60)
+    await haa.sleep(60)
 
 @on_state("sensor.a == 'on'")
 async def dropping():
     log.append("dropping started")
-    await sleep(60)
+    await haa.sleep(60)
 
 @on_state("sensor.a == 'on'")
 @action(execution_mode=ActionMode.QUEUE)
 async def queueing():
     log.append("queueing started")
-    await sleep(60)
+    await haa.sleep(60)
 
 @on_state("sensor.a == 'on'")
 @action(execution_mode=ActionMode.CANCEL)
 async def latest():
     log.append("latest started")
-    await sleep(60)
+    await haa.sleep(60)
 
 @on_state("sensor.a == 'on'")
 def fine():

@@ -32,7 +32,7 @@ from haanim.testing.fakes import DEFAULT_NOW
 from tests.engine.test_control import ControlWorld
 
 TARGET = """
-from haanim import ActionMode, action, haa, sleep
+from haanim import ActionMode, action, haa
 
 raised = []
 
@@ -46,16 +46,16 @@ def process_data(event):
 
 @action(name="Slow one", aliases=["slow"])
 async def slow_action(event):
-    await sleep(event.data.get("seconds", 60))
+    await haa.sleep(event.data.get("seconds", 60))
     return "done"
 
 @action(execution_mode=ActionMode.QUEUE)
 async def queued(event):
-    await sleep(60)
+    await haa.sleep(60)
 
 @action(timeout=5)
 async def timed(event):
-    await sleep(60)
+    await haa.sleep(60)
 
 @action(disabled=True)
 def switched_off(event):

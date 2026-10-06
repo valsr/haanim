@@ -16,7 +16,7 @@ if podman run -d \
     -v ./custom_components/haanim:/config/custom_components/haanim:z \
     -v ./src/haanim:/opt/haanim-src/haanim:z \
     -e PYTHONPATH=/opt/haanim-src \
-    -v ./podman/container-config/haanim:/config/haanim:z \
+    -v ./examples:/config/haanim/automations:z \
     haanim-dev:latest; then
     echo ""
     echo "✅ Container started successfully!"

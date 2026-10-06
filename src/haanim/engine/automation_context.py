@@ -249,7 +249,6 @@ class AutomationContext:
             registry=self._decorators,
             logging_wrapper=logging_module,
             hass=self.host.hass,
-            helpers={"sleep": self._haa.sleep},
         )
 
         # Register what the engine supplies for these imports

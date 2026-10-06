@@ -747,7 +747,7 @@ class TestEngineCalls:
     async def test_top_level_await_fails_the_load(self, tmp_path: Path) -> None:
         """An automation that awaits at the top level is rejected and nothing runs."""
         path = automation_file(tmp_path, "auto")
-        path.write_text("from haanim import sleep\nran = True\nawait sleep(1)\n", encoding="utf-8")
+        path.write_text("from haanim import haa\nran = True\nawait haa.sleep(1)\n", encoding="utf-8")
         context = make_context(str(path))
 
         with pytest.raises(

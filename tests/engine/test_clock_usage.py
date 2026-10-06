@@ -253,13 +253,13 @@ class TestAutomationOnClock:
         """Test the sleep helper available to automations waits on the clock, not on real time."""
         path = automation_file(tmp_path, "auto")
         path.write_text(
-            "from haanim import action, sleep\n"
+            "from haanim import action, haa\n"
             "steps = []\n"
             "\n"
             "@action\n"
             "async def wait_a_minute():\n"
             "    steps.append('before')\n"
-            "    await sleep(60)\n"
+            "    await haa.sleep(60)\n"
             "    steps.append('after')\n",
             encoding="utf-8",
         )

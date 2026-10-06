@@ -125,32 +125,37 @@ pip install black flake8 pylint mypy pytest
 
 ## Testing
 
-Before submitting a pull request:
+Before submitting a pull request, all of this has to pass; CI runs the same:
 
-1. Run the test suite: `make test` (or `uv run pytest`)
-2. Ensure code is formatted: `make format` (or `uv run black custom_components/haanim/`)
-3. Run linting checks: `make lint` (or use individual linters)
-4. Test your changes in a Home Assistant development environment
-5. Ensure all existing functionality still works
-6. Add tests for new features if applicable
+```bash
+uv run pytest                                        # every test, and the overall coverage gate
+uv run python scripts/check-public-api-coverage.py   # haa, decorators, events and errors at 100%
+uv run black --check .
+uv run pylint custom_components src                  # no messages
+uv run mypy custom_components src                    # no errors
+uv run pyright src custom_components examples        # no errors
+```
+
+- Every rule a change implements has a test. Tests do not sleep or read the real clock: use the fake clock
+  (`await clock.advance(...)`) or, for a whole automation, `haanim.testing.AutomationHarness`.
+- `tests/engine` must not need Home Assistant; `tests/integration` uses
+  `pytest-homeassistant-custom-component`.
+- The frontend tests are in `tests/frontend` and run with node 22 or later (`scripts/test-frontend.sh`);
+  `uv run pytest` runs them too if node is installed.
+- For a change that touches the integration or the frontend, also run the end-to-end check against the
+  development container: `./build-and-run.sh`, then `uv run python scripts/e2e-smoke.py`.
 
 ### Running Tests
 
 ```bash
-# Using Make
-make test
-
-# Using UV directly
+# Everything
 uv run pytest
 
-# Run with coverage
-uv run pytest --cov=custom_components/haanim
+# One file, without the coverage gate
+uv run pytest tests/engine/test_card.py --no-cov
 
-# Run specific test file
-uv run pytest tests/test_config_flow.py
-
-# Run with verbose output
-uv run pytest -v
+# The examples' own tests
+uv run pytest examples/tests --no-cov
 ```
 
 ## Commit Messages

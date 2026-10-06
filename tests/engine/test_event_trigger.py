@@ -280,9 +280,9 @@ class TestLifetime:
         """Events are requested as they come; what happens to them is the execution mode's business."""
         automation = event_world.add(
             "watcher",
-            "from haanim import ActionMode, action, on_event, sleep\n\n@on_event('custom_event')\n"
+            "from haanim import ActionMode, action, on_event, haa\n\n@on_event('custom_event')\n"
             "@action(execution_mode=ActionMode.QUEUE)\nasync def handle(event):\n"
-            "    log.append(event.event_data['n'])\n    await sleep(10)\n",
+            "    log.append(event.event_data['n'])\n    await haa.sleep(10)\n",
         )
         assert await automation.load() and await automation.start()
         event_world.expose(automation)

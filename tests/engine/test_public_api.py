@@ -34,7 +34,6 @@ def automation_module() -> Any:
         registry=DecoratorRegistry(),
         logging_wrapper=create_logger_wrapper(logging.getLogger("test.public_api")),
         hass=None,
-        helpers={"sleep": haa.sleep},
     )
 
 
@@ -84,7 +83,7 @@ class TestSameNames:
 
 
 class TestRuntimeOnlyNames:
-    """haa, hass, logging and sleep belong to a running automation."""
+    """haa, hass and logging belong to a running automation."""
 
     def test_declared_for_type_checkers(self) -> None:
         """Test the package's source declares them with their types under TYPE_CHECKING."""
@@ -93,10 +92,9 @@ class TestRuntimeOnlyNames:
         assert "haa: HAAnim" in block
         assert "hass: Any" in block
         assert "logging: LoggerWrapper" in block
-        assert "async def sleep(duration: str | float) -> None:" in block
-        assert haanim.RUNTIME_ONLY == ("haa", "hass", "logging", "sleep")
+        assert haanim.RUNTIME_ONLY == ("haa", "hass", "logging")
 
-    @pytest.mark.parametrize("name", ["haa", "hass", "logging", "sleep"])
+    @pytest.mark.parametrize("name", ["haa", "hass", "logging"])
     def test_not_there_outside_an_automation(self, name: str) -> None:
         """Test using one outside an automation says where it comes from."""
         with pytest.raises(AttributeError, match="only inside a running automation"):
@@ -111,8 +109,8 @@ class TestRuntimeOnlyNames:
         """Test what the runtime supplies is of the declared type."""
         assert isinstance(automation_module.haa, HAAnim)
         assert isinstance(automation_module.logging, LoggerWrapper)
-        assert inspect.iscoroutinefunction(automation_module.sleep)
-        assert list(inspect.signature(automation_module.sleep).parameters) == ["duration"]
+        assert not hasattr(automation_module, "sleep"), "sleeping is haa.sleep()"
+        assert inspect.iscoroutinefunction(automation_module.haa.sleep)
 
 
 class TestTyped:

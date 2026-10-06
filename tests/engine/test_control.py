@@ -527,8 +527,8 @@ class TestSelfControl:
         """Only the calling action is ended at once; the others get the grace period."""
         automation = world.add(
             "lights",
-            "from haanim import action, haa, sleep\n\n@action\nasync def quit():\n    await haa.stop()\n\n"
-            "@action\nasync def work():\n    await sleep(0.3)\n    record('work finished')\n    return 'done'\n",
+            "from haanim import action, haa\n\n@action\nasync def quit():\n    await haa.stop()\n\n"
+            "@action\nasync def work():\n    await haa.sleep(0.3)\n    record('work finished')\n    return 'done'\n",
         )
         await automation.load()
         await automation.start()

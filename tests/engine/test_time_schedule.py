@@ -703,9 +703,9 @@ class TestTimeTrigger:
         time_world = TimeWorld(tmp_path, at("2025-01-06 08:00"))
         automation = time_world.add(
             "morning",
-            "from haanim import ActionMode, action, on_time, sleep\n\n@on_time('09:00')\n"
+            "from haanim import ActionMode, action, on_time, haa\n\n@on_time('09:00')\n"
             "@action(execution_mode=ActionMode.QUEUE)\nasync def at_time(event):\n    log.append(event)\n"
-            "    await sleep(30 * 3600)\n",
+            "    await haa.sleep(30 * 3600)\n",
         )
         await automation.load()
         original = automation.context.execute

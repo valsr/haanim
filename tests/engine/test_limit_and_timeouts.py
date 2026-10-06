@@ -429,7 +429,7 @@ class TestLifecycleHandlersAndTheLimit:
 
 
 LIMIT_SOURCE = """
-from haanim import PoolExhaustedError, action, haa, sleep
+from haanim import PoolExhaustedError, action, haa
 
 @action
 async def outer(event):
@@ -754,13 +754,13 @@ class TestNestedTimeouts:
 
 
 TIMEOUT_SOURCE = """
-from haanim import ActionMode, ActionTimeOutError, action, haa, on_state, sleep
+from haanim import ActionMode, ActionTimeOutError, action, haa, on_state
 
 @action(timeout=30.1)
 async def timed_action(event):
     log.append("timed_action started")
     try:
-        await sleep(event.data.get("seconds", 60))
+        await haa.sleep(event.data.get("seconds", 60))
     finally:
         log.append("timed_action ended")
     return "in time"
@@ -781,13 +781,13 @@ def spin_in_calls(event):
 
 @action
 async def no_timeout(event):
-    await sleep(event.data["seconds"])
+    await haa.sleep(event.data["seconds"])
     return "finished"
 
 @on_state("sensor.door == 'on'")
 @action(name="door", timeout=4, execution_mode=ActionMode.QUEUE)
 async def on_door(event):
-    await sleep(60)
+    await haa.sleep(60)
 """
 
 CALLER_SOURCE = """

@@ -62,7 +62,7 @@ async def interval_world(tmp_path: Path) -> Any:
 
 def source(decorator: str, body: str = "    log.append((event.execution_count, event.call_time))\n") -> str:
     """An automation with one interval trigger function."""
-    return f"from haanim import ActionMode, action, on_interval, sleep\n\n{decorator}\nasync def tick(event):\n{body}"
+    return f"from haanim import ActionMode, action, on_interval, haa\n\n{decorator}\nasync def tick(event):\n{body}"
 
 
 class TestSchedule:
@@ -152,7 +152,7 @@ class TestSchedule:
         """The schedule starts when the triggers are registered, which is after @startup has finished."""
         automation = interval_world.add(
             "ticker",
-            "from haanim import on_interval, startup, sleep\n\n@startup\nasync def on_start():\n    await sleep(20)\n\n"
+            "from haanim import on_interval, startup, haa\n\n@startup\nasync def on_start():\n    await haa.sleep(20)\n\n"
             "@on_interval(60)\ndef tick(event):\n    log.append((event.execution_count, event.call_time))\n",
         )
         await automation.load()
@@ -216,14 +216,14 @@ class TestEvent:
 
 
 SLOW = """
-from haanim import ActionMode, action, on_interval, sleep
+from haanim import ActionMode, action, on_interval, haa
 
 @on_interval(60)
 @action(execution_mode=ActionMode.%s)
 async def tick(event):
     log.append((event.execution_count, event.call_time))
     try:
-        await sleep(150)
+        await haa.sleep(150)
     except BaseException as err:
         log.append((type(err).__name__, haa_now()))
         raise

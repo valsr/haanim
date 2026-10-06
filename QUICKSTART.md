@@ -88,23 +88,19 @@ Your development container includes:
 
 ```text
 haanim/
-├── custom_components/haanim/   # Your integration code (live-mounted!)
-│   ├── __init__.py             # Main entry point
-│   ├── config_flow.py          # UI configuration
-│   ├── const.py                # Constants
-│   ├── manifest.json           # Integration metadata
-│   └── translations/           # UI translations
-├── podman/                     # Podman/Docker development environment
-│   ├── container-config/       # Pre-baked container configuration
-│   ├── build-and-run.sh        # One-command setup
-│   ├── build-image.sh          # Build image only
-│   └── ...                     # Container management scripts
-├── docs/                       # Additional documentation
-│   ├── CONTAINER_DEV.md        # Complete container documentation
-│   ├── VSCODE_TASKS.md         # VS Code tasks guide
-│   └── ...                     # More guides
-├── Dockerfile.dev              # Development image definition
-└── docker-compose.dev.yml      # Compose file for built image
+├── src/haanim/                 # The engine and the test harness: the pip package (live-mounted)
+├── custom_components/haanim/   # The integration: entity, services, options, frontend (live-mounted)
+│   └── ui/                     # The panel and the dashboard card (plain ES modules)
+├── examples/                   # Example automations; the container's automations folder
+│   └── tests/                  # Their harness tests
+├── tests/
+│   ├── engine/                 # Tests that need no Home Assistant
+│   ├── integration/            # Tests with pytest-homeassistant-custom-component
+│   └── frontend/               # JavaScript tests, run with node
+├── podman/container-config/    # The container's Home Assistant configuration
+├── scripts/                    # Frontend tests, coverage check, end-to-end smoke test
+├── docs/                       # The automation guide and development environment notes
+└── Dockerfile                  # The development image
 ```
 
 ## Debugging

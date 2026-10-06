@@ -1,0 +1,19 @@
+title: HAAnim examples
+views:
+  - title: Examples
+    path: examples
+    cards:
+      - type: custom:haanim-card
+        automation_id: dashboard
+      - type: custom:haanim-card
+        automation_id: climate
+      - type: custom:haanim-card
+        automation_id: motion_light
+      - type: entities
+        title: Try the examples
+        entities:
+          - input_number.temperature
+          - input_number.outdoor_temp
+          - input_boolean.hallway_motion
+          - light.hallway
+          - light.bedroom

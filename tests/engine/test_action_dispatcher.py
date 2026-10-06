@@ -1023,24 +1023,24 @@ class TestShutdown:
 
 MODES_SOURCE = """
 from haanim import ActionMode, ActionDroppedError, QueueFullError, ActionCancelledError
-from haanim import action, on_state, sleep, haa
+from haanim import action, on_state, haa
 
 @action
 async def dropping(event):
     log.append(f"dropping {event.data['n']}")
-    await sleep(10)
+    await haa.sleep(10)
     return event.data["n"]
 
 @action(name="queue", aliases=["line"], execution_mode=ActionMode.QUEUE)
 async def queueing(event):
     log.append(f"queueing {event.data['n']}")
-    await sleep(10)
+    await haa.sleep(10)
     return event.data["n"]
 
 @action(execution_mode=ActionMode.CANCEL)
 async def latest(event):
     log.append(f"latest {event.data['n']}")
-    await sleep(10)
+    await haa.sleep(10)
     return event.data["n"]
 
 @action
@@ -1205,13 +1205,13 @@ class TestReentrantAutomationCalls:
 
 
 STOP_SOURCE = """
-from haanim import ActionMode, action, shutdown, sleep
+from haanim import ActionMode, action, shutdown, haa
 
 @action(execution_mode=ActionMode.QUEUE)
 async def work(event):
     log.append(f"work {event.data['n']} started")
     try:
-        await sleep(event.data.get("seconds", 60))
+        await haa.sleep(event.data.get("seconds", 60))
         log.append(f"work {event.data['n']} finished")
         return event.data["n"]
     except BaseException as err:
@@ -1285,7 +1285,7 @@ class TestStopRemovesQueuedRequests:
 
 
 FAILING_START_SOURCE = """
-from haanim import ActionMode, action, startup, sleep, haa
+from haanim import ActionMode, action, startup, haa
 import asyncio
 
 started = []
@@ -1293,13 +1293,13 @@ started = []
 @action(execution_mode=ActionMode.QUEUE)
 async def work(event):
     started.append(event.data["n"])
-    await sleep(60)
+    await haa.sleep(60)
 
 @startup
 async def on_start():
     asyncio.ensure_future(haa.call("work", n=1))
     asyncio.ensure_future(haa.call("work", n=2))
-    await sleep(0)
+    await haa.sleep(0)
     raise RuntimeError("cannot start")
 """
 

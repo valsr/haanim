@@ -12,8 +12,8 @@ It also carries the type information for what an automation imports::
 Inside Home Assistant, and inside the test harness, each automation gets these
 names from the interpreter, bound to that automation. Here they are the same
 classes and decorators, so editors and type checkers see the real signatures.
-``haa``, ``hass``, ``logging`` and ``sleep`` belong to a running automation and
-exist here for type checking only.
+``haa``, ``hass`` and ``logging`` belong to a running automation and exist here
+for type checking only.
 """
 
 from typing import TYPE_CHECKING, Any
@@ -65,16 +65,13 @@ from haanim.events import (
 
 __version__ = "0.1.0"
 
-RUNTIME_ONLY = ("haa", "hass", "logging", "sleep")
+RUNTIME_ONLY = ("haa", "hass", "logging")
 """Names an automation imports that exist only while it runs: the interpreter supplies them."""
 
 if TYPE_CHECKING:
     haa: HAAnim
     hass: Any
     logging: LoggerWrapper
-
-    async def sleep(duration: str | float) -> None:
-        """Suspend the action for a duration: seconds, or text such as ``"5s"`` or ``"00:01:30"``."""
 
 
 def __getattr__(name: str) -> Any:
@@ -93,7 +90,6 @@ __all__ = [
     "haa",
     "hass",
     "logging",
-    "sleep",
     "HAAnim",
     "HAAnimAutomationProxy",
     "HAAnimCard",

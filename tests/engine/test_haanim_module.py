@@ -140,9 +140,9 @@ class TestNothingIsInjected:
         with pytest.raises(NameError, match=f"name '{name}' is not defined"):
             await load_and_run(context)
 
-    @pytest.mark.parametrize("name", FORMERLY_INJECTED)
+    @pytest.mark.parametrize("name", [name for name in FORMERLY_INJECTED if name != "sleep"])
     async def test_name_can_be_imported(self, tmp_path: Path, name: str) -> None:
-        """Every such name is available from ``haanim``."""
+        """Every such name is available from ``haanim``, except ``sleep``, which is ``haa.sleep()``."""
         context = await loaded(automation_file(tmp_path, "auto"), f"from haanim import {name}\n")
 
         assert context.get_symbol(name) is not None

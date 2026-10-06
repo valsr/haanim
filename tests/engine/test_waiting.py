@@ -22,16 +22,11 @@ from haanim.testing.fakes import DEFAULT_NOW
 from tests.engine.test_lifecycle import World, world  # noqa: F401  pylint: disable=unused-import
 
 SOURCE = """
-from haanim import ActionMode, AutomationSyntaxError, action, haa, on_state, sleep
+from haanim import ActionMode, AutomationSyntaxError, action, haa, on_state
 
 @action
 async def nap(event):
     await haa.sleep(event.data["duration"])
-    return haa.now()
-
-@action
-async def nap_with_helper(event):
-    await sleep(event.data["duration"])
     return haa.now()
 
 @action(timeout=5)
@@ -116,7 +111,7 @@ class TestSleep:
         assert call.done()
 
     async def test_zero_yields_without_waiting(self, world: World) -> None:
-        """sleep(0) returns without any time passing."""
+        """haa.sleep(0) returns without any time passing."""
         automation = await world.started("waiter", SOURCE)
         assert await automation.call_action("nap", {"duration": 0}) == DEFAULT_NOW
 
@@ -136,10 +131,12 @@ class TestSleep:
             await automation.call_action("nap", {"duration": duration})
         assert str(exc_info.value).startswith("haa.sleep: ")
 
-    async def test_imported_sleep_is_the_same(self, world: World) -> None:
-        """from haanim import sleep is haa.sleep."""
-        automation = await world.started("waiter", SOURCE)
-        assert await seconds_slept(world, automation, "nap_with_helper", "00:01:00") == 60
+    async def test_sleep_is_only_on_haa(self, world: World) -> None:
+        """`sleep` cannot be imported from haanim: the one way to sleep is haa.sleep()."""
+        automation = world.add("importer", "from haanim import sleep\n")
+        assert await automation.load()
+        assert not await automation.start()
+        assert "cannot import name 'sleep' from 'haanim'" in (automation.message or "")
 
     async def test_counts_towards_the_action_timeout(self, world: World) -> None:
         """An action asleep past its timeout is timed out."""
