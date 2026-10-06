@@ -306,11 +306,20 @@ haa.card.graph("curve", series={"Target": [(0, 18), (6, 21), (22, 18)]}, unit="Â
 haa.card.graph("power", series={"Power": [("2025-01-06T12:00:00+00:00", 120), ("2025-01-06T13:00:00+00:00", 90)]})
 ```
 
-`kind` is `"line"`, `"area"` or `"bar"`. The points of a series are plain numbers (drawn one after the other),
-`(x, y)` pairs, or `(time, y)` pairs with timezone-aware times; `None` as a value leaves a gap. A graph has at
-most 8 entities or series, a series at most 500 points, and history goes back at most 720 hours. Only numeric
-states are drawn. The card keeps nothing for the automation: numbers that should survive a restart belong in
-persistent variables.
+Numbers are drawn against a value axis marked with round numbers; `kind` is `"line"`, `"area"` or `"bar"`.
+An entity or series whose values are states rather than numbers (`on`, `off`, `heat`, ...) is drawn as a
+timeline instead: a row with a coloured segment for every state it was in. One graph can have both:
+
+```python
+haa.card.graph("climate", ["sensor.temperature", "climate.living_room", "binary_sensor.window"], hours=24)
+haa.card.graph("pump", series={"Pump": [(0, "on"), (6, "off"), (8, "on"), (10, "on")]})
+```
+
+The points of a series are plain values (drawn one after the other), `(x, y)` pairs, or `(time, y)` pairs
+with timezone-aware times; the values of one series are all numbers or all states, and `None` leaves a gap. A
+state holds until the next point. A graph has at most 8 entities or series, a series at most 500 points, and
+history goes back at most 720 hours. The card keeps nothing for the automation: what should survive a restart
+belongs in persistent variables.
 
 The fixed parts can be hidden, each on its own, and shown again at any time:
 

@@ -133,11 +133,8 @@ async def test_graphs() -> None:
     """One graph shows the temperature's history, the other the counts the automation kept."""
     async with AutomationHarness(DASHBOARD) as automation:
         temperature = automation.card.block("temperature")
-        assert (temperature["entities"], temperature["hours"], temperature["kind"]) == (
-            ["sensor.temperature"],
-            1.0,
-            "area",
-        )
+        assert temperature["entities"] == ["sensor.temperature", "input_boolean.fan"]
+        assert (temperature["hours"], temperature["kind"]) == (1.0, "area")
         assert automation.card.block("presses")["series"] == {"Count": []}
 
         await automation.press("add")

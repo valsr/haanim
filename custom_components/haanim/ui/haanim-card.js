@@ -9,7 +9,7 @@
  *     automation_id: climate
  */
 
-import { historyPoints, numericState } from './haanim-graph.js';
+import { historyPoints } from './haanim-graph.js';
 import { automationPath, renderCard, serviceCall } from './haanim-render.js';
 
 const DOMAIN = 'haanim';
@@ -48,6 +48,10 @@ const STYLES = `
     .graph .tick { fill: var(--secondary-text-color, #727272); font-size: 10px; }
     .graph .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
     .graph .area { fill-opacity: 0.18; stroke: none; }
+    .graph .row-label { fill: var(--secondary-text-color, #727272); font-size: 10px; }
+    .graph .segment { stroke: none; }
+    .swatch.square { border-radius: 2px; }
+    .legend.states { font-size: 0.8em; }
     .graph-title { font-weight: 500; margin-bottom: 4px; }
     .graph-empty { color: var(--secondary-text-color); font-style: italic; padding: 24px 0; text-align: center; }
     .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; font-size: 0.9em; }
@@ -294,7 +298,7 @@ export class HAAnimCard extends HTMLElement {
                 const points = entry.points[entityId] || (entry.points[entityId] = []);
                 const time = Date.parse(state.last_updated) || Date.now();
                 const last = points[points.length - 1];
-                if (!last || time > last[0]) points.push([time, numericState(state.state)]);
+                if (!last || time > last[0]) points.push([time, String(state.state)]);
             }
         }
     }

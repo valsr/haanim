@@ -220,6 +220,24 @@ class TestBlocks:
             [noon.timestamp() + 7200, 90.0],
         ]
 
+    def test_graph_of_states(self, card: HAAnimCard) -> None:
+        """Test a series can be states instead of numbers, in each of the three forms; None is a gap."""
+        noon = datetime(2025, 1, 6, 12, 0, tzinfo=timezone.utc)
+        card.graph("modes", series={"Mode": ["heat", "heat", None, "off"]})
+        card.graph("pump", series={"Pump": [(0, "on"), (6.5, "off")]})
+        card.graph("door", series={"Door": [(noon, "open"), ("2025-01-06T12:05:00+00:00", "closed")]})
+        modes, pump, door = card.blocks
+        assert modes["series"] == {"Mode": [[0.0, "heat"], [1.0, "heat"], [2.0, None], [3.0, "off"]]}
+        assert (modes["x"], pump["x"], door["x"]) == ("index", "number", "time")
+        assert pump["series"] == {"Pump": [[0.0, "on"], [6.5, "off"]]}
+        assert door["series"]["Door"][1] == [noon.timestamp() + 300, "closed"]
+
+    def test_graph_of_numbers_and_states(self, card: HAAnimCard) -> None:
+        """Test one graph can have a series of numbers and a series of states."""
+        card.graph("g", series={"Temperature": [(0, 20.5), (1, 21)], "Heating": [(0, "off"), (1, "on")]})
+        assert card.blocks[0]["series"]["Heating"] == [[0.0, "off"], [1.0, "on"]]
+        assert card.blocks[0]["series"]["Temperature"] == [[0.0, 20.5], [1.0, 21.0]]
+
     def test_graph_values_are_json(self, card: HAAnimCard) -> None:
         """Test what a graph block carries is plain JSON, whatever was passed in."""
         card.graph("g", series={"A": [(datetime(2025, 1, 6, tzinfo=timezone.utc), 1)]})
@@ -716,10 +734,28 @@ INVALID: list[tuple[str, Any, type[Exception], str]] = [
         "has 501 points; a series has at most 500",
     ),
     (
-        "graph value a string",
-        lambda c: c.graph("g", series={"A": [1, "2"]}),
-        TypeError,
+        "graph numbers and states in one series",
+        lambda c: c.graph("g", series={"A": [1, "on"]}),
+        ValueError,
+        "series 'A' mixes numbers and states",
+    ),
+    (
+        "graph state empty",
+        lambda c: c.graph("g", series={"A": ["on", " "]}),
+        ValueError,
         "series 'A', point 1",
+    ),
+    (
+        "graph state too long",
+        lambda c: c.graph("g", series={"A": ["x" * 41]}),
+        ValueError,
+        "1 to 40 characters",
+    ),
+    (
+        "graph value a list",
+        lambda c: c.graph("g", series={"A": [(0, [1])]}),
+        TypeError,
+        "series 'A', point 0",
     ),
     (
         "graph value infinite",
@@ -737,7 +773,7 @@ INVALID: list[tuple[str, Any, type[Exception], str]] = [
         "graph triple",
         lambda c: c.graph("g", series={"A": [(1, 2, 3)]}),
         ValueError,
-        "a number or an \\(x, y\\) pair",
+        "a value or an \\(x, y\\) pair",
     ),
     (
         "graph time not iso",

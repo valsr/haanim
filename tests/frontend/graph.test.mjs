@@ -3,11 +3,15 @@ import { describe, test } from 'node:test';
 
 import {
     GRAPH_COLORS,
+    classify,
     formatValue,
     graphData,
     historyPoints,
+    niceStep,
     numericState,
     renderGraph,
+    stateColors,
+    valueAxis,
 } from '../../custom_components/haanim/ui/haanim-graph.js';
 import { renderBlock } from '../../custom_components/haanim/ui/haanim-render.js';
 
@@ -46,17 +50,75 @@ describe('numbers', () => {
         assert.equal(formatValue(NaN), '');
         assert.equal(formatValue(null), '');
     });
-    test("Home Assistant's history as points", () => {
-        const rows = [{ s: '22', lu: 1736164900.5 }, { s: 'unavailable', lu: 1736165000 }, { s: '20', lu: 1736164800 }, { s: '1', lu: 'x' }];
-        assert.deepEqual(historyPoints(rows), [[1736164800000, 20], [1736164900500, 22], [1736165000000, null]]);
+    test("Home Assistant's history as points, in order of time, states as text", () => {
+        const rows = [{ s: '22', lu: 1736164900.5 }, { s: 'unavailable', lu: 1736165000 }, { s: '20', lu: 1736164800 }, { s: '1', lu: 'x' }, { s: null, lu: 1736165100 }];
+        assert.deepEqual(historyPoints(rows), [[1736164800000, '20'], [1736164900500, '22'], [1736165000000, 'unavailable'], [1736165100000, '']]);
         assert.deepEqual(historyPoints(undefined), []);
+    });
+});
+
+describe('numbers or states', () => {
+    test('a series with a number in it is numeric, and what is not a number is a gap', () => {
+        assert.deepEqual(classify([[0, '20'], [1, 'unavailable'], [2, 21.5], [3, null]]), { text: false, points: [[0, 20], [1, null], [2, 21.5], [3, null]] });
+    });
+    test('a series of states is a timeline, with gaps where the state says nothing', () => {
+        assert.deepEqual(classify([[0, 'on'], [1, 'unavailable'], [2, 'off'], [3, 'Unknown'], [4, ''], [5, null]]), {
+            text: true,
+            points: [[0, 'on'], [1, null], [2, 'off'], [3, null], [4, null], [5, null]],
+        });
+    });
+    test('nothing usable is neither', () => {
+        assert.equal(classify([[0, 'unavailable'], [1, null]]).text, false);
+        assert.equal(classify([]).text, false);
+        assert.deepEqual(classify([[0, NaN]]).points, [[0, null]]);
+    });
+});
+
+describe('round numbers on the value axis', () => {
+    test('steps are 1, 2, 2.5 or 5 times a power of ten', () => {
+        assert.equal(niceStep(3), 1);
+        assert.equal(niceStep(8), 2);
+        assert.equal(niceStep(10), 2.5);
+        assert.equal(niceStep(14.11), 5);
+        assert.equal(niceStep(40), 10);
+        assert.equal(niceStep(0.3), 0.1);
+        assert.equal(niceStep(1000), 250);
+        assert.equal(niceStep(0), 1);
+        assert.equal(niceStep(NaN), 1);
+    });
+    const axis = (values, block = {}, bars = false) => valueAxis(block, values, bars);
+    test('the axis ends on round numbers beyond the data', () => {
+        assert.deepEqual(axis([13.87, 27.98]), { low: 10, high: 30, ticks: [10, 15, 20, 25, 30] });
+        assert.deepEqual(axis([1, 4]), { low: 1, high: 4, ticks: [1, 2, 3, 4] });
+        assert.deepEqual(axis([0.12, 0.38]), { low: 0.1, high: 0.4, ticks: [0.1, 0.2, 0.3, 0.4] });
+        assert.deepEqual(axis([-3, 7]), { low: -5, high: 7.5, ticks: [-5, -2.5, 0, 2.5, 5, 7.5] });
+        assert.deepEqual(axis([980, 2040]), { low: 500, high: 2500, ticks: [500, 1000, 1500, 2000, 2500] });
+    });
+    test('an end the automation sets is kept, and the numbers between are still round', () => {
+        assert.deepEqual(axis([17, 21.5], { min: 15, max: 25 }), { low: 15, high: 25, ticks: [15, 17.5, 20, 22.5, 25] });
+        assert.deepEqual(axis([3, 18], { min: 1 }), { low: 1, high: 20, ticks: [5, 10, 15, 20] });
+        assert.deepEqual(axis([3, 18], { max: 19 }), { low: 0, high: 19, ticks: [0, 5, 10, 15] });
+    });
+    test('bars include zero', () => {
+        assert.deepEqual(axis([2, 4], {}, true), { low: 0, high: 4, ticks: [0, 1, 2, 3, 4] });
+        assert.deepEqual(axis([-4, -2], {}, true), { low: -4, high: 0, ticks: [-4, -3, -2, -1, 0] });
+        assert.equal(axis([2, 4], { min: 1 }, true).low, 1);
+    });
+    test('values that are all the same still get an axis around them', () => {
+        assert.deepEqual(axis([5, 5]), { low: 4.5, high: 5.5, ticks: [4.5, 4.75, 5, 5.25, 5.5] });
+        assert.deepEqual(axis([0]), { low: -1, high: 1, ticks: [-1, -0.5, 0, 0.5, 1] });
+        assert.deepEqual(axis([5], { min: 5 }), { low: 5, high: 6, ticks: [5, 5.25, 5.5, 5.75, 6] });
+        assert.deepEqual(axis([5], { max: 5 }), { low: 4.4, high: 5, ticks: [4.4, 4.6, 4.8, 5] });
+    });
+    test('no stray decimals from adding steps', () => {
+        for (const tick of axis([0.1, 0.7]).ticks) assert.ok(String(tick).length <= 4, String(tick));
     });
 });
 
 describe('graphData', () => {
     test('series of the automation: positions as given, joined by straight lines', () => {
         const data = graphData(supplied());
-        assert.deepEqual(data.series, [{ name: 'A', points: [[0, 1], [1, 2], [2, 4]] }]);
+        assert.deepEqual(data.series, [{ name: 'A', text: false, points: [[0, 1], [1, 2], [2, 4]] }]);
         assert.deepEqual(data.domain, [0, 2]);
         assert.equal(data.time, false);
         assert.equal(data.step, false);
@@ -107,9 +169,10 @@ describe('renderGraph: series of the automation', () => {
     test('the line goes from the lowest value at the bottom to the highest at the top', () => {
         assert.deepEqual(paths(renderGraph(supplied())), ['M44 158h0L218 108L392 8']);
     });
-    test('the value axis shows the lowest, the middle and the highest value', () => {
-        const ticks = [...renderGraph(supplied()).matchAll(/text-anchor="end">([^<]*)</g)].map((match) => match[1]);
-        assert.deepEqual(ticks, ['1', '2.5', '4', '2']);
+    test('the value axis is marked with round numbers', () => {
+        const ticks = (html) => [...html.matchAll(/class="tick" x="38"[^>]*>([^<]*)</g)].map((match) => match[1]);
+        assert.deepEqual(ticks(renderGraph(supplied())), ['1', '2', '3', '4']);
+        assert.deepEqual(ticks(renderGraph(supplied({ series: { A: [[0, 13.87], [1, 27.98]] } }))), ['10', '15', '20', '25', '30']);
     });
     test('min and max set the value axis, and values outside it stay inside the plot', () => {
         const html = renderGraph(supplied({ min: 0, max: 2 }));
@@ -208,6 +271,83 @@ describe('renderGraph: entity history', () => {
         const html = renderGraph(history({ entities: ['sensor.a', 'sensor.b'] }), context);
         assert.equal(paths(html).length, 2);
         assert.match(html, />10<\/text>.*>20<\/text>.*>30<\/text>/);
+    });
+});
+
+describe('renderGraph: states over time', () => {
+    const fan = (points, extra = {}) => ({ now: NOW, history: { h: { loaded: true, points: { 'fan.a': points, ...extra } } } });
+    const segments = (html) =>
+        [...html.matchAll(/<rect class="segment" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" style="fill: ([^"]*)"><title>([^<]*)<\/title>/g)].map((m) => ({
+            x: Number(m[1]),
+            y: Number(m[2]),
+            width: Number(m[3]),
+            fill: m[5],
+            state: m[6],
+        }));
+
+    test('an entity whose states are not numbers is a row of segments, one per state it was in', () => {
+        const html = renderGraph(history({ entities: ['fan.a'] }), fan([[NOW - 2 * HOUR, 'off'], [NOW - HOUR, 'on'], [NOW - HOUR / 2, 'off']]));
+        assert.deepEqual(segments(html).map((one) => [one.state, one.x, one.width]), [['off', 44, 174], ['on', 218, 87], ['off', 305, 87]]);
+        assert.match(html, /<text class="row-label" x="44" y="18">fan.a<\/text>/);
+        assert.doesNotMatch(html, /<path|class="grid"/, 'no value axis without numbers');
+        assert.match(html, /viewBox="0 0 400 56"/);
+    });
+    test('states in which nothing happens are muted, the others get a colour each, the same in every row', () => {
+        const context = fan([[NOW - 2 * HOUR, 'off'], [NOW - HOUR, 'heat']], { 'fan.b': [[NOW - 2 * HOUR, 'cool'], [NOW - HOUR, 'heat'], [NOW - HOUR / 2, 'idle']] });
+        const drawn = segments(renderGraph(history({ entities: ['fan.a', 'fan.b'] }), context));
+        const fill = (state) => [...new Set(drawn.filter((one) => one.state === state).map((one) => one.fill))];
+        assert.deepEqual(fill('off'), ['var(--haanim-graph-inactive, #bdbdbd)']);
+        assert.deepEqual(fill('idle'), ['var(--haanim-graph-inactive, #bdbdbd)']);
+        assert.deepEqual(fill('heat'), ['var(--haanim-graph-color-1, #03a9f4)']);
+        assert.deepEqual(fill('cool'), ['var(--haanim-graph-color-2, #ff9800)']);
+        assert.deepEqual([...new Set(drawn.map((one) => one.y))], [22, 52], 'a row per entity');
+    });
+    test('a time the entity was unavailable is a gap', () => {
+        const drawn = segments(renderGraph(history({ entities: ['fan.a'] }), fan([[NOW - 2 * HOUR, 'on'], [NOW - HOUR, 'unavailable'], [NOW - HOUR / 2, 'on']])));
+        assert.deepEqual(drawn.map((one) => [one.x, one.width]), [[44, 174], [305, 87]]);
+    });
+    test('the legend shows the state each row is in now, and which colour is which state', () => {
+        const states = { 'fan.a': { state: 'on', attributes: { friendly_name: 'Fan <1>' } } };
+        const html = renderGraph(history({ entities: ['fan.a'] }), { ...fan([[NOW - HOUR, 'off'], [NOW - HOUR / 2, 'on']]), states });
+        assert.match(html, /<span class="swatch" style="background: var\(--haanim-graph-color-1, #03a9f4\)"><\/span><span class="legend-name">Fan &lt;1&gt;<\/span><span class="legend-value">on<\/span>/);
+        assert.match(html, /<div class="legend states">.*legend-name">off<.*legend-name">on</);
+        assert.match(html, /<text class="row-label" x="44" y="18">Fan &lt;1&gt;<\/text>/);
+    });
+    test('numbers and states in one graph: the plot on top, the timeline below, on the same time axis', () => {
+        const context = { now: NOW, history: { h: { loaded: true, points: { 'sensor.t': [[NOW - 2 * HOUR, '20'], [NOW - HOUR, '22']], 'fan.a': [[NOW - 2 * HOUR, 'off'], [NOW - HOUR, 'on']] } } } };
+        const html = renderGraph(history({ entities: ['sensor.t', 'fan.a'] }), context);
+        assert.deepEqual(paths(html), ['M44 158h0H218V8H392']);
+        assert.deepEqual(segments(html).map((one) => [one.state, one.x, one.y]), [['off', 44, 178], ['on', 218, 178]]);
+        assert.match(html, /viewBox="0 0 400 212"/);
+        assert.match(html, /legend-name">sensor.t<\/span><span class="legend-value">22</);
+        assert.match(html, /legend-name">fan.a<\/span><span class="legend-value">on</);
+        assert.match(html, /stroke: var\(--haanim-graph-color-1, #03a9f4\)/);
+        assert.equal(segments(html)[1].fill, 'var(--haanim-graph-color-2, #ff9800)', 'a state does not take the colour of a line');
+    });
+    test('a state with markup in it is text', () => {
+        const html = renderGraph(history({ entities: ['fan.a'] }), fan([[NOW - HOUR, '<b>x</b>']]));
+        assert.match(html, /<title>&lt;b&gt;x&lt;\/b&gt;<\/title>/);
+        assert.doesNotMatch(html, /<b>/);
+    });
+    test("states of the automation's own: each holds until the next point", () => {
+        const html = renderGraph(supplied({ x: 'number', series: { Pump: [[0, 'on'], [6, 'off'], [8, 'on'], [10, 'on']] } }));
+        assert.deepEqual(segments(html).map((one) => [one.state, one.x, one.width]), [['on', 44, 208.8], ['off', 252.8, 69.6], ['on', 322.4, 69.6]]);
+    });
+    test("states of the automation's own, one after the other: a slot each", () => {
+        const html = renderGraph(supplied({ series: { Mode: [[0, 'heat'], [1, 'heat'], [2, 'off'], [3, null]] } }));
+        assert.deepEqual(segments(html).map((one) => [one.state, one.x, one.width]), [['heat', 44, 87], ['heat', 131, 87], ['off', 218, 87]]);
+        assert.deepEqual(graphData(supplied({ series: { Mode: [[0, 'heat'], [1, 'off']] } })).domain, [0, 2]);
+    });
+    test('a row without a state now has a dash in the legend', () => {
+        const html = renderGraph(supplied({ series: { Mode: [[0, 'heat'], [1, null]], Other: [[0, null], [1, 'x']] } }));
+        assert.match(html, /legend-name">Mode<\/span><span class="legend-value">heat</);
+    });
+    test('the colours of the states', () => {
+        const colors = stateColors([{ points: [[0, 'off'], [1, 'on'], [2, null], [3, 'on'], [4, 'auto']] }]);
+        assert.deepEqual([...colors.keys()], ['off', 'on', 'auto']);
+        assert.equal(colors.get('auto'), 'var(--haanim-graph-color-2, #ff9800)');
+        assert.equal(stateColors([]).size, 0);
+        assert.equal(stateColors([{ points: [[0, 'on']] }], 3).get('on'), 'var(--haanim-graph-color-4, #e91e63)');
     });
 });
 

@@ -27,6 +27,7 @@ __all__ = [
     "MAX_GRAPH_HOURS",
     "MAX_GRAPH_POINTS",
     "MAX_GRAPH_SERIES",
+    "MAX_GRAPH_STATE_LENGTH",
     "MAX_TEXT_LENGTH",
     "MAX_TITLE_LENGTH",
 ]
@@ -45,6 +46,9 @@ MAX_GRAPH_SERIES = 8
 
 MAX_GRAPH_POINTS = 500
 """The most points one series of a graph can have."""
+
+MAX_GRAPH_STATE_LENGTH = 40
+"""The most characters a state in a series of states can have."""
 
 MAX_GRAPH_HOURS = 720
 """The longest entity history a graph can show: 30 days."""
@@ -117,41 +121,65 @@ def _graph_entities(entities: Any, hours: Any) -> dict[str, Any]:
     return {"entities": checked, "hours": span}
 
 
+def _graph_point(point: Any, index: int, here: str) -> tuple[str, float, float | str | None]:
+    """Check one point of a series.
+
+    Returns:
+        The kind of its horizontal position (``index``, ``number`` or ``time``), that
+        position as a number, and its value: a number, a state as text, or None.
+    """
+    if isinstance(point, (list, tuple)):
+        if len(point) != 2:
+            raise ValueError(f"{here}: a point is a value or an (x, y) pair, not {point!r}")
+        kind, horizontal = _graph_x(point[0], here)
+        value = point[1]
+    else:
+        kind, horizontal, value = "index", float(index), point
+    if value is None:
+        return kind, horizontal, None
+    if isinstance(value, str):
+        if not value.strip() or len(value) > MAX_GRAPH_STATE_LENGTH:
+            raise ValueError(
+                f"{here}: a state is 1 to {MAX_GRAPH_STATE_LENGTH} characters of text, not {value!r}"
+            )
+        return kind, horizontal, value
+    return kind, horizontal, _check_number(value, here)
+
+
 def _graph_series(series: Any) -> dict[str, Any]:
     """Check the series of a graph and return them as the block carries them.
 
     Returns:
-        ``series`` as ``{name: [[x, y], ...]}`` with numbers only (``y`` may be None),
-        and ``x``: ``index`` if the points were plain numbers, else ``number`` or ``time``.
+        ``series`` as ``{name: [[x, y], ...]}``, where ``x`` is a number and ``y`` a number,
+        a state as text, or None; and ``x``: ``index`` if the points were plain values, else
+        ``number`` or ``time``.
     """
     if not isinstance(series, Mapping):
         raise TypeError(f"series must be a dictionary of name to points, not {type(series).__name__}")
     if not 1 <= len(series) <= MAX_GRAPH_SERIES:
         raise ValueError(f"A graph shows 1 to {MAX_GRAPH_SERIES} series, not {len(series)}")
     kinds: set[str] = set()
-    checked: dict[str, list[list[float | None]]] = {}
+    checked: dict[str, list[list[float | str | None]]] = {}
     for name, points in series.items():
         where = f"series {_check_str(name, 'a series name', empty=False)!r}"
         if isinstance(points, (str, bytes, Mapping)) or not isinstance(points, Sequence):
             raise TypeError(f"{where}: the points must be a list, not {type(points).__name__}")
         if len(points) > MAX_GRAPH_POINTS:
             raise ValueError(f"{where} has {len(points)} points; a series has at most {MAX_GRAPH_POINTS}")
-        pairs: list[list[float | None]] = []
+        pairs: list[list[float | str | None]] = []
+        forms: set[str] = set()
         for index, point in enumerate(points):
-            here = f"{where}, point {index}"
-            if isinstance(point, (list, tuple)):
-                if len(point) != 2:
-                    raise ValueError(f"{here}: a point is a number or an (x, y) pair, not {point!r}")
-                kind, horizontal = _graph_x(point[0], here)
-                value = point[1]
-            else:
-                kind, horizontal, value = "index", float(index), point
+            kind, horizontal, value = _graph_point(point, index, f"{where}, point {index}")
             kinds.add(kind)
-            pairs.append([horizontal, None if value is None else _check_number(value, here)])
+            if value is not None:
+                forms.add("states" if isinstance(value, str) else "numbers")
+            pairs.append([horizontal, value])
+        if len(forms) > 1:
+            raise ValueError(f"{where} mixes numbers and states; a series is one or the other")
         checked[name] = pairs
     if len(kinds) > 1:
         raise ValueError(
-            "The points of a graph are all plain numbers, all (number, y) pairs or all (time, y) pairs; "
+            "The points of a graph are all plain values, all (number, y) pairs or all (time, y) pairs; "
             f"these are mixed: {', '.join(sorted(kinds))}"
         )
     return {"series": checked, "x": kinds.pop() if kinds else "index"}
@@ -413,22 +441,28 @@ class HAAnimCard:
 
         With ``entities`` the graph shows what Home Assistant recorded for
         them over the last ``hours`` and follows them from then on. With
-        ``series`` it shows the numbers given; to change them, set the block
+        ``series`` it shows the values given; to change them, set the block
         again.
+
+        Numbers are drawn against a value axis. An entity or series whose
+        values are states, not numbers (``"on"``, ``"off"``, ``"heat"``), is
+        drawn as a timeline: a row with a coloured segment for each state it
+        was in. A graph can have both.
 
         Args:
             id: ID of the block.
-            entities: One entity ID or up to eight, whose numeric states are drawn over time.
+            entities: One entity ID or up to eight, whose states are drawn over time.
             series: Up to eight named series, ``{"Name": points}``. The points of a series are
-                numbers (drawn one after the other), or ``(x, y)`` pairs where every ``x`` is a
-                number, or every ``x`` is a time (a timezone-aware datetime or ISO 8601 text). A
-                ``y`` of None leaves a gap. At most 500 points per series.
+                values (drawn one after the other), or ``(x, y)`` pairs where every ``x`` is a
+                number, or every ``x`` is a time (a timezone-aware datetime or ISO 8601 text). The
+                values of a series are all numbers or all states (text); None leaves a gap. A
+                state holds until the next point. At most 500 points per series.
             hours: How far back the history of entities goes; at most 720 (30 days).
-            kind: ``"line"``, ``"area"`` or ``"bar"``.
+            kind: How numbers are drawn: ``"line"``, ``"area"`` or ``"bar"``.
             title: A heading above the graph.
             unit: The unit of the values. For entities it defaults to the first entity's own.
-            min: The lowest value of the vertical axis; the lowest value shown if omitted.
-            max: The highest value of the vertical axis; the highest value shown if omitted.
+            min: The lowest value of the vertical axis; a round number below the data if omitted.
+            max: The highest value of the vertical axis; a round number above the data if omitted.
 
         Raises:
             ValueError: Unless exactly one of ``entities`` and ``series`` is given,

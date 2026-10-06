@@ -62,8 +62,11 @@ def build_card(event: ActionEvent) -> None:
     show_count()
     haa.card.value("uptime", label="Running for", value=0, unit="min")
     haa.card.entity("sun", ENTITY)
-    # A graph of what Home Assistant recorded for an entity; it follows the entity from then on
-    haa.card.graph("temperature", TEMPERATURE, hours=1, kind="area", title="Temperature, last hour")
+    # A graph of what Home Assistant recorded for entities; it follows them from then on. The
+    # temperature is numbers and is drawn as an area; the fan is on or off and becomes a timeline.
+    haa.card.graph(
+        "temperature", [TEMPERATURE, FAN], hours=1, kind="area", title="Temperature and fan, last hour"
+    )
     # Icons follow their entity: lit and turning while the fan is on, dimmed while it is off
     haa.card.icon("fan", FAN, icon="mdi:fan", spin=True)
     haa.card.icon("sun_icon", ENTITY)  # the entity's own icon, which changes with its state
