@@ -14,7 +14,8 @@ from typing import Any
 from haanim import const, events
 from haanim.engine import decorators
 from haanim.engine.errors import PUBLIC_ERRORS
-from haanim.engine.haanim_api import HAAnimServiceCall, HAAnimServiceProxy
+from haanim.engine.card import HAAnimCard
+from haanim.engine.haanim_api import HAAnim, HAAnimAutomationProxy, HAAnimServiceCall, HAAnimServiceProxy
 from haanim.entity import HAAnimEntity
 from haanim.engine.logging_wrapper import LoggerWrapper
 
@@ -129,6 +130,9 @@ def build_haanim_module(
         "hass": hass,
         "logging": logging_wrapper,
         "ActionMode": const.ActionMode,
+        "HAAnim": HAAnim,
+        "HAAnimAutomationProxy": HAAnimAutomationProxy,
+        "HAAnimCard": HAAnimCard,
         "HAAnimEntity": HAAnimEntity,
         "HAAnimServiceCall": HAAnimServiceCall,
         "HAAnimServiceProxy": HAAnimServiceProxy,

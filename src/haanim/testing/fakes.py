@@ -551,7 +551,17 @@ class FakeSunProvider:
             sunrise: Time of sunrise as ``HH:MM``, or ``None`` for no sunrise.
             sunset: Time of sunset as ``HH:MM``, or ``None`` for no sunset.
         """
-        self._times: dict[str, tuple[int, int] | None] = {
+        self._times: dict[str, tuple[int, int] | None] = {}
+        self.set_times(sunrise, sunset)
+
+    def set_times(self, sunrise: str | None = "07:00", sunset: str | None = "19:00") -> None:
+        """Change when the sun rises and sets.
+
+        Args:
+            sunrise: Time of sunrise as ``HH:MM``, or ``None`` for no sunrise.
+            sunset: Time of sunset as ``HH:MM``, or ``None`` for no sunset.
+        """
+        self._times = {
             "sunrise": self._parse(sunrise),
             "sunset": self._parse(sunset),
         }

@@ -1,4 +1,4 @@
-"""Test support for HAAnim: in-memory implementations of the host interfaces."""
+"""Test support for HAAnim: the automation harness and in-memory implementations of the host interfaces."""
 
 from haanim.testing.fakes import (
     FakeAutomationRegistry,
@@ -17,7 +17,13 @@ from haanim.testing.fakes import (
     make_host,
 )
 
+from haanim.testing.harness import AutomationCall, AutomationHarness, HarnessCard, HarnessError
+
 __all__ = [
+    "AutomationCall",
+    "AutomationHarness",
+    "HarnessCard",
+    "HarnessError",
     "FakeAutomationRegistry",
     "FakeClock",
     "FakeEventBus",

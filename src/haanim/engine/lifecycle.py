@@ -30,7 +30,7 @@ from haanim.engine.errors import (
     AutomationNotLoadedError,
     AutomationNotRunningError,
 )
-from haanim.events import SOURCE_TRIGGER
+from haanim.events import SOURCE_TRIGGER, ActionEvent
 from haanim.interfaces import AutomationTimes
 
 if TYPE_CHECKING:
@@ -486,6 +486,7 @@ class Automation:
         data: dict[str, Any] | None = None,
         *,
         caller: str | None = None,
+        event: ActionEvent | None = None,
     ) -> Any:
         """Call an action of the automation.
 
@@ -497,6 +498,9 @@ class Automation:
             action_name: A name of the action.
             data: The arguments of the call.
             caller: ID of the calling automation. Without it the call is a manual one.
+            event: The event to call the action with instead of the one that
+                follows from ``data`` and ``caller``; what the test harness uses
+                to call an action as a trigger would.
 
         Returns:
             What the action returns.
@@ -520,7 +524,8 @@ class Automation:
         if action is None or action.disabled:
             raise ActionNotFoundError(self.automation_id, action_name)
 
-        event = self.context.make_event(caller=caller, data=data)
+        if event is None:
+            event = self.context.make_event(caller=caller, data=data)
 
         # The dispatcher runs the action in a task of its own: if the caller is cancelled
         # (its automation is stopped, say), the call it already made runs to completion.
