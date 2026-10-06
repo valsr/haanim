@@ -296,7 +296,7 @@ actions, which exist only once the file has run: create buttons in `@startup`.
 | Create it with                                              | It shows                                   | Change it with                                  |
 | ----------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------- |
 | `create_text(id, markdown)`                                 | Markdown text                              | `set_text`                                      |
-| `create_image(id, asset=None, url=None, alt="")`            | An image from `assets/` or from a URL      | `set_asset`, `set_url`, `set_alt`               |
+| `create_image(id, asset=None, url=None, alt="", ...)`       | An image from `assets/` or from a URL      | `set_asset`, `set_url`, `set_alt`, `set_size`, `set_align`, `set_caption` |
 | `create_value(id, label, value, unit="")`                   | A labelled value                           | `set_value`, `set_label`, `set_unit`            |
 | `create_entity(id, entity_id)`                              | The live state of an entity                | `set_entity`                                    |
 | `create_icon(id, entity_id=None, icon=None, ...)`           | An icon, driven by an entity by default    | `set_icon`, `set_color`, `set_spin`, `set_label`, `set_entity`, `set_follow_entity` |
@@ -353,6 +353,27 @@ The fixed parts can be hidden, each on its own, and shown again at any time:
 haa.card.configure(state=False, log=False)       # no state badge, no Log button
 haa.card.configure(title=False, state=False, message=False, actions=False, log=False)   # only the content
 ```
+
+### Images
+
+An image is drawn at its own size, at the left of its row, and never wider than the space it has. `width`,
+`height`, `align` and `caption` change that:
+
+```python
+logo = haa.card.create_image("logo", asset="logo.png", width=120, align="center", caption="Pump house")
+plan = haa.card.create_image("plan", url="https://example.com/plan.png", width="50%", align="right")
+haa.card.add_element(logo)
+haa.card.add_element(plan)
+logo.set_size(width=200, height=100)      # fitted into 200 by 100, keeping its shape
+logo.set_align("left")
+logo.set_caption(None)
+```
+
+- `width` is pixels, or a percentage of the space the image has (`"50%"`); `height` is pixels.
+- With only one of them the other side follows, so the image keeps its shape. With both, the image is
+  fitted into that box and still keeps its shape.
+- `align` is `"left"`, `"center"` or `"right"`; the caption (plain text, at most 200 characters) goes with
+  the image.
 
 ### Icons
 

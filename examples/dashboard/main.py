@@ -85,7 +85,12 @@ def build_card(event: ActionEvent) -> None:
     card.add_element(
         card.create_text("intro", "## Dashboard demo\nA card filled by an automation with **`haa.card`**.")
     )
-    layout.add_element(card.create_image("logo", asset="logo.svg", alt="HAAnim logo"))
+    # An image can be given a size, a place in its row and a caption
+    layout.add_element(
+        card.create_image(
+            "logo", asset="logo.svg", alt="HAAnim logo", width=96, align="center", caption="Drawn by the card"
+        )
+    )
 
     # A row split into cells puts elements side by side
     layout.split_row(2).add_element(counter).add_element(running)

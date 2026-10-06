@@ -156,15 +156,46 @@ class HAAnimCard:
         asset: str | None = None,
         url: str | None = None,
         alt: str = "",
+        *,
+        width: int | str | None = None,
+        height: int | None = None,
+        align: str = "left",
+        caption: str | None = None,
     ) -> _elements.ImageElement:
         """Create an image from the automation's ``assets/`` folder or from a URL.
 
+        Without a size the image is drawn at its own size, and never wider
+        than the space it has. With only a width or only a height the other
+        side follows, so the image keeps its shape; with both, the image is
+        fitted into that box, again keeping its shape.
+
+        Args:
+            id: ID of the element.
+            asset: The name of a file in the automation's ``assets/`` folder.
+            url: The address of an image.
+            alt: The text shown in place of the image.
+            width: The width in pixels, or as a percentage of the space the image has (``"50%"``).
+            height: The height in pixels.
+            align: Where the image is in its row: ``"left"``, ``"center"`` or ``"right"``.
+            caption: Text under the image.
+
         Raises:
             ValueError: Unless exactly one of ``asset`` and ``url`` is given, or
-                the asset name resolves outside ``assets/``.
+                the asset name resolves outside ``assets/``, or a size, the
+                alignment or the caption is not valid.
             FileNotFoundError: If the asset does not exist.
         """
-        return _elements.ImageElement(self, id, asset=asset, url=url, alt=alt)
+        return _elements.ImageElement(
+            self,
+            id,
+            asset=asset,
+            url=url,
+            alt=alt,
+            width=width,
+            height=height,
+            align=align,
+            caption=caption,
+        )
 
     def create_value(
         self,

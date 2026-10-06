@@ -43,7 +43,9 @@ async def test_card_is_built_at_startup() -> None:
             {"cells": 3, "elements": ["fan", "sun_icon", "info"]},
             {"cells": 3, "elements": ["add", "reset", "frame"]},
         ]
-        assert automation.card.block("logo")["url"] == "/api/haanim/assets/dashboard/logo.svg"
+        logo = automation.card.block("logo")
+        assert logo["url"] == "/api/haanim/assets/dashboard/logo.svg"
+        assert (logo["width"], logo["align"], logo["caption"]) == ("96px", "center", "Drawn by the card")
         assert automation.card.block("count")["value"] == 0
         assert automation.card.title == "Dashboard demo"
         assert automation.message == "Card ready"

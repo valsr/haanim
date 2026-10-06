@@ -1,15 +1,5 @@
 finaly add html (allowing raw html to be injected)
 
-redesign the HAAnim page:
-  - automation table should show the disable/stop/restart/start buttons
-  - details page:
-      - keep the header and use tabs for the following:
-          - preview (first tab)
-          - actions (second tab)
-          - logs (thrid tab)
-
-note that the climate card send_notification/hourly_check action triggers an error
-
 rework the demo/examples to include a demo for each of the following
 
   - basic demo covering actions, text, buttons

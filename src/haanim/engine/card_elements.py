@@ -22,10 +22,13 @@ from typing import Any, ClassVar, Protocol
 
 from haanim.engine.assets import AssetStore
 from haanim.engine.card_checks import (
+    IMAGE_ALIGNMENTS,
+    MAX_CAPTION_LENGTH,
     MAX_GRAPH_HOURS,
     MAX_GRAPH_POINTS,
     MAX_GRAPH_SERIES,
     MAX_GRAPH_STATE_LENGTH,
+    MAX_IMAGE_SIZE,
     _check_color,
     _check_entity_id,
     _check_icon,
@@ -34,6 +37,7 @@ from haanim.engine.card_checks import (
     _graph_entities,
     _graph_marks,
     _graph_series,
+    _image_look,
 )
 
 __all__ = [
@@ -47,14 +51,17 @@ __all__ = [
     "GRAPH_KINDS",
     "GaugeElement",
     "GraphElement",
+    "IMAGE_ALIGNMENTS",
     "IconElement",
     "ImageElement",
     "MAX_BADGE_LENGTH",
     "MAX_BLOCKS",
+    "MAX_CAPTION_LENGTH",
     "MAX_GRAPH_HOURS",
     "MAX_GRAPH_POINTS",
     "MAX_GRAPH_SERIES",
     "MAX_GRAPH_STATE_LENGTH",
+    "MAX_IMAGE_SIZE",
     "MAX_ROW_CELLS",
     "MAX_TEXT_LENGTH",
     "MAX_TITLE_LENGTH",
@@ -202,10 +209,10 @@ class ImageElement(CardElement):
         asset, url = arguments["asset"], arguments["url"]
         if (asset is None) == (url is None):
             raise ValueError("An image needs exactly one of asset and url")
-        alt = _check_str(arguments["alt"], "alt")
+        look = {"alt": _check_str(arguments["alt"], "alt"), **_image_look(arguments)}
         if asset is not None:
-            return {"asset": asset, "url": self._card.assets.url(asset), "alt": alt}
-        return {"url": _check_str(url, "url", empty=False), "alt": alt}
+            return {"asset": asset, "url": self._card.assets.url(asset), **look}
+        return {"url": _check_str(url, "url", empty=False), **look}
 
     @property
     def asset(self) -> str | None:
@@ -221,6 +228,26 @@ class ImageElement(CardElement):
     def alt(self) -> str:
         """The text shown in place of the image."""
         return str(self._content["alt"])
+
+    @property
+    def width(self) -> str | None:
+        """The width the image is drawn at, as ``"120px"`` or ``"50%"``; None for its own."""
+        return _optional(self._content["width"])
+
+    @property
+    def height(self) -> str | None:
+        """The height the image is drawn at, as ``"80px"``; None for its own."""
+        return _optional(self._content["height"])
+
+    @property
+    def align(self) -> str:
+        """Where the image is in its row: ``left``, ``center`` or ``right``."""
+        return str(self._content["align"])
+
+    @property
+    def caption(self) -> str | None:
+        """The text under the image; None for no caption."""
+        return _optional(self._content["caption"])
 
     def set_asset(self, asset: str) -> None:
         """Show an image from the automation's ``assets/`` folder instead.
@@ -238,6 +265,23 @@ class ImageElement(CardElement):
     def set_alt(self, alt: str) -> None:
         """Change the text shown in place of the image."""
         self._apply(alt=alt)
+
+    def set_size(self, width: int | str | None = None, height: int | None = None) -> None:
+        """Change the size the image is drawn at; None leaves a side to the image.
+
+        Args:
+            width: Pixels, or a percentage of the space the image has, as ``"50%"``.
+            height: Pixels.
+        """
+        self._apply(width=width, height=height)
+
+    def set_align(self, align: str) -> None:
+        """Change where the image is in its row: ``left``, ``center`` or ``right``."""
+        self._apply(align=align)
+
+    def set_caption(self, caption: str | None) -> None:
+        """Change the text under the image; None for no caption."""
+        self._apply(caption=caption)
 
 
 class ValueElement(CardElement):

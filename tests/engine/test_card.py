@@ -19,11 +19,14 @@ from haanim.engine.card import CARD_PARTS, HAAnimCard
 from haanim.engine.card_elements import (
     GAUGE_KINDS,
     GRAPH_KINDS,
+    IMAGE_ALIGNMENTS,
     MAX_BADGE_LENGTH,
     MAX_BLOCKS,
+    MAX_CAPTION_LENGTH,
     MAX_GRAPH_HOURS,
     MAX_GRAPH_POINTS,
     MAX_GRAPH_SERIES,
+    MAX_IMAGE_SIZE,
     MAX_ROW_CELLS,
     MAX_TEXT_LENGTH,
     BadgeElement,
@@ -58,6 +61,10 @@ def card(sink: FakeCardSink) -> HAAnimCard:
     files.write(FOLDER / "main.py", "x = 1")
     assets = AssetStore("climate", FOLDER, files)
     return HAAnimCard("climate", assets, lambda name: name in ("reset_alerts", "reset"), sink)
+
+
+PLAIN_IMAGE: dict[str, Any] = {"width": None, "height": None, "align": "left", "caption": None}
+"""How an image is drawn unless told otherwise."""
 
 
 class Put:
@@ -107,13 +114,70 @@ class TestBlocks:
                 "asset": "logo.png",
                 "url": "/api/haanim/assets/climate/logo.png",
                 "alt": "Climate logo",
+                **PLAIN_IMAGE,
             }
         ]
 
     def test_image_from_url(self, card: HAAnimCard) -> None:
         """Test an image from a URL keeps the URL; alt is empty by default."""
         put(card).image("pic", url="https://example.com/a.png")
-        assert card.blocks == [{"id": "pic", "type": "image", "url": "https://example.com/a.png", "alt": ""}]
+        assert card.blocks == [
+            {"id": "pic", "type": "image", "url": "https://example.com/a.png", "alt": "", **PLAIN_IMAGE}
+        ]
+
+    def test_image_size_alignment_and_caption(self, card: HAAnimCard) -> None:
+        """Test an image can be given a size, a place in its row and a caption."""
+        image = put(card).image(
+            "pic",
+            url="https://example.com/a.png",
+            width=120,
+            height=80,
+            align="center",
+            caption="The <garden>",
+        )
+        assert (image.width, image.height, image.align, image.caption) == (
+            "120px",
+            "80px",
+            "center",
+            "The <garden>",
+        )
+        block = card.blocks[0]
+        assert (block["width"], block["height"], block["align"], block["caption"]) == (
+            "120px",
+            "80px",
+            "center",
+            "The <garden>",
+        )
+        assert IMAGE_ALIGNMENTS == ("left", "center", "right")
+
+    @pytest.mark.parametrize(
+        ("width", "carried"),
+        [
+            (1, "1px"),
+            (MAX_IMAGE_SIZE, "4000px"),
+            ("1%", "1%"),
+            ("50%", "50%"),
+            ("100%", "100%"),
+            (None, None),
+        ],
+    )
+    def test_image_width(self, card: HAAnimCard, width: Any, carried: str | None) -> None:
+        """Test a width is pixels or a percentage of the space the image has."""
+        assert put(card).image("pic", asset="logo.png", width=width).width == carried
+
+    def test_image_with_one_side(self, card: HAAnimCard) -> None:
+        """Test only a width or only a height can be given; the other side is left to the image."""
+        wide = put(card).image("wide", asset="logo.png", width=200)
+        tall = put(card).image("tall", asset="logo.png", height=40, align="right")
+        assert (wide.width, wide.height, wide.align) == ("200px", None, "left")
+        assert (tall.width, tall.height, tall.align) == (None, "40px", "right")
+
+    def test_caption_at_the_limit(self, card: HAAnimCard) -> None:
+        """Test a caption takes 200 characters, and may be empty."""
+        assert (
+            len(put(card).image("a", asset="logo.png", caption="x" * MAX_CAPTION_LENGTH).caption or "") == 200
+        )
+        assert put(card).image("b", asset="logo.png", caption="").caption == ""
 
     @pytest.mark.parametrize("value", ["on", "", 0, 42, -1.5, True, False])
     def test_value(self, card: HAAnimCard, value: Any) -> None:
@@ -723,8 +787,33 @@ class TestElements:
         image.set_alt("Logo")
         image.set_url("https://example.com/b.png")
         assert card.blocks == [
-            {"id": "i", "type": "image", "url": "https://example.com/b.png", "alt": "Logo"}
+            {"id": "i", "type": "image", "url": "https://example.com/b.png", "alt": "Logo", **PLAIN_IMAGE}
         ]
+
+    def test_image_look_setters(self, card: HAAnimCard) -> None:
+        """Test the size, the alignment and the caption of an image are changed in place."""
+        image: ImageElement = put(card).image("i", asset="logo.png")
+        image.set_size(width="50%", height=60)
+        image.set_align("right")
+        image.set_caption("Logo")
+        assert (image.width, image.height, image.align, image.caption) == ("50%", "60px", "right", "Logo")
+        assert card.blocks[0]["url"] == "/api/haanim/assets/climate/logo.png", "the source stays"
+        image.set_size(width=300)
+        assert (image.width, image.height) == (
+            "300px",
+            None,
+        ), "a side that is not named goes back to the image"
+        image.set_size()
+        image.set_caption(None)
+        image.set_align("left")
+        assert card.blocks[0] == {
+            "id": "i",
+            "type": "image",
+            "asset": "logo.png",
+            "url": "/api/haanim/assets/climate/logo.png",
+            "alt": "",
+            **PLAIN_IMAGE,
+        }
 
     def test_entity_setter(self, card: HAAnimCard) -> None:
         """Test an entity element can show another entity."""
@@ -875,6 +964,16 @@ class TestElements:
             (lambda e: e["image"].set_asset("none.png"), FileNotFoundError, "no asset"),
             (lambda e: e["image"].set_asset("../main.py"), ValueError, "outside assets/"),
             (lambda e: e["image"].set_url(""), ValueError, "url must not be empty"),
+            (lambda e: e["image"].set_size(width=0), ValueError, "width must be from 1 to 4000 pixels"),
+            (lambda e: e["image"].set_size(width="wide"), ValueError, "a percentage from '1%' to '100%'"),
+            (
+                lambda e: e["image"].set_size(height="50%"),
+                TypeError,
+                "height must be a whole number of pixels",
+            ),
+            (lambda e: e["image"].set_align("middle"), ValueError, "an image is aligned left, center, right"),
+            (lambda e: e["image"].set_caption("x" * 201), ValueError, "at most 200 characters"),
+            (lambda e: e["image"].set_caption(5), TypeError, "caption must be a string"),
             (lambda e: e["entity"].set_entity("nodomain"), ValueError, "Invalid entity ID"),
             (lambda e: e["icon"].set_icon("fan"), ValueError, "an icon is named like"),
             (lambda e: e["icon"].set_color("red; x"), ValueError, "Invalid color"),
@@ -1225,6 +1324,73 @@ INVALID: list[tuple[str, Any, type[Exception], str]] = [
         lambda c: c.create_button("b", "Go", "nothing"),
         ValueError,
         "Automation 'climate' has no action 'nothing'",
+    ),
+    ("image width zero", lambda c: c.create_image("i", asset="logo.png", width=0), ValueError, "from 1 to"),
+    (
+        "image width too large",
+        lambda c: c.create_image("i", asset="logo.png", width=4001),
+        ValueError,
+        "width must be from 1 to 4000 pixels, not 4001",
+    ),
+    (
+        "image width a float",
+        lambda c: c.create_image("i", asset="logo.png", width=1.5),
+        TypeError,
+        "width must be a whole number of pixels or a percentage like '50%', not float",
+    ),
+    (
+        "image width a boolean",
+        lambda c: c.create_image("i", asset="logo.png", width=True),
+        TypeError,
+        "width",
+    ),
+    (
+        "image width over 100%",
+        lambda c: c.create_image("i", asset="logo.png", width="150%"),
+        ValueError,
+        "a percentage from '1%' to '100%'",
+    ),
+    (
+        "image width with css",
+        lambda c: c.create_image("i", asset="logo.png", width="50%; x: y"),
+        ValueError,
+        "a percentage",
+    ),
+    (
+        "image width in px text",
+        lambda c: c.create_image("i", asset="logo.png", width="50px"),
+        ValueError,
+        "a per",
+    ),
+    (
+        "image height a percentage",
+        lambda c: c.create_image("i", asset="logo.png", height="50%"),
+        TypeError,
+        "height must be a whole number of pixels, not str",
+    ),
+    (
+        "image height negative",
+        lambda c: c.create_image("i", asset="logo.png", height=-1),
+        ValueError,
+        "height",
+    ),
+    (
+        "image align unknown",
+        lambda c: c.create_image("i", asset="logo.png", align="top"),
+        ValueError,
+        "Invalid align 'top'",
+    ),
+    (
+        "image caption too long",
+        lambda c: c.create_image("i", asset="logo.png", caption="x" * 201),
+        ValueError,
+        "at most 200 characters, not 201",
+    ),
+    (
+        "image caption not a string",
+        lambda c: c.create_image("i", asset="logo.png", caption=1),
+        TypeError,
+        "caption must be a string",
     ),
     ("gauge without value or entity", lambda c: c.create_gauge("g"), ValueError, "exactly one of value"),
     (

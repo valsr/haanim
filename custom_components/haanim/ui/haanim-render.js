@@ -314,6 +314,37 @@ function renderBadge(block, context, open) {
     );
 }
 
+/** Where an image can be in its row. */
+const ALIGNMENTS = new Set(['left', 'center', 'right']);
+
+/** Return a width or height as it may be put into a style (`120px`, `50%`), or null. */
+function imageSize(value) {
+    return /^[0-9]{1,4}(px|%)$/.test(String(value ?? '')) ? String(value) : null;
+}
+
+/**
+ * Render an image block.
+ *
+ * The image is drawn at its own size, and never wider than the space it has, unless the block gives a width,
+ * a height or both; with both it is fitted into that box and keeps its shape. `align` puts it at the left
+ * (the default), in the middle or at the right of its row, and the caption under it goes with it. Until
+ * the picture can be shown, its alt text stands in for it.
+ */
+function renderImage(block, context, id) {
+    const align = ALIGNMENTS.has(block.align) ? block.align : 'left';
+    const open = `<div class="block block-image align-${align}" data-block="${id}">`;
+    const caption = block.caption ? `<div class="caption">${escapeHtml(block.caption)}</div>` : '';
+    const source = block.asset ? (context.images || {})[block.url] : safeUrl(block.url);
+    if (!source) {
+        return `${open}<span class="image-pending">${escapeHtml(block.alt || '')}</span>${caption}</div>`;
+    }
+    const width = imageSize(block.width);
+    const height = imageSize(block.height);
+    const sizes = [width ? `width: ${width}` : '', height ? `height: ${height}` : ''].filter(Boolean);
+    const style = sizes.length ? ` style="${sizes.join('; ')}"` : '';
+    return `${open}<img src="${escapeHtml(source)}" alt="${escapeHtml(block.alt || '')}"${style}>${caption}</div>`;
+}
+
 /**
  * Render one content block.
  *
@@ -326,13 +357,8 @@ export function renderBlock(block, context = {}) {
     switch (block.type) {
         case 'text':
             return `${open}${renderMarkdown(block.markdown)}</div>`;
-        case 'image': {
-            const source = block.asset ? (context.images || {})[block.url] : safeUrl(block.url);
-            if (!source) {
-                return `${open}<span class="image-pending">${escapeHtml(block.alt || '')}</span></div>`;
-            }
-            return `${open}<img src="${escapeHtml(source)}" alt="${escapeHtml(block.alt || '')}"></div>`;
-        }
+        case 'image':
+            return renderImage(block, context, id);
         case 'value': {
             const unit = block.unit ? ` <span class="unit">${escapeHtml(block.unit)}</span>` : '';
             return (

@@ -170,6 +170,33 @@ describe('renderBlock', () => {
         assert.match(renderBlock(block), /image-pending/);
         assert.match(renderBlock(block, { images: { [block.url]: 'blob:abc' } }), /<img src="blob:abc" alt="Logo">/);
     });
+    test('image is at the left unless the block says otherwise', () => {
+        const image = (extra) => renderBlock({ id: 'i', type: 'image', url: '/a.png', alt: '', ...extra });
+        assert.match(image({}), /^<div class="block block-image align-left" data-block="i"><img src="\/a.png" alt=""><\/div>$/);
+        assert.match(image({ align: 'center' }), /class="block block-image align-center"/);
+        assert.match(image({ align: 'right' }), /class="block block-image align-right"/);
+        assert.match(image({ align: 'top"><script>' }), /class="block block-image align-left" data-block/);
+    });
+    test('image with a width, a height or both', () => {
+        const image = (extra) => renderBlock({ id: 'i', type: 'image', url: '/a.png', alt: 'A', ...extra });
+        assert.match(image({ width: '120px' }), /<img src="\/a.png" alt="A" style="width: 120px">/);
+        assert.match(image({ height: '80px' }), /alt="A" style="height: 80px">/);
+        assert.match(image({ width: '50%', height: '80px' }), /alt="A" style="width: 50%; height: 80px">/);
+        assert.doesNotMatch(image({ width: null, height: null }), /style=/);
+    });
+    test('image size that is not one is left out', () => {
+        const html = renderBlock({ id: 'i', type: 'image', url: '/a.png', alt: '', width: '10px; background: url(x)', height: 'calc(1px)' });
+        assert.doesNotMatch(html, /style=|url\(|calc/);
+        assert.doesNotMatch(renderBlock({ id: 'i', type: 'image', url: '/a.png', alt: '', width: 120 + 'em' }), /style=/);
+    });
+    test('image with a caption, also while it is not loaded', () => {
+        const block = { id: 'i', type: 'image', asset: 'logo.png', url: '/api/haanim/assets/a/logo.png', alt: 'Logo', caption: 'The <logo>', align: 'center' };
+        assert.match(renderBlock(block, { images: { [block.url]: 'blob:abc' } }), /<img src="blob:abc" alt="Logo"><div class="caption">The &lt;logo&gt;<\/div><\/div>$/);
+        assert.match(renderBlock(block), /align-center" data-block="i"><span class="image-pending">Logo<\/span><div class="caption">The &lt;logo&gt;<\/div>/);
+        assert.doesNotMatch(renderBlock({ ...block, caption: '' }), /class="caption"/);
+        assert.match(renderBlock({ id: 'i', type: 'image', url: 'javascript:x' }), /<span class="image-pending"><\/span><\/div>$/);
+        assert.match(renderBlock({ id: 'i', type: 'image', url: '/a.png' }), /<img src="\/a.png" alt="">/);
+    });
     test('button carries its action, data and confirmation', () => {
         const html = renderBlock({ id: 'b', type: 'button', label: 'Reset <it>', action: 'reset_alerts', confirm: 'Reset "all"?', data: { room: 'hall' } });
         assert.match(html, /data-haanim="run" data-action="reset_alerts"/);

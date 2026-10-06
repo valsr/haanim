@@ -50,7 +50,10 @@ const STYLES = `
     .block-value, .block-entity { display: flex; justify-content: space-between; gap: 12px; }
     .block .label { color: var(--secondary-text-color); }
     .block .value { font-weight: 500; }
-    .block img { max-width: 100%; border-radius: 4px; }
+    .block img { max-width: 100%; border-radius: 4px; object-fit: contain; vertical-align: top; }
+    .block-image.align-center { text-align: center; }
+    .block-image.align-right { text-align: right; }
+    .block-image .caption { color: var(--secondary-text-color); font-size: 0.9em; margin-top: 4px; }
     .graph { width: 100%; height: auto; display: block; }
     .graph .grid { stroke: var(--divider-color, #e0e0e0); stroke-width: 1; }
     .graph .tick { fill: var(--secondary-text-color, #727272); font-size: 10px; }

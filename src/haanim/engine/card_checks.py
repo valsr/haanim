@@ -14,7 +14,14 @@ from typing import Any
 
 from haanim.engine.durations import parse_duration
 
-__all__ = ["MAX_GRAPH_HOURS", "MAX_GRAPH_POINTS", "MAX_GRAPH_SERIES", "MAX_GRAPH_STATE_LENGTH"]
+IMAGE_ALIGNMENTS = ("left", "center", "right")
+"""Where an image can be in its row."""
+
+MAX_IMAGE_SIZE = 4000
+"""The largest width or height an image can be given, in pixels."""
+
+MAX_CAPTION_LENGTH = 200
+"""The most characters the caption of an image can have."""
 
 MAX_GRAPH_SERIES = 8
 """The most lines a graph can have: entities, or series of the automation's own."""
@@ -196,3 +203,43 @@ def _check_color(color: Any) -> str:
     if not _COLOR.fullmatch(_check_str(color, "color")):
         raise ValueError(f"Invalid color {color!r}: use a colour name or '#rrggbb'")
     return str(color)
+
+
+_PERCENT = re.compile(r"(100|[1-9][0-9]?)%")
+
+
+def _image_size(value: Any, what: str, *, percent: bool) -> str | None:
+    """Return the width or height of an image as the block carries it: ``"120px"`` or ``"50%"``.
+
+    A size is a whole number of pixels; a width can also be a percentage of the
+    space the image has, as ``"50%"``.
+    """
+    if value is None:
+        return None
+    if percent and isinstance(value, str):
+        if not _PERCENT.fullmatch(value):
+            raise ValueError(f"{what} as text is a percentage from '1%' to '100%', not {value!r}")
+        return value
+    if isinstance(value, bool) or not isinstance(value, int):
+        form = (
+            "a whole number of pixels or a percentage like '50%'" if percent else "a whole number of pixels"
+        )
+        raise TypeError(f"{what} must be {form}, not {type(value).__name__}")
+    if not 1 <= value <= MAX_IMAGE_SIZE:
+        raise ValueError(f"{what} must be from 1 to {MAX_IMAGE_SIZE} pixels, not {value}")
+    return f"{value}px"
+
+
+def _image_look(arguments: Mapping[str, Any]) -> dict[str, Any]:
+    """Check the size, the alignment and the caption of an image and return them as the block carries them."""
+    align, caption = arguments["align"], arguments["caption"]
+    if align not in IMAGE_ALIGNMENTS:
+        raise ValueError(f"Invalid align {align!r}: an image is aligned {', '.join(IMAGE_ALIGNMENTS)}")
+    if caption is not None and len(_check_str(caption, "caption")) > MAX_CAPTION_LENGTH:
+        raise ValueError(f"A caption can have at most {MAX_CAPTION_LENGTH} characters, not {len(caption)}")
+    return {
+        "width": _image_size(arguments["width"], "width", percent=True),
+        "height": _image_size(arguments["height"], "height", percent=False),
+        "align": align,
+        "caption": caption,
+    }
