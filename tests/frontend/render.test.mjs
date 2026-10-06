@@ -4,10 +4,12 @@ import { describe, test } from 'node:test';
 import {
     MAX_LOG_RECORDS,
     CARD_PARTS,
+    DETAIL_TABS,
     MAX_ROW_CELLS,
     PANEL_PATH,
     automationPath,
     cameraUrl,
+    detailTab,
     escapeHtml,
     formatNumber,
     formatTime,
@@ -26,6 +28,7 @@ import {
     renderList,
     renderLog,
     renderMarkdown,
+    renderTabs,
     renderToolbar,
     safeUrl,
     serviceCall,
@@ -634,6 +637,37 @@ describe('renderControls', () => {
         assert.deepEqual(controls({ state: 'error', enabled: true }), ['disable', 'start']);
         assert.deepEqual(controls({ state: 'error', enabled: false }), ['enable']);
     });
+    test('every control names its automation', () => {
+        const html = renderControls({ id: 'a"b', state: 'on', enabled: true });
+        assert.equal(html.match(/data-automation="a&quot;b"/g).length, 3);
+        assert.match(html, /<button class="control" data-haanim="stop" data-automation="a&quot;b">Stop<\/button>/);
+    });
+});
+
+describe('renderTabs', () => {
+    const tabs = (html) => [...html.matchAll(/<button class="(tab[^"]*)" role="tab" aria-selected="(\w+)" data-section="(\w+)">([^<]*)</g)].map((match) => match.slice(1));
+    test('preview, actions and logs, in that order, with the open one marked', () => {
+        assert.deepEqual(DETAIL_TABS.map((tab) => tab.section), ['preview', 'actions', 'logs']);
+        assert.deepEqual(tabs(renderTabs('preview')), [
+            ['tab active', 'true', 'preview', 'Preview'],
+            ['tab', 'false', 'actions', 'Actions'],
+            ['tab', 'false', 'logs', 'Logs'],
+        ]);
+        assert.deepEqual(tabs(renderTabs('logs')).map((tab) => tab[1]), ['false', 'false', 'true']);
+        assert.match(renderTabs('logs'), /^<div class="tabs" role="tablist">/);
+    });
+    test('without a section, or with one that is none, the preview is open', () => {
+        for (const section of [null, undefined, '', 'other']) {
+            assert.deepEqual(tabs(renderTabs(section)).map((tab) => tab[1]), ['true', 'false', 'false'], String(section));
+        }
+        assert.equal(detailTab('actions'), 'actions');
+        assert.equal(detailTab('nothing'), 'preview');
+    });
+    test('the actions tab says how many actions there are', () => {
+        assert.match(renderTabs('actions', { actions: [{ name: 'a' }, { name: 'b' }] }), /data-section="actions">Actions \(2\)</);
+        assert.match(renderTabs('actions', {}), /data-section="actions">Actions \(0\)</);
+        assert.match(renderTabs('actions', null), /data-section="actions">Actions</);
+    });
 });
 
 describe('renderActionList', () => {
@@ -709,7 +743,10 @@ describe('panel addresses', () => {
     test('the path of an automation and of its log', () => {
         assert.equal(PANEL_PATH, '/haanim');
         assert.equal(automationPath('climate'), '/haanim/automation/climate');
-        assert.equal(automationPath('climate', true), '/haanim/automation/climate/logs');
+        assert.equal(automationPath('climate', 'logs'), '/haanim/automation/climate/logs');
+        assert.equal(automationPath('climate', 'actions'), '/haanim/automation/climate/actions');
+        assert.equal(automationPath('climate', 'preview'), '/haanim/automation/climate', 'the preview is the page itself');
+        assert.equal(automationPath('climate', 'other'), '/haanim/automation/climate');
         assert.equal(automationPath('a b/c'), '/haanim/automation/a%20b%2Fc');
     });
     test('reading the address', () => {
@@ -719,6 +756,8 @@ describe('panel addresses', () => {
         assert.deepEqual(parseRoute('/config'), { page: 'config', id: null, section: null });
         assert.deepEqual(parseRoute('/automation/climate'), { page: 'detail', id: 'climate', section: null });
         assert.deepEqual(parseRoute('/automation/climate/logs'), { page: 'detail', id: 'climate', section: 'logs' });
+        assert.deepEqual(parseRoute('/automation/climate/actions'), { page: 'detail', id: 'climate', section: 'actions' });
+        assert.deepEqual(parseRoute('/automation/climate/preview'), { page: 'detail', id: 'climate', section: null });
         assert.deepEqual(parseRoute('/automation/climate/other'), { page: 'detail', id: 'climate', section: null });
         assert.deepEqual(parseRoute('/automation/a%20b'), { page: 'detail', id: 'a b', section: null });
         assert.deepEqual(parseRoute('/automation/%E0%A4%A'), { page: 'detail', id: '%E0%A4%A', section: null });
@@ -814,6 +853,22 @@ describe('panel pages', () => {
         assert.match(html, /state-disabled">Disabled/);
         assert.match(html, /ok &lt;now&gt;/);
         assert.match(html, /<td class="name">off<div class="id">off<\/div>/);
+    });
+    test('the list has the controls of each automation in its row', () => {
+        const html = renderList([
+            { id: 'climate', name: 'Climate', state: 'on', enabled: true },
+            { id: 'stopped', name: 'Stopped', state: 'off', enabled: true },
+            { id: 'off', name: 'Off', state: 'off', enabled: false },
+        ]);
+        assert.match(html, /<th>Status<\/th><th>Controls<\/th>/);
+        const rows = html.split('<tr class="row"').slice(1);
+        const controls = rows.map((row) => [...row.matchAll(/data-haanim="(\w+)" data-automation="(\w+)"/g)].map((match) => `${match[1]} ${match[2]}`));
+        assert.deepEqual(controls, [
+            ['disable climate', 'stop climate', 'restart climate'],
+            ['disable stopped', 'start stopped'],
+            ['enable off'],
+        ]);
+        assert.match(rows[0], /<td class="row-controls"><div class="controls">/);
     });
     test('the list shows what each running automation is doing', () => {
         const html = renderList([

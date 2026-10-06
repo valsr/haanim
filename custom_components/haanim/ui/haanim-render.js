@@ -460,16 +460,35 @@ export function renderContent(blocks, context = {}, layout = null) {
 /** The path of the HAAnim panel, and of the pages in it. */
 export const PANEL_PATH = '/haanim';
 
-/** The path of an automation's page in the panel; with `logs`, of the log section on it. */
-export function automationPath(automationId, logs = false) {
-    return `${PANEL_PATH}/automation/${encodeURIComponent(automationId)}${logs ? '/logs' : ''}`;
+/** The tabs of an automation's page in the panel, in order; the first is the one shown without a section. */
+export const DETAIL_TABS = [
+    { section: 'preview', label: 'Preview' },
+    { section: 'actions', label: 'Actions' },
+    { section: 'logs', label: 'Logs' },
+];
+
+/** The tab an address stands for: the one it names, else the first. */
+export function detailTab(section) {
+    return DETAIL_TABS.some((tab) => tab.section === section) ? section : DETAIL_TABS[0].section;
+}
+
+/**
+ * The path of an automation's page in the panel.
+ *
+ * With a `section` (`actions` or `logs`), the path of that tab; without one, or with `preview`, of the page
+ * itself, which opens on the preview.
+ */
+export function automationPath(automationId, section = null) {
+    const tab = detailTab(section);
+    const tail = tab === DETAIL_TABS[0].section ? '' : `/${tab}`;
+    return `${PANEL_PATH}/automation/${encodeURIComponent(automationId)}${tail}`;
 }
 
 /**
  * Read the part of the address after the panel's own path.
  *
  * Returns `{page, id, section}`: page is `list`, `config` or `detail`; for `detail`, `id` is the automation
- * and `section` is `logs` if the address points at its log.
+ * and `section` is the tab the address points at (`actions` or `logs`), or null for the preview.
  */
 export function parseRoute(path) {
     const parts = String(path || '')
@@ -483,7 +502,8 @@ export function parseRoute(path) {
         } catch (error) {
             id = parts[1];
         }
-        return { page: 'detail', id, section: parts[2] === 'logs' ? 'logs' : null };
+        const section = detailTab(parts[2]);
+        return { page: 'detail', id, section: section === DETAIL_TABS[0].section ? null : section };
     }
     return { page: 'list', id: null, section: null };
 }
@@ -519,12 +539,39 @@ export function renderHeader(automation, title = null, options = null) {
     return `<div class="header">${top}${message}</div>`;
 }
 
-/** Render the controls that apply to the automation's state: enable, disable, start, stop, restart. */
+/**
+ * Render the controls that apply to the automation's state: enable, disable, start, stop, restart.
+ *
+ * Each button names its automation, so that a list of automations can have the controls of each.
+ */
 export function renderControls(automation) {
+    const id = escapeHtml(automation.id);
     const controls = CONTROLS.filter((control) => control.when(automation))
-        .map((control) => `<button class="control" data-haanim="${control.service}">${control.label}</button>`)
+        .map(
+            (control) =>
+                `<button class="control" data-haanim="${control.service}" data-automation="${id}">` +
+                `${control.label}</button>`
+        )
         .join('');
     return `<div class="controls">${controls}</div>`;
+}
+
+/**
+ * Render the tab bar of an automation's page: Preview, Actions (with how many there are) and Logs.
+ *
+ * `section` is the tab that is open.
+ */
+export function renderTabs(section, automation = null) {
+    const open = detailTab(section);
+    const buttons = DETAIL_TABS.map((tab) => {
+        const count = tab.section === 'actions' && automation ? ` (${(automation.actions || []).length})` : '';
+        const selected = tab.section === open;
+        return (
+            `<button class="tab${selected ? ' active' : ''}" role="tab" aria-selected="${selected}"` +
+            ` data-section="${tab.section}">${tab.label}${count}</button>`
+        );
+    }).join('');
+    return `<div class="tabs" role="tablist">${buttons}</div>`;
 }
 
 /** Render the automation's actions as a list, each with a run button. */
@@ -635,7 +682,11 @@ export function serviceCall(dataset, automationId) {
     return null;
 }
 
-/** Render the panel's list of automations. */
+/**
+ * Render the panel's list of automations.
+ *
+ * A row opens the automation's page; its last cell has the controls that apply to the automation's state.
+ */
 export function renderList(automations) {
     if (!automations || automations.length === 0) {
         return '<div class="empty">No automations yet. Add a folder with a <code>main.py</code> to the automations folder.</div>';
@@ -649,13 +700,14 @@ export function renderList(automations) {
                 `<div class="id">${escapeHtml(automation.id)}</div></td>` +
                 `<td><span class="state state-${state.css}">${escapeHtml(state.label)}</span></td>` +
                 `<td>${escapeHtml(automation.version || '')}</td>` +
-                `<td class="message">${escapeHtml(automation.message || '')}</td></tr>`
+                `<td class="message">${escapeHtml(automation.message || '')}</td>` +
+                `<td class="row-controls">${renderControls(automation)}</td></tr>`
             );
         })
         .join('');
     return (
         '<table class="automations"><thead><tr><th>Automation</th><th>State</th><th>Version</th>' +
-        `<th>Status</th></tr></thead><tbody>${rows}</tbody></table>`
+        `<th>Status</th><th>Controls</th></tr></thead><tbody>${rows}</tbody></table>`
     );
 }
 

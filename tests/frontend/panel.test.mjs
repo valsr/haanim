@@ -12,7 +12,12 @@ const LIST = {
         { id: 'broken', name: 'broken', version: '', state: 'error', enabled: true, message: 'main.py:1' },
     ],
 };
-const DETAIL_IDS = ['detail-header', 'detail-controls', 'detail-meta', 'detail-actions', 'detail-log', 'detail-log-title', 'page-error'];
+const DETAIL_IDS = ['detail-header', 'detail-controls', 'detail-meta', 'detail-tabs', 'detail-actions', 'detail-log', 'tab-preview', 'tab-actions', 'tab-logs', 'page-error'];
+
+/** Which tab of the page is open: the one whose pane is not hidden. */
+function openTab(parts) {
+    return ['preview', 'actions', 'logs'].filter((section) => parts[`tab-${section}`].hidden === false);
+}
 
 function states(state = 'on') {
     return { 'sensor.haanim_climate': { state, attributes: { enabled: true } }, 'light.kitchen': { state: 'on' } };
@@ -139,26 +144,108 @@ describe('haanim-panel', () => {
         assert.match(parts['detail-log'].innerHTML, /class="traceback"/);
     });
 
-    test('the address of the log opens the page of the automation at its log', async () => {
-        const { panel, card, parts } = await opened('/automation/climate/logs');
-        assert.deepEqual(card.configured, { automation_id: 'climate' });
-        assert.match(panel.shadowRoot.innerHTML, /<h2 id="detail-log-title">Log<\/h2>/);
-        assert.equal(parts['detail-log-title'].scrolled, 1);
+    test('the list has the controls of each automation, and a control does not open the page', async () => {
+        const { panel, hass } = await opened();
+        assert.match(panel.shadowRoot.innerHTML, /data-haanim="stop" data-automation="climate">Stop</);
+        assert.match(panel.shadowRoot.innerHTML, /data-haanim="start" data-automation="broken">Start</);
+        dom.visited.length = 0;
+
+        // The button is inside the row: the click carries both
+        panel.shadowRoot.fire('click', clicked({ haanim: 'stop', automation: 'climate', open: 'climate' }));
+        await settle();
+        assert.deepEqual(hass.services, [{ domain: 'haanim', service: 'stop', data: { automation_id: 'climate' } }]);
+        assert.deepEqual(dom.visited, [], 'the page of the automation is not opened');
+        assert.deepEqual(hass.calls.at(-1), { type: 'haanim/automations/list' }, 'the list is read again');
+
+        panel.shadowRoot.fire('click', clicked({ haanim: 'restart', automation: 'broken' }));
+        await settle();
+        assert.deepEqual(hass.services.at(-1), { domain: 'haanim', service: 'restart', data: { automation_id: 'broken' } });
     });
 
-    test('the log button of the card on the page scrolls to the log without rebuilding the page', async () => {
+    test('a failing control of the list is shown there', async () => {
+        const { panel, hass, parts } = await opened();
+        hass.failService = new Error('AutomationDisabledError: climate is disabled');
+        panel.shadowRoot.fire('click', clicked({ haanim: 'start', automation: 'climate' }));
+        await settle();
+        assert.match(parts['page-error'].innerHTML, /class="error">AutomationDisabledError: climate is disabled</);
+        assert.match(panel.shadowRoot.innerHTML, /<table class="automations">/);
+    });
+
+    test('the page of an automation opens on the preview, with the header above the tabs', async () => {
+        const { panel, parts } = await opened('/automation/climate');
+        const html = panel.shadowRoot.innerHTML;
+        const order = ['detail-header', 'detail-controls', 'detail-meta', 'detail-tabs', 'tab-preview', 'tab-actions', 'tab-logs'].map((id) => html.indexOf(`id="${id}"`));
+        assert.ok(order.every((at) => at > 0), 'every part is on the page');
+        assert.deepEqual([...order].sort((a, b) => a - b), order, 'in this order');
+        assert.match(html, /<div id="tab-preview" role="tabpanel"><haanim-card id="detail-card"><\/haanim-card><\/div>/);
+        assert.match(html, /<div id="tab-actions" role="tabpanel" hidden><div id="detail-actions">/);
+        assert.match(html, /<div id="tab-logs" role="tabpanel" hidden><div id="detail-log">/);
+        assert.doesNotMatch(html, /<h2/);
+
+        assert.deepEqual(openTab(parts), ['preview']);
+        assert.match(parts['detail-tabs'].innerHTML, /class="tab active" role="tab" aria-selected="true" data-section="preview">Preview</);
+        assert.match(parts['detail-tabs'].innerHTML, /data-section="actions">Actions \(1\)</);
+        assert.match(parts['detail-tabs'].innerHTML, /data-section="logs">Logs</);
+    });
+
+    test('a tab opens its part, changes the address and keeps the card', async () => {
         const { panel, hass, card, parts } = await opened('/automation/climate');
-        assert.equal(parts['detail-log-title'].scrolled, 0);
+        card.configured = null;
+        dom.visited.length = 0;
+
+        panel.shadowRoot.fire('click', clicked({ section: 'actions' }));
+        await settle();
+        assert.deepEqual(openTab(parts), ['actions']);
+        assert.match(parts['detail-tabs'].innerHTML, /class="tab active" role="tab" aria-selected="true" data-section="actions"/);
+
+        panel.shadowRoot.fire('click', clicked({ section: 'logs' }));
+        assert.deepEqual(openTab(parts), ['logs']);
+        panel.shadowRoot.fire('click', clicked({ section: 'preview' }));
+        assert.deepEqual(openTab(parts), ['preview']);
+
+        assert.deepEqual(dom.visited, ['/haanim/automation/climate/actions', '/haanim/automation/climate/logs', '/haanim/automation/climate']);
+        assert.equal(card.configured, null, 'the card is not created again');
+        assert.equal(hass.active('haanim/logs/subscribe').length, 1, 'the log is followed once, whichever tab is open');
+    });
+
+    test('the address of a tab opens the page of the automation at that tab', async () => {
+        const logs = await opened('/automation/climate/logs');
+        assert.deepEqual(logs.card.configured, { automation_id: 'climate' });
+        assert.deepEqual(openTab(logs.parts), ['logs']);
+        assert.deepEqual(openTab((await opened('/automation/climate/actions')).parts), ['actions']);
+        assert.deepEqual(openTab((await opened('/automation/climate/other')).parts), ['preview']);
+    });
+
+    test('the log button of the card on the page opens the log tab without rebuilding the page', async () => {
+        const { panel, hass, card, parts } = await opened('/automation/climate');
         card.configured = null;
 
         panel.route = { prefix: '/haanim', path: '/automation/climate/logs' };
         await settle();
-        assert.equal(parts['detail-log-title'].scrolled, 1);
+        assert.deepEqual(openTab(parts), ['logs']);
         assert.equal(card.configured, null, 'the card is not created again');
         assert.equal(hass.active('haanim/logs/subscribe').length, 1);
 
         panel.route = { prefix: '/haanim', path: '/automation/climate' };
-        assert.equal(parts['detail-log-title'].scrolled, 1);
+        assert.deepEqual(openTab(parts), ['preview']);
+    });
+
+    test('the log fills while another tab is open, and the open tab stays open when the automation changes', async () => {
+        const { panel, hass, parts } = await opened('/automation/climate/actions');
+        hass.push('haanim/logs/subscribe', { record: { time: '', level: 'INFO', message: 'meanwhile' } });
+        assert.match(parts['detail-log'].innerHTML, /meanwhile/);
+
+        hass.states = states('off');
+        panel.hass = hass;
+        await settle();
+        assert.deepEqual(openTab(parts), ['actions']);
+    });
+
+    test('a tab means nothing on the list', async () => {
+        const { panel } = await opened();
+        dom.visited.length = 0;
+        panel.shadowRoot.fire('click', clicked({ section: 'logs' }));
+        assert.deepEqual(dom.visited, []);
     });
 
     test('leaving the page of an automation stops following its log', async () => {

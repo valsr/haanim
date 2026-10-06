@@ -1,17 +1,21 @@
 /**
  * HAAnim panel: the management page.
  *
- * - `/haanim`: the automations with their state and version.
  * - `/haanim/config`: the integration's configuration.
- * - `/haanim/automation/<id>`: one automation: its controls, metadata, card, actions and log.
- * - `/haanim/automation/<id>/logs`: the same page, scrolled to the log. The card's Log button goes here.
+ * - `/haanim`: the automations with their state and version, and the controls of each.
+ * - `/haanim/automation/<id>`: one automation: a header with its state, controls and metadata, and three
+ *   tabs below it. The page opens on the first, the preview of its card.
+ * - `/haanim/automation/<id>/actions`: the same page with the actions tab open.
+ * - `/haanim/automation/<id>/logs`: the same page with the log tab open. The card's Log button goes here.
  */
 
 import { navigate } from './haanim-card.js';
 import {
     MAX_LOG_RECORDS,
     PANEL_PATH,
+    DETAIL_TABS,
     automationPath,
+    detailTab,
     escapeHtml,
     parseRoute,
     renderActionList,
@@ -21,6 +25,7 @@ import {
     renderHeader,
     renderList,
     renderLog,
+    renderTabs,
     serviceCall,
 } from './haanim-render.js';
 
@@ -42,6 +47,13 @@ const STYLES = `
     button.tab.active { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); }
     button.link { background: transparent; color: var(--primary-color); padding: 8px 0; }
     button.control { background: transparent; color: var(--primary-color); border: 1px solid var(--primary-color); }
+    td .controls { margin: 0; flex-wrap: nowrap; }
+    td button.control { padding: 4px 10px; font-size: 0.9em; }
+    td.row-controls { width: 1%; white-space: nowrap; }
+    .tabs { display: flex; gap: 4px; margin: 16px 0; border-bottom: 1px solid var(--divider-color); }
+    .tabs button.tab { padding: 10px 20px; margin-bottom: -1px; border-bottom: 2px solid transparent; }
+    .tabs button.tab.active { border-bottom-color: var(--primary-color); }
+    [hidden] { display: none !important; }
     .page { padding: 24px; max-width: 1000px; margin: 0 auto; color: var(--primary-text-color); }
     table { width: 100%; border-collapse: collapse; background: var(--card-background-color); }
     th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--divider-color); }
@@ -170,7 +182,7 @@ export class HAAnimPanel extends HTMLElement {
         const same = view.page === this._view.page && view.id === this._view.id;
         this._view = same ? Object.assign(this._view, { section: view.section }) : view;
         if (same) {
-            this._scrollToSection();
+            this._showSection();
             return;
         }
         this._automation = null;
@@ -233,9 +245,13 @@ export class HAAnimPanel extends HTMLElement {
         const control = target.closest('[data-haanim]');
         const row = target.closest('[data-open]');
         const page = target.closest('[data-page]');
-        if (control && this._view.page === 'detail') {
-            const call = serviceCall(control.dataset, this._view.id);
-            if (call) this._callService(call.service, call.data);
+        const tab = target.closest('[data-section]');
+        if (control) {
+            // A control names its automation: in the list every row has its own
+            const call = serviceCall(control.dataset, control.dataset.automation || this._view.id);
+            if (call && call.data.automation_id) this._callService(call.service, call.data);
+        } else if (tab && this._view.page === 'detail') {
+            this._go(automationPath(this._view.id, tab.dataset.section));
         } else if (target.closest('[data-reload]')) {
             this._callService('reload', {});
         } else if (page) {
@@ -266,10 +282,18 @@ export class HAAnimPanel extends HTMLElement {
         return Boolean(element);
     }
 
-    _scrollToSection() {
-        if (this._view.section !== 'logs') return;
-        const log = this.shadowRoot.getElementById('detail-log-title');
-        if (log && log.scrollIntoView) log.scrollIntoView();
+    /**
+     * Show the tab the address names, and hide the others.
+     *
+     * All three stay on the page: the card in the preview keeps what it shows, and the log keeps filling.
+     */
+    _showSection() {
+        const open = detailTab(this._view.section);
+        this._fill('detail-tabs', renderTabs(open, this._automation));
+        for (const tab of DETAIL_TABS) {
+            const pane = this.shadowRoot.getElementById(`tab-${tab.section}`);
+            if (pane) pane.hidden = tab.section !== open;
+        }
     }
 
     /** The parts of an automation's page that follow the automation. The card looks after itself. */
@@ -281,6 +305,7 @@ export class HAAnimPanel extends HTMLElement {
         this._fill('detail-meta', automation ? renderDetail(automation) : '');
         this._fill('detail-actions', automation ? renderActionList(automation.actions) : '');
         this._fill('detail-log', renderLog(this._records));
+        this._showSection();
     }
 
     /** Draw the page. An automation's page is only rebuilt when asked: rebuilding would recreate its card. */
@@ -297,9 +322,10 @@ export class HAAnimPanel extends HTMLElement {
             body =
                 '<button class="link" data-page="list">← All automations</button>' +
                 '<div id="detail-header"></div><div id="detail-controls"></div><div id="detail-meta"></div>' +
-                '<h2>Card</h2><haanim-card id="detail-card"></haanim-card>' +
-                '<h2>Actions</h2><div id="detail-actions"></div>' +
-                '<h2 id="detail-log-title">Log</h2><div id="detail-log"></div>';
+                '<div id="detail-tabs"></div>' +
+                '<div id="tab-preview" role="tabpanel"><haanim-card id="detail-card"></haanim-card></div>' +
+                '<div id="tab-actions" role="tabpanel" hidden><div id="detail-actions"></div></div>' +
+                '<div id="tab-logs" role="tabpanel" hidden><div id="detail-log"></div></div>';
         } else if (page === 'config') {
             body = renderConfig(this._configuration);
         } else {
@@ -316,7 +342,6 @@ export class HAAnimPanel extends HTMLElement {
             card.setConfig({ automation_id: this._view.id });
             card.hass = this._hass;
             this._fillDetail();
-            this._scrollToSection();
         }
     }
 }

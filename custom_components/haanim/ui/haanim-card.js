@@ -464,7 +464,7 @@ export class HAAnimCard extends HTMLElement {
             this._showActions = false;
             this._render();
         } else if (what === 'log') {
-            navigate(automationPath(this._automationId, true));
+            navigate(automationPath(this._automationId, 'logs'));
         }
     }
 
