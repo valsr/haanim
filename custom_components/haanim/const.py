@@ -97,7 +97,12 @@ CONFIG_IMPORT_ALLOWLIST: Final = "import_allowlist"
 CONFIG_ALLOW_ALL_IMPORTS: Final = "allow_all_imports"
 CONFIG_AUTOMATION_REFRESH_INTERVAL: Final = "automation_refresh_interval"
 CONFIG_MAX_CONCURRENT_ACTIONS: Final = "max_concurrent_actions"
-CONFIG_WORKER_SHUTDOWN_TIMEOUT: Final = "shutdown_timeout"
+CONFIG_WORKER_SHUTDOWN_TIMEOUT: Final = "worker_shutdown_timeout"
+CONFIG_ACTION_QUEUE_SIZE: Final = "action_queue_size"
+CONFIG_DEFAULT_ACTION_TIMEOUT: Final = "default_action_timeout"
+CONFIG_STARTUP_TIMEOUT: Final = "startup_timeout"
+CONFIG_SHUTDOWN_TIMEOUT: Final = "shutdown_timeout"
+CONFIG_STOP_GRACE_PERIOD: Final = "stop_grace_period"
 
 # Default configuration values
 DEFAULT_AUTOMATION_PATH: Final = "/config/haanim/automations"

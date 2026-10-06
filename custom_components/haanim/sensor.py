@@ -179,3 +179,6 @@ async def async_setup_entry(
     entry.async_on_unload(manager.add_listener(entities))
     for automation_id in manager.automation_ids():
         entities.automation_changed(automation_id)
+    if manager.started:
+        # Loaded before this platform was set up: a reload of the integration
+        entities.automations_loaded()

@@ -14,12 +14,12 @@ from typing import Any, Protocol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import CoreState, Event, HomeAssistant
 
 from custom_components.haanim.config import ConfigManager, get_config_manager
 
+from custom_components.haanim.options import EngineOptions
 from custom_components.haanim.const import (
-    DEFAULT_MAX_CONCURRENT_ACTIONS,
     DOMAIN,
     EVENT_AUTOMATION_ERROR,
     EVENT_AUTOMATION_LOADED,
@@ -46,6 +46,7 @@ from haanim.engine.lifecycle import (
     ActionFailure,
     Automation,
     AutomationState,
+    LifecycleSettings,
     NoTriggers,
     TriggerRegistrar,
     start_all,
@@ -83,6 +84,7 @@ class AutomationManager:
         hass: HomeAssistant,
         entry: ConfigEntry,
         host: Host,
+        options: EngineOptions | None = None,
     ) -> None:
         """Initialize the automation manager.
 
@@ -90,7 +92,14 @@ class AutomationManager:
             hass: Home Assistant instance.
             entry: The config entry for this integration.
             host: The host interfaces the engine uses to reach Home Assistant.
+            options: The engine's limits from the integration options. The design's defaults if omitted.
         """
+        self._options = options or EngineOptions()
+        self._lifecycle_settings = LifecycleSettings(
+            startup_timeout=self._options.startup_timeout,
+            shutdown_timeout=self._options.shutdown_timeout,
+            stop_grace_period=self._options.stop_grace_period,
+        )
         self.hass = hass
         self.entry = entry
         self.host = host
@@ -119,7 +128,7 @@ class AutomationManager:
             Path(self._automation_path),
             host.clock,
             self,
-            interval=self._config.get_automation_refresh_interval(),
+            interval=self._options.rescan_interval,
         )
 
         # Folders that are not loaded because of their name, kept in step with repair issues
@@ -130,16 +139,22 @@ class AutomationManager:
         self._action_pool = ActionWorkerPool(
             status_manager=self._status_manager,
             clock=host.clock,
-            max_workers=DEFAULT_MAX_CONCURRENT_ACTIONS,
+            max_workers=self._options.concurrency_limit,
         )
 
         # Every action request goes through the dispatcher (execution modes, queues)
-        self._dispatcher = ActionDispatcher(self._action_pool)
+        self._dispatcher = ActionDispatcher(
+            self._action_pool,
+            queue_size=self._options.action_queue_size,
+            default_timeout=self._options.default_action_timeout,
+        )
 
         self._control = AutomationControl(self._flags, self._dispatcher)
 
         # State
         self._started = False
+        self._stopped = False
+        self._unsub_stop: Callable[[], None] | None = None
 
         # Who shows the automations: told about every change of every automation
         self._listeners: list[AutomationListener] = []
@@ -158,6 +173,11 @@ class AutomationManager:
         """Pass a change of an automation on to the listeners."""
         for listener in list(self._listeners):
             listener.automation_changed(automation_id)
+
+    @property
+    def started(self) -> bool:
+        """Whether the automation folders have been loaded and the automations started."""
+        return self._started
 
     def automation_ids(self) -> list[str]:
         """Return the ID of every automation that is loaded or failed to load, sorted."""
@@ -193,9 +213,12 @@ class AutomationManager:
             _LOGGER.info("Creating automation folder: %s", folder)
             folder.mkdir(parents=True, exist_ok=True)
 
-        # Register for HA lifecycle events
-        self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, self._on_ha_started)
-        self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._on_ha_stop)
+        # Load and start with Home Assistant, or now if it is already running (a reload of the integration)
+        if self.hass.state is CoreState.running:
+            await self._on_ha_started(None)
+        else:
+            self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, self._on_ha_started)
+        self._unsub_stop = self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._on_ha_stop)
 
         _LOGGER.info(
             "Automation manager initialized. Automation folder: %s, Allow all imports: %s",
@@ -203,7 +226,7 @@ class AutomationManager:
             self._allow_all_imports,
         )
 
-    async def _on_ha_started(self, _: Event) -> None:
+    async def _on_ha_started(self, _: Event | None) -> None:
         """Handle Home Assistant started event.
 
         Args:
@@ -231,6 +254,22 @@ class AutomationManager:
         Args:
             event: The stop event.
         """
+        self._unsub_stop = None
+        await self._stop()
+
+    async def async_shutdown(self) -> None:
+        """Stop and unload everything: the integration is unloaded or reloaded."""
+        if self._unsub_stop is not None:
+            self._unsub_stop()
+            self._unsub_stop = None
+        await self._stop()
+
+    async def _stop(self) -> None:
+        """Stop the watcher, every automation and the dispatcher. Does nothing the second time."""
+        if self._stopped:
+            return
+        self._stopped = True
+        self._started = False
         # Cancel watcher
         if self._watcher_task:
             self._watcher_task.cancel()
@@ -331,7 +370,9 @@ class AutomationManager:
             additional_imports=self._import_allowlist,
             allow_all_imports=self._allow_all_imports,
         )
-        automation = Automation(context, dispatcher=self._dispatcher, triggers=self._triggers)
+        automation = Automation(
+            context, dispatcher=self._dispatcher, triggers=self._triggers, settings=self._lifecycle_settings
+        )
 
         # Kept also when loading fails: the automation is then in the error state
         self._automations[automation_path] = automation

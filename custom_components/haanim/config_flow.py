@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.haanim.config import get_config_manager
+from custom_components.haanim.options import NUMERIC_OPTIONS, numeric_option
 from custom_components.haanim.const import (
     CONFIG_ALLOW_ALL_IMPORTS,
     CONFIG_IMPORT_ALLOWLIST,
@@ -156,6 +157,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
         config_manager = get_config_manager()
         config_manager.setup(self.hass)
+        stored = {**self.config_entry.data, **self.config_entry.options}
 
         if user_input is not None:
             # Validate automation path using ConfigManager
@@ -176,10 +178,11 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     title="",
                     data={
                         CONFIG_AUTOMATION_PATH: automation_path,
+                        **{key: numeric_option({**stored, **user_input}, key) for key in NUMERIC_OPTIONS},
+                        CONFIG_IMPORT_ALLOWLIST: allowlist,
                         CONFIG_ALLOW_ALL_IMPORTS: user_input.get(
                             CONFIG_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS
                         ),
-                        CONFIG_IMPORT_ALLOWLIST: allowlist,
                     },
                 )
 
@@ -194,13 +197,13 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         # Convert allowlist to comma-separated string for display
         allowlist_str = ", ".join(current_allowlist) if current_allowlist else ""
 
-        options_schema = vol.Schema(
-            {
-                vol.Required(CONFIG_AUTOMATION_PATH, default=current_path): str,
-                vol.Required(CONFIG_ALLOW_ALL_IMPORTS, default=current_allow_all): bool,
-                vol.Optional("import_allowlist_str", default=allowlist_str): str,
-            }
-        )
+        # The ten options, in the order of the design's table
+        fields: dict[Any, Any] = {vol.Required(CONFIG_AUTOMATION_PATH, default=current_path): str}
+        for key, (_, validator) in NUMERIC_OPTIONS.items():
+            fields[vol.Required(key, default=numeric_option(stored, key))] = validator
+        fields[vol.Optional("import_allowlist_str", default=allowlist_str)] = str
+        fields[vol.Required(CONFIG_ALLOW_ALL_IMPORTS, default=current_allow_all)] = bool
+        options_schema = vol.Schema(fields)
 
         return self.async_show_form(
             step_id="init",

@@ -19,6 +19,7 @@ from custom_components.haanim.ha.host import HAServiceCaller, build_host
 from custom_components.haanim.ha.services import ServiceManager
 from custom_components.haanim.ha.state import StateManager
 from custom_components.haanim.automation_manager import AutomationManager
+from custom_components.haanim.options import engine_options
 from haanim.engine.triggers import TriggerManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -57,13 +58,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Initialize the config manager
     config_manager = get_config_manager()
     config_manager.setup(hass, entry.entry_id)
+    # The entry is not in hass.data yet, so the manager cannot find it itself
+    config_manager.load_entry(entry.data, entry.options)
 
     # Initialize managers
     state_manager = StateManager(hass)
     event_manager = EventManager(hass)
     service_manager = ServiceManager(hass)
     host = build_host(hass, state_manager, event_manager)
-    automation_manager = AutomationManager(hass, entry, host)
+    automation_manager = AutomationManager(
+        hass, entry, host, options=engine_options({**entry.data, **entry.options})
+    )
     trigger_manager = TriggerManager(host, automation_manager.dispatcher)
     automation_manager.set_trigger_registrar(trigger_manager)
 
@@ -178,6 +183,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
     # Get managers
     data = hass.data[DOMAIN].get(entry.entry_id, {})
+
+    # Stop and unload the automations first, while triggers and services still work
+    if "manager" in data:
+        await data["manager"].async_shutdown()
 
     # Tear down managers in reverse order
     if "trigger_manager" in data:

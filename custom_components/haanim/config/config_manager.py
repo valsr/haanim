@@ -234,6 +234,17 @@ class ConfigManager:
                 _LOGGER.debug("Loaded option '%s' = %s (from data)", key, data[key])
         _LOGGER.info("Loaded %d configuration values from dict", loaded_count)
 
+    def load_entry(self, data: Mapping[str, Any], options: Mapping[str, Any] | None = None) -> None:
+        """Take the values of a config entry; an option the entry does not store gets its default.
+
+        Args:
+            data: The entry's data.
+            options: The entry's options (take precedence).
+        """
+        for key, option in self._options.items():
+            self._values[key] = list(option.default) if isinstance(option.default, list) else option.default
+        self.load_from_dict(data, options)
+
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value.
 

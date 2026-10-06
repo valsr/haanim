@@ -31,14 +31,28 @@
                 "title": "HAAnim Options",
                 "description": "Configure HAAnim settings. Automations can always import: {default_allowlist}",
                 "data": {
-                    "automation_path": "Automation Path",
-                    "allow_all_imports": "Allow All Imports",
-                    "import_allowlist_str": "Additional allowed imports (comma-separated)"
+                    "automation_path": "Automations folder",
+                    "automation_refresh_interval": "Rescan interval (seconds)",
+                    "max_concurrent_actions": "Concurrency limit",
+                    "action_queue_size": "Action queue size",
+                    "default_action_timeout": "Default action timeout (seconds)",
+                    "startup_timeout": "Startup timeout (seconds)",
+                    "shutdown_timeout": "Shutdown timeout (seconds)",
+                    "stop_grace_period": "Stop grace period (seconds)",
+                    "import_allowlist_str": "Additional allowed imports (comma-separated)",
+                    "allow_all_imports": "Allow all imports"
                 },
                 "data_description": {
-                    "automation_path": "Absolute path for automations",
-                    "allow_all_imports": "Allow automations to import any module (not recommended)",
-                    "import_allowlist_str": "Modules automations may import in addition to the default list"
+                    "automation_path": "Where automations are discovered",
+                    "automation_refresh_interval": "How often the folder is scanned for changes",
+                    "max_concurrent_actions": "Maximum number of actions executing at once",
+                    "action_queue_size": "Maximum queued requests per QUEUE action",
+                    "default_action_timeout": "Timeout for actions that do not set one; 0 for none",
+                    "startup_timeout": "Time limit for @startup",
+                    "shutdown_timeout": "Time limit for @shutdown",
+                    "stop_grace_period": "Time running actions get to finish before cancellation",
+                    "import_allowlist_str": "Module names added to the import allowlist",
+                    "allow_all_imports": "Disables the import allowlist (not recommended)"
                 }
             }
         },
