@@ -193,51 +193,37 @@ class HAAnimAutomationProxy:
 
     @property
     def message(self) -> str:
-        """Get the automation's status message."""
+        """Get the automation's status message; empty if it has set none."""
         context = self._manager.get_context_by_name(self.id)
-        if not context:
-            return ""
-        return context._metadata.message or "" if context._metadata else ""
+        metadata = context.get_metadata() if context else None
+        return (metadata.message or "") if metadata else ""
 
     @property
     def file_path(self) -> str:
-        """Get the automation's file path."""
+        """Get the absolute path of the automation's folder."""
         context = self._manager.get_context_by_name(self.id)
-        if not context:
-            return ""
-        return context.automation_path
+        return str(Path(context.automation_path).absolute()) if context else ""
 
     @property
     def load_time(self) -> datetime | None:
         """Get when the automation was loaded."""
-        context = self._manager.get_context_by_name(self.id)
-        if not context or not context._metadata:
-            return None
-        return context._metadata.loaded_at
+        return self._manager.automation_times(self.id).load_time
 
     @property
     def run_time(self) -> datetime | None:
-        """Get when the automation was last started."""
-        context = self._manager.get_context_by_name(self.id)
-        if not context or not context._metadata:
-            return None
-        return context._metadata.run_time if hasattr(context._metadata, "run_time") else None
+        """Get when the automation was last started; None if it never was."""
+        return self._manager.automation_times(self.id).run_time
 
     @property
     def actions(self) -> list[str]:
-        """Get list of action names."""
+        """Get the names of the automation's actions. Empty unless the automation is running."""
         context = self._manager.get_context_by_name(self.id)
-        if not context or not context._metadata:
-            return []
-        return [action.name for action in context._metadata.actions]
+        return [action.name for action in context.get_actions()] if context else []
 
     @property
     def last_action_time(self) -> datetime | None:
-        """Get timestamp of last action execution."""
-        context = self._manager.get_context_by_name(self.id)
-        if not context or not context._metadata:
-            return None
-        return context._metadata.last_action_time if hasattr(context._metadata, "last_action_time") else None
+        """Get when an action of the automation last started executing; None if none has."""
+        return self._manager.automation_times(self.id).last_action_time
 
     @property
     def error_message(self) -> str | None:
@@ -264,8 +250,15 @@ class HAAnimAutomationProxy:
 
         Raises:
             NonExistingAutomationError: If the automation doesn't exist.
-            AutomationNotRunningError: If the automation is not running.
+            AutomationNotLoadedError: If the automation is not loaded.
+            AutomationNotRunningError: If the automation is stopped, disabled or in error.
             ActionNotFoundError: If the action doesn't exist or is disabled.
+            ActionDroppedError: If the request is dropped (DROP mode, or a re-entrant call).
+            QueueFullError: If the action's queue is full (QUEUE mode).
+            PoolExhaustedError: If the concurrency limit is reached.
+            ActionTimeOutError: If the action times out.
+            ActionCancelledError: If the action is cancelled.
+            Exception: Whatever the action raises, unchanged.
         """
         return await self._manager.async_call_action(self.id, action_name, data, caller=self._caller)
 

@@ -36,7 +36,7 @@ from haanim.engine.automation_status import AutomationStatus, AutomationStatusMa
 from haanim.engine.automation_ids import RejectedFolder
 from haanim.engine.discovery import DiscoveredAutomation, FolderIssues, discover
 from haanim.engine.hot_reload import HotReloader
-from haanim.interfaces import Host
+from haanim.interfaces import AutomationTimes, Host
 from haanim.engine.control import AutomationControl, EnabledFlags
 from haanim.engine.errors import (
     HAAnimError,
@@ -638,6 +638,13 @@ class AutomationManager:
     def is_automation_enabled(self, automation_id: str) -> bool:
         """Return whether an automation is enabled."""
         return self._control.is_enabled(automation_id)
+
+    def automation_times(self, automation_id: str) -> AutomationTimes:
+        """Return when an automation was loaded, last started and last ran an action."""
+        try:
+            return self._automation(automation_id).times
+        except NonExistingAutomationError:
+            return AutomationTimes()
 
     async def _load_flags(self) -> None:
         """Read the enabled flags from storage, once."""

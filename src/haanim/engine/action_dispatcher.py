@@ -14,6 +14,7 @@ import logging
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from haanim.const import DEFAULT_ACTION_QUEUE_SIZE, DEFAULT_ACTION_TIMEOUT, ActionMode
@@ -131,6 +132,7 @@ class ActionDispatcher:
         self._slots: dict[ActionKey, _Slot] = {}
         self._handlers: set[_Request] = set()
         self._failure_handlers: dict[str, FailureHandler] = {}
+        self._last_started: dict[str, datetime] = {}
         # Set each time a request ends or is removed; lets wait_idle() wake up and re-check.
         self._changed = asyncio.Event()
         self._shutting_down = False
@@ -376,6 +378,7 @@ class ActionDispatcher:
         )
         if slot is not None:
             slot.running = request
+            self._last_started[request.automation_id] = self._pool.clock.now()
         request.task = asyncio.get_running_loop().create_task(self._run(request), context=request.context)
         # A callback, not a finally in the task: it also runs for a task cancelled before its first step
         request.task.add_done_callback(lambda task: self._finished(request, slot, task))
@@ -463,6 +466,10 @@ class ActionDispatcher:
         return count
 
     # --- Queries ------------------------------------------------------------------
+
+    def last_action_time(self, automation_id: str) -> datetime | None:
+        """Return when an action of an automation last started executing; None if none has."""
+        return self._last_started.get(automation_id)
 
     def is_running(self, automation_id: str, action_name: str) -> bool:
         """Return whether an execution of the action is running."""

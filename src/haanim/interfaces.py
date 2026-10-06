@@ -259,6 +259,21 @@ class IssueReporter(Protocol):
         """Remove an issue. Does nothing if it is not raised."""
 
 
+@dataclass(frozen=True)
+class AutomationTimes:
+    """When things last happened to an automation.
+
+    Args:
+        load_time: When the automation was loaded; None if it is not loaded.
+        run_time: When the automation was last started; None if it never was.
+        last_action_time: When an action of the automation last started executing; None if none has.
+    """
+
+    load_time: datetime | None = None
+    run_time: datetime | None = None
+    last_action_time: datetime | None = None
+
+
 class AutomationRegistry(Protocol):
     """The set of loaded automations and the operations on them.
 
@@ -311,6 +326,9 @@ class AutomationRegistry(Protocol):
 
     def is_automation_enabled(self, automation_id: str) -> bool:
         """Return whether an automation is enabled."""
+
+    def automation_times(self, automation_id: str) -> AutomationTimes:
+        """Return when an automation was loaded, last started and last ran an action."""
 
 
 @dataclass(frozen=True)

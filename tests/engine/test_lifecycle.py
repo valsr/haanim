@@ -107,6 +107,10 @@ class World:
             raise NonExistingAutomationError(automation_id)
         return await self.automations[automation_id].call_action(action_name, data, caller=caller)
 
+    def automation_times(self, automation_id: str) -> Any:
+        """Return the times of an automation."""
+        return self.automations[automation_id].times
+
     # --- Test controls ------------------------------------------------------------
 
     def write(self, name: str, source: str, **files: str) -> Path:
@@ -916,12 +920,13 @@ class TestCalls:
 
     @pytest.mark.parametrize("state", ["unavailable", "off", "error"])
     async def test_not_running(self, world: World, state: str) -> None:
-        """Calling an action of an automation that is not on raises AutomationNotRunningError."""
+        """An automation that is not on cannot be called: not loaded, or not running."""
         automation = world.add("lights", "def broken(:\n" if state == "error" else RUNNING)
         if state != "unavailable":
             await automation.load()
 
-        with pytest.raises(AutomationNotRunningError) as raised:
+        expected = AutomationNotLoadedError if state == "unavailable" else AutomationNotRunningError
+        with pytest.raises(expected) as raised:
             await automation.call_action("ping")
 
         assert raised.value.automation_id == "lights"

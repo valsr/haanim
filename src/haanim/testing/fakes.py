@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from haanim.engine.errors import NonExistingAutomationError, ServiceCallError
-from haanim.interfaces import FileSystem, Host, IssueReporter, StorageBackend
+from haanim.interfaces import AutomationTimes, FileSystem, Host, IssueReporter, StorageBackend
 from haanim.types import EventData, ServiceInfo, StateChangedEvent, StateVal
 
 if TYPE_CHECKING:
@@ -749,6 +749,7 @@ class FakeAutomationRegistry:
         """State to report for an automation, by ID."""
         self.messages: dict[str, str] = {}
         """Error message to report for an automation, by ID."""
+        self.times: dict[str, AutomationTimes] = {}
         self.disabled: set[str] = set()
         """IDs of the automations to report as disabled."""
         self.control_calls: list[tuple[str, str]] = []
@@ -815,6 +816,10 @@ class FakeAutomationRegistry:
     def is_automation_enabled(self, automation_id: str) -> bool:
         """Return whether an automation is enabled; True unless it was disabled."""
         return automation_id not in self.disabled
+
+    def automation_times(self, automation_id: str) -> AutomationTimes:
+        """Return the times set for an automation in ``times``; all None otherwise."""
+        return self.times.get(automation_id, AutomationTimes())
 
     def _record(self, operation: str, automation_id: str) -> None:
         if automation_id not in self._contexts:

@@ -31,6 +31,7 @@ from haanim.engine.errors import (
     AutomationNotRunningError,
 )
 from haanim.events import SOURCE_TRIGGER
+from haanim.interfaces import AutomationTimes
 
 if TYPE_CHECKING:
     from haanim.engine.action_dispatcher import ActionDispatcher
@@ -172,6 +173,8 @@ class Automation:
         self._state = AutomationState.UNAVAILABLE
         self._message: str | None = None
         self._last_error: ActionFailure | None = None
+        self._load_time: datetime | None = None
+        self._run_time: datetime | None = None
         # Whether @startup or @shutdown is running; it may call the automation's own actions.
         self._handler_running = False
         self._stopping = False
@@ -239,8 +242,18 @@ class Automation:
             self._fail(str(err) or type(err).__name__)
             return False
 
+        self._load_time = self._clock.now()
         self._set_state(AutomationState.OFF)
         return True
+
+    @property
+    def times(self) -> AutomationTimes:
+        """When the automation was loaded, last started, and last ran an action."""
+        return AutomationTimes(
+            load_time=self._load_time,
+            run_time=self._run_time,
+            last_action_time=self._dispatcher.last_action_time(self.automation_id),
+        )
 
     # --- Start --------------------------------------------------------------------
 
@@ -281,6 +294,7 @@ class Automation:
             self._set_state(AutomationState.OFF)
             raise
 
+        self._run_time = self._clock.now()
         self._set_state(AutomationState.ON)
         return True
 
@@ -431,6 +445,7 @@ class Automation:
         if self._state is AutomationState.ON:
             await self.stop()
         self.context.unload()
+        self._load_time = None
         self._set_state(AutomationState.UNAVAILABLE)
 
     # --- Calls --------------------------------------------------------------------
@@ -468,13 +483,16 @@ class Automation:
             What the action returns.
 
         Raises:
-            AutomationNotRunningError: If the automation is not running.
+            AutomationNotLoadedError: If the automation is not loaded.
+            AutomationNotRunningError: If the automation is stopped, disabled or in error.
             ActionNotFoundError: If the automation has no such action, or it is disabled.
             ActionDroppedError: If the request is dropped (``DROP`` mode, or a re-entrant call).
             QueueFullError: If the action's queue is full (``QUEUE`` mode).
             ActionCancelledError: If the execution is cancelled.
             Exception: Whatever the action raises.
         """
+        if self._state is AutomationState.UNAVAILABLE:
+            raise AutomationNotLoadedError(self.automation_id)
         if not self.accepts_calls():
             raise AutomationNotRunningError(self.automation_id)
 

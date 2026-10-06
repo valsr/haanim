@@ -23,7 +23,7 @@ from haanim.engine.haanim_api import (
     HAAnimServiceProxy,
     ServiceDomainProxy,
 )
-from haanim.interfaces import Host
+from haanim.interfaces import AutomationTimes, Host
 from haanim.testing import FakeAutomationRegistry, FakeServiceCaller, FakeStateProvider, make_host
 from tests.engine.helpers import automation_file, load_and_run, make_context
 
@@ -210,13 +210,10 @@ class TestOtherAutomations:
     async def test_automation_proxy(self, haa: HAAnim, other: AutomationContext) -> None:
         """Test a proxy describes the loaded automation."""
         proxy = haa.automation("other")
-        metadata = other.get_metadata()
-        assert metadata is not None
-
         assert isinstance(proxy, HAAnimAutomationProxy)
         assert proxy.id == "other"
         assert proxy.file_path == other.automation_path
-        assert proxy.load_time == metadata.loaded_at
+        assert proxy.load_time is None
         assert proxy.actions == ["Add numbers", "greet"]
         assert proxy.state == "on"
         assert proxy.message == ""
@@ -239,14 +236,14 @@ class TestOtherAutomations:
         registry.messages["other"] = "bad thing"
         registry.disabled.add("other")
         metadata.message = "working"
-        metadata.run_time = started
-        metadata.last_action_time = started
+        registry.times["other"] = AutomationTimes(
+            load_time=started, run_time=started, last_action_time=started
+        )
 
         assert proxy.state == "error"
         assert proxy.is_running() is False
         assert proxy.message == "working"
-        assert proxy.run_time == started
-        assert proxy.last_action_time == started
+        assert (proxy.load_time, proxy.run_time, proxy.last_action_time) == (started, started, started)
         assert proxy.error_message == "bad thing"
         assert proxy.is_enabled() is False
 
