@@ -73,8 +73,12 @@ class Unusable(Exception):
 
 
 @dataclass(frozen=True)
-class _Entity:
-    """An entity in an expression: its state, not yet converted to anything."""
+class EntityOperand:
+    """An entity as an operand: its state, not yet converted to anything.
+
+    What the state is converted to depends on what it is used with; see
+    ``compare()``, ``contains()`` and ``truth()``.
+    """
 
     entity_id: str
     state: str
@@ -247,16 +251,12 @@ class _Evaluator:
 
     def truth(self, node: ast.AST) -> bool:
         """Evaluate a node used on its own or with ``and``, ``or`` or ``not``."""
-        return self._as_bool(self.value(node))
-
-    @staticmethod
-    def _as_bool(value: Any) -> bool:
-        return value.as_bool() if isinstance(value, _Entity) else bool(value)
+        return truth(self.value(node))
 
     @staticmethod
     def _as_number(value: Any, what: str) -> Any:
         """Convert the operand of arithmetic or of a numeric function."""
-        if isinstance(value, _Entity):
+        if isinstance(value, EntityOperand):
             return value.as_float()
         if _is_number(value):
             return value
@@ -265,7 +265,7 @@ class _Evaluator:
     @staticmethod
     def _as_text(value: Any) -> Any:
         """Replace an entity by its state string; leave everything else."""
-        return value.state if isinstance(value, _Entity) else value
+        return value.state if isinstance(value, EntityOperand) else value
 
     # --- Literals and entities --------------------------------------------------
 
@@ -281,18 +281,18 @@ class _Evaluator:
 
     _tuple = _list
 
-    def _attribute(self, node: ast.Attribute) -> _Entity:
+    def _attribute(self, node: ast.Attribute) -> EntityOperand:
         entity_id = _entity_id(node)
         assert entity_id is not None
         found = self._lookup(entity_id)
         if found is None or found.state is None:
             raise Unusable(f"{entity_id} does not exist")
-        return _Entity(entity_id, str(found.state), found.attributes)
+        return EntityOperand(entity_id, str(found.state), found.attributes)
 
     def _subscript(self, node: ast.Subscript) -> Any:
         target = self.value(node.value)
         key = self._as_text(self.value(node.slice))
-        if isinstance(target, _Entity):
+        if isinstance(target, EntityOperand):
             # Attribute values keep the type the host gives them
             if key not in target.attributes:
                 raise Unusable(f"{target.entity_id} has no attribute {key!r}")
@@ -334,43 +334,9 @@ class _Evaluator:
 
     def _compare_pair(self, comparison: ast.cmpop, left: Any, right: Any) -> bool:
         if isinstance(comparison, (ast.In, ast.NotIn)):
-            contained = self._contains(right, left)
+            contained = contains(right, left)
             return contained if isinstance(comparison, ast.In) else not contained
-        return self._ordered(_COMPARISONS[type(comparison)], left, right)
-
-    def _ordered(self, compare: Callable[[Any, Any], bool], left: Any, right: Any) -> bool:
-        """Compare two values after converting an entity by what it is compared with."""
-        left, right = self._convert_pair(left, right)
-        try:
-            return bool(compare(left, right))
-        except TypeError:
-            raise Unusable(f"cannot compare {left!r} with {right!r}") from None
-
-    @staticmethod
-    def _convert_pair(left: Any, right: Any) -> tuple[Any, Any]:
-        """Apply the conversion table to the two sides of a comparison."""
-        if isinstance(left, _Entity) and isinstance(right, _Entity):
-            if left.is_numeric() and right.is_numeric():
-                return left.as_float(), right.as_float()
-            return left.state, right.state
-        if isinstance(left, _Entity):
-            return _convert_entity(left, right), right
-        if isinstance(right, _Entity):
-            return left, _convert_entity(right, left)
-        return left, right
-
-    def _contains(self, container: Any, item: Any) -> bool:
-        """Evaluate ``item in container``."""
-        if isinstance(container, list):
-            # Each item is compared using the rule for its own type.
-            # A list, not a generator: every item is evaluated, so an unusable one is noticed
-            matches = [self._ordered(operator.eq, item, member) for member in container]
-            return any(matches)
-        text = self._as_text(container)
-        item = self._as_text(item)
-        if not isinstance(text, str) or not isinstance(item, str):
-            raise Unusable(f"cannot test whether {item!r} is in {text!r}")
-        return item in text
+        return compare(_COMPARISONS[type(comparison)], left, right)
 
     # --- Calls ------------------------------------------------------------------
 
@@ -413,7 +379,68 @@ class _Evaluator:
             raise Unusable(f".{name}() cannot be applied to {target!r}: {err}") from None
 
 
-def _convert_entity(entity: _Entity, other: Any) -> Any:
+def compare(comparison: Callable[[Any, Any], bool], left: Any, right: Any) -> bool:
+    """Compare two values, converting an entity by what it is compared with.
+
+    Args:
+        comparison: The comparison, such as ``operator.gt``.
+        left: The left value; an ``EntityOperand`` for an entity.
+        right: The right value; an ``EntityOperand`` for an entity.
+
+    Returns:
+        The result of the comparison.
+
+    Raises:
+        Unusable: If a conversion fails or the values cannot be compared.
+    """
+    left, right = _convert_pair(left, right)
+    try:
+        return bool(comparison(left, right))
+    except TypeError:
+        raise Unusable(f"cannot compare {left!r} with {right!r}") from None
+
+
+def _convert_pair(left: Any, right: Any) -> tuple[Any, Any]:
+    """Apply the conversion table to the two sides of a comparison."""
+    if isinstance(left, EntityOperand) and isinstance(right, EntityOperand):
+        if left.is_numeric() and right.is_numeric():
+            return left.as_float(), right.as_float()
+        return left.state, right.state
+    if isinstance(left, EntityOperand):
+        return _convert_entity(left, right), right
+    if isinstance(right, EntityOperand):
+        return left, _convert_entity(right, left)
+    return left, right
+
+
+def contains(container: Any, item: Any) -> bool:
+    """Evaluate ``item in container`` for a list, or for a string or an entity's state.
+
+    Raises:
+        Unusable: If a conversion fails or the test cannot be made.
+    """
+    if isinstance(container, list):
+        # Each item is compared using the rule for its own type.
+        # A list, not a generator: every item is evaluated, so an unusable one is noticed
+        matches = [compare(operator.eq, item, member) for member in container]
+        return any(matches)
+    text = container.state if isinstance(container, EntityOperand) else container
+    item = item.state if isinstance(item, EntityOperand) else item
+    if not isinstance(text, str) or not isinstance(item, str):
+        raise Unusable(f"cannot test whether {item!r} is in {text!r}")
+    return item in text
+
+
+def truth(value: Any) -> bool:
+    """Return the value used on its own: an entity's state as a boolean, anything else as in Python.
+
+    Raises:
+        Unusable: If an entity's state is not on, off, true or false.
+    """
+    return value.as_bool() if isinstance(value, EntityOperand) else bool(value)
+
+
+def _convert_entity(entity: EntityOperand, other: Any) -> Any:
     """Convert an entity's state by the type of the value it is compared with."""
     if isinstance(other, bool):
         return entity.as_bool()

@@ -13,9 +13,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from haanim.entity import HAAnimEntity
 from haanim.engine.errors import (
     NonExistingAutomationError,
-    NonExistingEntityError,
     NonExistingServiceError,
     ServiceCallError,
 )
@@ -286,11 +286,23 @@ class HAAnimAutomationProxy:
         await self._manager.async_restart_automation(self.id)
 
 
-class EntityProxy:
-    """Proxy for accessing entity states and attributes."""
+def read_entity(host: Host, entity_id: str) -> HAAnimEntity:
+    """Take a snapshot of an entity. A missing entity gives an object with ``exists == False``."""
+    found = host.states.get(entity_id)
+    return HAAnimEntity(
+        entity_id,
+        state=found.state,
+        attributes=found.attributes,
+        last_changed=found.last_changed,
+        last_updated=found.last_updated,
+    )
+
+
+class EntityDomain:
+    """The entities of one domain: ``haa.entity.<domain>``."""
 
     def __init__(self, host: Host, domain: str) -> None:
-        """Initialize entity proxy for a domain.
+        """Initialize the domain.
 
         Args:
             host: The host the engine runs in.
@@ -299,35 +311,33 @@ class EntityProxy:
         self._host = host
         self._domain = domain
 
-    def __getattr__(self, entity_name: str) -> str | None:
-        """Get entity state by name.
+    def __getattr__(self, name: str) -> HAAnimEntity:
+        """Read the entity ``<domain>.<name>`` as it is now."""
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return read_entity(self._host, f"{self._domain}.{name}")
+
+
+class EntityNamespace:
+    """All entities: ``haa.entity.<domain>.<name>`` and ``haa.entity["<domain>.<name>"]``."""
+
+    def __init__(self, host: Host) -> None:
+        """Initialize the namespace.
 
         Args:
-            entity_name: The entity name (without domain prefix).
-
-        Returns:
-            The entity state as a string, or None if not found.
+            host: The host the engine runs in.
         """
-        entity_id = f"{self._domain}.{entity_name}"
-        return self._host.states.get(entity_id).state
+        self._host = host
 
-    def __getitem__(self, entity_name: str) -> dict[str, Any]:
-        """Get entity with full state and attributes.
+    def __getattr__(self, domain: str) -> EntityDomain:
+        """Return the entities of a domain."""
+        if domain.startswith("_"):
+            raise AttributeError(domain)
+        return EntityDomain(self._host, domain)
 
-        Args:
-            entity_name: The entity name (without domain prefix).
-
-        Returns:
-            Dictionary with state and attributes.
-
-        Raises:
-            NonExistingEntityError: If entity doesn't exist.
-        """
-        entity_id = f"{self._domain}.{entity_name}"
-        if not self._host.states.exists(entity_id):
-            raise NonExistingEntityError(entity_id)
-        state = self._host.states.get(entity_id)
-        return {"state": state.state, **state.attributes}
+    def __getitem__(self, entity_id: str) -> HAAnimEntity:
+        """Read an entity by its ID, for IDs that are not identifiers or only known at run time."""
+        return read_entity(self._host, entity_id)
 
 
 class ServiceDomainProxy:
@@ -411,19 +421,24 @@ class HAAnim:
         """
         return self._host.clock.now()
 
-    def __getattr__(self, domain: str) -> EntityProxy | _ServiceAccessor:
-        """Get entity proxy for a domain.
+    @property
+    def entity(self) -> EntityNamespace:
+        """The entities of the host: ``haa.entity.<domain>.<name>`` or ``haa.entity["<id>"]``.
+
+        Each read returns a new snapshot (``HAAnimEntity``).
+        """
+        return EntityNamespace(self._host)
+
+    def state(self, entity_id: str) -> str | None:
+        """Return the raw state string of an entity, without any conversion.
 
         Args:
-            domain: Entity domain.
+            entity_id: Full entity ID, such as ``"sensor.temperature"``.
 
         Returns:
-            EntityProxy for accessing entities in the domain, or _ServiceAccessor for 'service'.
+            The state, or None if the entity does not exist.
         """
-        # Check if it's a service access
-        if domain == "service":
-            return self._ServiceAccessor(self._host)  # type: ignore[return-value]
-        return EntityProxy(self._host, domain)
+        return self._host.states.get(entity_id).state
 
     class _ServiceAccessor:
         """Internal accessor for services."""

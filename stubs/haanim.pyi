@@ -239,11 +239,80 @@ class HAAnimAutomationProxy:
     async def stop(self) -> None: ...
     async def restart(self) -> None: ...
 
-class EntityProxy:
-    """Proxy for accessing entity states."""
+class HAAnimEntity:
+    """A snapshot of an entity: its state, attributes and timestamps.
 
-    def __getattr__(self, entity_name: str) -> str:
-        """Get entity state as string."""
+    Comparing the object compares its state with the conversion rules of
+    trigger expressions.
+    """
+
+    @property
+    def entity_id(self) -> str:
+        """Full entity ID, such as 'sensor.temperature'."""
+        ...
+
+    @property
+    def exists(self) -> bool:
+        """False if Home Assistant has no such entity."""
+        ...
+
+    @property
+    def state(self) -> str | None:
+        """Raw state string, None if the entity does not exist."""
+        ...
+
+    @property
+    def attributes(self) -> dict[str, Any]:
+        """All attributes (empty if the entity does not exist)."""
+        ...
+
+    @property
+    def last_changed(self) -> datetime | None:
+        """When the state last changed."""
+        ...
+
+    @property
+    def last_updated(self) -> datetime | None:
+        """When the state or an attribute last changed."""
+        ...
+
+    def __getitem__(self, attribute: str) -> Any:
+        """Single attribute, None if missing."""
+        ...
+
+    def __eq__(self, other: object) -> bool: ...
+    def __ne__(self, other: object) -> bool: ...
+    def __lt__(self, other: Any) -> bool: ...
+    def __le__(self, other: Any) -> bool: ...
+    def __gt__(self, other: Any) -> bool: ...
+    def __ge__(self, other: Any) -> bool: ...
+    def __contains__(self, item: Any) -> bool: ...
+    def __bool__(self) -> bool: ...
+    def __float__(self) -> float: ...
+    def __int__(self) -> int: ...
+    def upper(self) -> str: ...
+    def lower(self) -> str: ...
+    def strip(self, chars: str | None = None) -> str: ...
+    def startswith(self, prefix: str | tuple[str, ...]) -> bool: ...
+    def endswith(self, suffix: str | tuple[str, ...]) -> bool: ...
+    def split(self, sep: str | None = None, maxsplit: int = -1) -> list[str]: ...
+
+class EntityDomain:
+    """The entities of one domain: haa.entity.<domain>."""
+
+    def __getattr__(self, name: str) -> HAAnimEntity:
+        """Read the entity <domain>.<name> as it is now."""
+        ...
+
+class EntityNamespace:
+    """All entities: haa.entity.<domain>.<name> and haa.entity["<domain>.<name>"]."""
+
+    def __getattr__(self, domain: str) -> EntityDomain:
+        """The entities of a domain."""
+        ...
+
+    def __getitem__(self, entity_id: str) -> HAAnimEntity:
+        """Read an entity by its ID."""
         ...
 
 class ServiceDomainProxy:
@@ -268,14 +337,19 @@ class HAAnim:
         """Get the current time, timezone-aware, from the clock that drives triggers and timeouts."""
         ...
 
-    def __getattr__(self, domain: str) -> EntityProxy:
-        """Access entities by domain.
+    @property
+    def entity(self) -> EntityNamespace:
+        """Access entities.
 
         Examples:
-            haa.sensor.temperature  # Get sensor.temperature state
-            haa.light.living_room   # Get light.living_room state
-            haa.service.light.turn_on(entity_id="light.bedroom", brightness=255)
+            haa.entity.sensor.temperature        # HAAnimEntity
+            haa.entity["sensor.3d_printer"]      # by entity ID string
+            haa.entity.light.living_room["brightness"]
         """
+        ...
+
+    def state(self, entity_id: str) -> str | None:
+        """Get the raw state string of an entity, None if it does not exist."""
         ...
 
     @property

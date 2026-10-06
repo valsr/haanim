@@ -15,6 +15,7 @@ from typing import Any
 from haanim import const, events
 from haanim.engine import decorators
 from haanim.engine.errors import PUBLIC_ERRORS
+from haanim.entity import HAAnimEntity
 from haanim.engine.logging_wrapper import LoggerWrapper
 
 # Decorators of the engine, by the name automations import them under.
@@ -131,6 +132,7 @@ def build_haanim_module(
         "logging": logging_wrapper,
         "log": logger,
         "ActionMode": const.ActionMode,
+        "HAAnimEntity": HAAnimEntity,
     }
     names.update({name: registry.bind(decorator) for name, decorator in DECORATORS.items()})
     names.update({event_class.__name__: event_class for event_class in EVENT_CLASSES})

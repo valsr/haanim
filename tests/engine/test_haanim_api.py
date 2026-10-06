@@ -14,11 +14,9 @@ from haanim.engine.automation_context import AutomationContext
 from haanim.engine.errors import (
     ActionNotFoundError,
     NonExistingAutomationError,
-    NonExistingEntityError,
     NonExistingServiceError,
 )
 from haanim.engine.haanim_api import (
-    EntityProxy,
     HAAnim,
     HAAnimAutomationProxy,
     HAAnimServiceCall,
@@ -131,38 +129,6 @@ class TestIdentity:
     def test_id(self, haa: HAAnim) -> None:
         """Test haa.id is the automation's ID."""
         assert haa.id == "me"
-
-
-class TestEntityAccess:
-    """Tests for reading entities through haa.<domain>."""
-
-    def test_domain_gives_entity_proxy(self, haa: HAAnim) -> None:
-        """Test an attribute other than service is an entity proxy for that domain."""
-        assert isinstance(haa.sensor, EntityProxy)
-
-    def test_state_by_attribute(self, haa: HAAnim) -> None:
-        """Test haa.<domain>.<name> gives the state string."""
-        assert haa.sensor.temperature == "21.5"
-        assert haa.light.hall == "on"
-
-    def test_missing_entity_state_is_none(self, haa: HAAnim) -> None:
-        """Test the state of a missing entity is None."""
-        assert haa.sensor.missing is None
-
-    def test_state_and_attributes_by_item(self, haa: HAAnim) -> None:
-        """Test haa.<domain>[<name>] gives the state merged with the attributes."""
-        assert haa.light["hall"] == {"state": "on", "brightness": 200}
-
-    def test_missing_entity_by_item_raises(self, haa: HAAnim) -> None:
-        """Test item access to a missing entity raises NonExistingEntityError."""
-        with pytest.raises(NonExistingEntityError) as exc_info:
-            haa.sensor["missing"]  # pylint: disable=pointless-statement
-        assert exc_info.value.entity_id == "sensor.missing"
-
-    def test_reads_current_state(self, haa: HAAnim, states: FakeStateProvider) -> None:
-        """Test each read reflects the entity's state at that moment."""
-        states.set_state("sensor.temperature", "30")
-        assert haa.sensor.temperature == "30"
 
 
 class TestServiceAccess:

@@ -116,8 +116,8 @@ async def periodic_check():
     log.info(f"Periodic check #{counter}")
 
     # Check entities
-    temp = haa.sensor.temperature
-    humidity = haa.sensor.humidity
+    temp = haa.entity.sensor.temperature
+    humidity = haa.entity.sensor.humidity
     log.debug(f"Temp: {temp}°C, Humidity: {humidity}%")
 
 
@@ -212,16 +212,16 @@ async def call_other_script():
 async def entity_demo():
     """Demonstrate entity access."""
     # Read entity states
-    temp = haa.sensor.temperature
-    motion = haa.binary_sensor.motion
-    light_state = haa.light.living_room
+    temp = haa.entity.sensor.temperature
+    motion = haa.entity.binary_sensor.motion
+    light_state = haa.state("light.living_room")
 
     log.info(f"Temperature: {temp}")
     log.info(f"Motion: {motion}")
     log.info(f"Light state: {light_state}")
 
     # Conditional logic based on state
-    if float(temp) > 23:
+    if temp > 23:
         await haa.service.climate.turn_on(entity_id="climate.ac")
 
 
