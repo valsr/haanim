@@ -15,6 +15,7 @@ from typing import Any
 from haanim import const, events
 from haanim.engine import decorators
 from haanim.engine.errors import PUBLIC_ERRORS
+from haanim.engine.haanim_api import HAAnimServiceCall, HAAnimServiceProxy
 from haanim.entity import HAAnimEntity
 from haanim.engine.logging_wrapper import LoggerWrapper
 
@@ -133,6 +134,8 @@ def build_haanim_module(
         "log": logger,
         "ActionMode": const.ActionMode,
         "HAAnimEntity": HAAnimEntity,
+        "HAAnimServiceCall": HAAnimServiceCall,
+        "HAAnimServiceProxy": HAAnimServiceProxy,
     }
     names.update({name: registry.bind(decorator) for name, decorator in DECORATORS.items()})
     names.update({event_class.__name__: event_class for event_class in EVENT_CLASSES})

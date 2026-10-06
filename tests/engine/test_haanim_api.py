@@ -89,40 +89,6 @@ async def other(registry: FakeAutomationRegistry, tmp_path: Path) -> AutomationC
     return context
 
 
-class TestHAAnimServiceCall:
-    """Tests for the service call result object."""
-
-    def test_initial_state(self) -> None:
-        """Test a new result is not successful and has no completion time."""
-        call_time = datetime(2025, 1, 1, 12, 0)
-        result = HAAnimServiceCall("light", "turn_on", call_time)
-        assert (result.domain, result.service, result.call_time) == ("light", "turn_on", call_time)
-        assert result.success is False
-        assert result.complete_time is None
-        assert result.error is None
-        assert result.error_code is None
-        assert result.response_data == {}
-
-    @pytest.mark.parametrize(("response", "expected"), [(None, {}), ({"a": 1}, {"a": 1}), ({}, {})])
-    def test_mark_success(self, response: dict[str, Any] | None, expected: dict[str, Any]) -> None:
-        """Test mark_success records success, the given completion time and any response."""
-        done = datetime(2025, 1, 1, 12, 0, 5)
-        result = HAAnimServiceCall("light", "turn_on", datetime(2025, 1, 1, 12, 0))
-        result.mark_success(done, response)
-        assert result.success is True
-        assert result.complete_time == done
-        assert result.response_data == expected
-
-    def test_mark_failure(self) -> None:
-        """Test mark_failure records the error, code and the given completion time."""
-        done = datetime(2025, 1, 1, 12, 0, 5)
-        result = HAAnimServiceCall("light", "turn_on", datetime(2025, 1, 1, 12, 0))
-        result.mark_failure(done, "boom", "some_code")
-        assert result.success is False
-        assert result.complete_time == done
-        assert (result.error, result.error_code) == ("boom", "some_code")
-
-
 class TestIdentity:
     """Tests for the automation's own identity."""
 

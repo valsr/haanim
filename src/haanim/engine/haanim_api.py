@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -29,59 +30,38 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
 class HAAnimServiceCall:
-    """Result object from a service call."""
+    """The result of a service call.
 
-    def __init__(
-        self,
-        domain: str,
-        service: str,
-        call_time: datetime,
-    ) -> None:
-        """Initialize service call result.
+    Args:
+        domain: Service domain that was called.
+        service: Service name that was called.
+        call_time: When the service was called.
+        complete_time: When the service call completed.
+        success: True if the service call succeeded.
+        error: Error message if the call failed; None if it succeeded.
+        error_code: Error code if the call failed; None if it succeeded.
+        response_data: Response data from the service; empty if it returned none.
+    """
 
-        Args:
-            domain: Service domain.
-            service: Service name.
-            call_time: When the service was called.
-        """
-        self.domain = domain
-        self.service = service
-        self.call_time = call_time
-        self.complete_time: datetime | None = None
-        self.success = False
-        self.error: str | None = None
-        self.error_code: str | None = None
-        self.response_data: dict[str, Any] = {}
+    domain: str
+    service: str
+    call_time: datetime
+    complete_time: datetime
+    success: bool = True
+    error: str | None = None
+    error_code: str | None = None
+    response_data: dict[str, Any] = field(default_factory=dict[str, Any])
 
-    def mark_success(self, complete_time: datetime, response_data: dict[str, Any] | None = None) -> None:
-        """Mark the service call as successful.
 
-        Args:
-            complete_time: When the call finished.
-            response_data: Optional response data from the service.
-        """
-        self.complete_time = complete_time
-        self.success = True
-        if response_data:
-            self.response_data = response_data
-
-    def mark_failure(self, complete_time: datetime, error: str, error_code: str | None = None) -> None:
-        """Mark the service call as failed.
-
-        Args:
-            complete_time: When the call finished.
-            error: Error message.
-            error_code: Optional error code.
-        """
-        self.complete_time = complete_time
-        self.success = False
-        self.error = error
-        self.error_code = error_code
+# The error codes of a failed service call
+ERROR_CODE_HOST = "home_assistant_error"
+ERROR_CODE_UNKNOWN = "unknown_error"
 
 
 class HAAnimServiceProxy:
-    """Proxy object for a Home Assistant service."""
+    """A service of the host: its description and the means to call it."""
 
     def __init__(
         self,
@@ -97,70 +77,91 @@ class HAAnimServiceProxy:
             service: Service name.
         """
         self._host = host
-        self.domain = domain
-        self.name = service
-        self._service_key = f"{domain}.{service}"
-
-        self.description = ""
-        self.param_info: dict[str, Any] = {}
+        self._domain = domain
+        self._name = service
+        self._description = ""
+        self._param_info: dict[str, Any] = {}
         for info in host.services.services():
             if info.domain == domain and info.name == service:
-                self.description = info.description
-                self.param_info = dict(info.fields)
+                self._description = info.description
+                self._param_info = dict(info.fields)
                 break
+
+    @property
+    def domain(self) -> str:
+        """Service domain name, such as ``'light'``."""
+        return self._domain
+
+    @property
+    def name(self) -> str:
+        """Service name without the domain, such as ``'turn_on'``."""
+        return self._name
+
+    @property
+    def description(self) -> str:
+        """Human-readable description of the service; empty if the host has none."""
+        return self._description
+
+    @property
+    def param_info(self) -> dict[str, Any]:
+        """Parameter details by parameter name: description, example, required, selector."""
+        return {name: dict(details) for name, details in self._param_info.items()}
+
+    def __repr__(self) -> str:
+        """Describe the proxy."""
+        return f"HAAnimServiceProxy('{self._domain}.{self._name}')"
 
     async def call(self, **params: Any) -> HAAnimServiceCall:
         """Call the service with the given parameters.
+
+        A service that fails does not raise: the failure is in the result.
 
         Args:
             **params: Service parameters.
 
         Returns:
-            HAAnimServiceCall result object.
+            The result of the call.
 
         Raises:
             NonExistingServiceError: If the service doesn't exist.
         """
         clock = self._host.clock
-        result = HAAnimServiceCall(self.domain, self.name, clock.now())
+        call_time = clock.now()
+        if not self._host.services.has_service(self._domain, self._name):
+            raise NonExistingServiceError(self._domain, self._name)
 
+        error: str | None = None
+        error_code: str | None = None
+        response: dict[str, Any] | None = None
         try:
-            # Check if service exists
-            if not self._host.services.has_service(self.domain, self.name):
-                raise NonExistingServiceError(self.domain, self.name)
-
-            # Call the service
             response = await self._host.services.async_call(
-                self.domain,
-                self.name,
-                params,
-                return_response=True,
+                self._domain, self._name, params, return_response=True
             )
-
-            # Mark success - response is either None or a dict
-            if response is not None:
-                result.mark_success(clock.now(), response)
-            else:
-                result.mark_success(clock.now())
-
-        except NonExistingServiceError:
-            raise
         except ServiceCallError as err:
-            result.mark_failure(clock.now(), err.reason, "home_assistant_error")
+            error, error_code = err.reason, ERROR_CODE_HOST
         except Exception as err:  # pylint: disable=broad-exception-caught
-            result.mark_failure(clock.now(), str(err), "unknown_error")
-            _LOGGER.exception("Unexpected error calling service %s", self._service_key)
+            error, error_code = str(err) or type(err).__name__, ERROR_CODE_UNKNOWN
+            _LOGGER.exception("Unexpected error calling service %s.%s", self._domain, self._name)
 
-        return result
+        return HAAnimServiceCall(
+            domain=self._domain,
+            service=self._name,
+            call_time=call_time,
+            complete_time=clock.now(),
+            success=error is None,
+            error=error,
+            error_code=error_code,
+            response_data=dict(response) if response else {},
+        )
 
     async def __call__(self, **params: Any) -> HAAnimServiceCall:
-        """Allow calling the proxy directly.
+        """Call the service: the proxy can be called directly.
 
         Args:
             **params: Service parameters.
 
         Returns:
-            HAAnimServiceCall result object.
+            The result of the call.
         """
         return await self.call(**params)
 
@@ -365,6 +366,8 @@ class ServiceDomainProxy:
         Returns:
             HAAnimServiceProxy for the service.
         """
+        if service_name.startswith("_"):
+            raise AttributeError(service_name)
         return HAAnimServiceProxy(self._host, self._domain, service_name)
 
 
@@ -509,6 +512,8 @@ class HAAnim:
             Returns:
                 ServiceDomainProxy for the domain.
             """
+            if domain.startswith("_"):
+                raise AttributeError(domain)
             return ServiceDomainProxy(self._host, domain)
 
     @property

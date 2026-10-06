@@ -186,16 +186,14 @@ class AutomationEvent(ActionEvent):
 class HAAnimServiceCall:
     """Result of a service call."""
 
+    domain: str
+    service: str
     success: bool
     error: str | None
     error_code: str | None
-    response_data: dict[str, Any] | None
+    response_data: dict[str, Any]
     call_time: datetime
-    complete_time: datetime | None
-
-    def is_success(self) -> bool: ...
-    def is_failure(self) -> bool: ...
-    def get_response(self) -> dict[str, Any] | None: ...
+    complete_time: datetime
 
 class HAAnimServiceProxy:
     """Proxy for calling a Home Assistant service."""

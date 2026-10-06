@@ -231,7 +231,7 @@ async def service_demo():
     # Call service with parameters
     result = await haa.service.light.turn_on(entity_id="light.bedroom", brightness=255, rgb_color=[255, 0, 0])
 
-    if result.is_success():
+    if result.success:
         log.info("Light turned on successfully")
         if result.response_data:
             log.debug(f"Service response: {result.response_data}")
