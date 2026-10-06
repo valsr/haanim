@@ -150,6 +150,24 @@ class HAAnimCard:
         """
         return _elements.TextElement(self, id, markdown=markdown)
 
+    def create_html(self, id: str, html: str) -> _elements.HtmlElement:
+        """Create an element of raw HTML, which the card shows as it is.
+
+        Unlike markdown text, the HTML is not sanitised: tags, attributes and
+        inline styles all reach the page, inside the card. That makes anything
+        possible that HTML and CSS can do, and it means the HTML must not be
+        built from text the automation does not control (entity states,
+        event data) without escaping it: use ``html.escape()``.
+
+        A ``<script>`` element does not run. An element with
+        ``data-haanim="run"`` and ``data-action="<name>"`` runs that action of
+        the automation when it is clicked.
+
+        Raises:
+            ValueError: If the HTML is longer than 50 000 characters.
+        """
+        return _elements.HtmlElement(self, id, html=html)
+
     def create_image(
         self,
         id: str,

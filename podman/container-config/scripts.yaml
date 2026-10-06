@@ -1,6 +1,4 @@
-finaly add html (allowing raw html to be injected)
-
-rework the demo/examples to include a demo for each of the following
+finaly add html (allowing raw html to be injected) after that rework the demo/examples to include a demo for each of the following
 
   - basic demo covering actions, text, buttons
   - demo for graphs

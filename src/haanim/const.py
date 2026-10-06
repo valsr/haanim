@@ -92,6 +92,7 @@ DEFAULT_IMPORT_ALLOWLIST: Final[list[str]] = [
     "fractions",
     "enum",
     "dataclasses",
+    "html",
     "hass",
     "haanim",
 ]

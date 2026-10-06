@@ -139,6 +139,10 @@ describe('renderBlock', () => {
     test('text', () => {
         assert.equal(renderBlock({ id: 'intro', type: 'text', markdown: '# Hi' }), '<div class="block block-text" data-block="intro"><h1>Hi</h1></div>');
     });
+    test('raw HTML is not put into the page as text: the card fills its element', () => {
+        const html = renderBlock({ id: 'raw"x', type: 'html', html: '<b>bold</b><div>never closed' });
+        assert.equal(html, '<div class="block block-html" data-block="raw&quot;x" data-html="raw&quot;x"></div>');
+    });
     test('value with and without a unit', () => {
         assert.match(renderBlock({ id: 'v', type: 'value', label: 'Alerts <today>', value: 3, unit: '' }), /<span class="label">Alerts &lt;today&gt;<\/span><span class="value">3<\/span>/);
         assert.match(renderBlock({ id: 'v', type: 'value', label: 'T', value: 21.5, unit: '°C' }), /<span class="value">21.5 <span class="unit">°C<\/span><\/span>/);

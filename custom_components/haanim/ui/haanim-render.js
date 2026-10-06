@@ -384,6 +384,10 @@ export function renderBlock(block, context = {}) {
     switch (block.type) {
         case 'text':
             return `${open}${renderMarkdown(block.markdown)}</div>`;
+        case 'html':
+            // Raw HTML is not put into the page as text: an unclosed tag would swallow what follows. The
+            // card fills this element, which keeps whatever the HTML is inside it
+            return `${open.slice(0, -1)} data-html="${id}"></div>`;
         case 'image':
             return renderImage(block, context, id);
         case 'value': {

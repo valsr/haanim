@@ -27,6 +27,7 @@ from haanim.engine.card_elements import (
     MAX_GRAPH_HOURS,
     MAX_GRAPH_POINTS,
     MAX_GRAPH_SERIES,
+    MAX_HTML_LENGTH,
     MAX_IMAGE_SIZE,
     MAX_ROW_CELLS,
     MAX_TEXT_LENGTH,
@@ -37,6 +38,7 @@ from haanim.engine.card_elements import (
     CardRow,
     GaugeElement,
     GraphElement,
+    HtmlElement,
     IconElement,
     ImageElement,
     TextElement,
@@ -104,6 +106,18 @@ class TestBlocks:
         """Test a text block holds its markdown."""
         put(card).text("intro", "## Climate")
         assert card.blocks == [{"id": "intro", "type": "text", "markdown": "## Climate"}]
+
+    def test_html(self, card: HAAnimCard) -> None:
+        """Test raw HTML is carried as it is: tags, attributes and styles are not touched."""
+        raw = '<table style="width:100%"><tr><td onclick="x()">A &amp; B</td></tr></table><script>x</script>'
+        element = put(card).html("table", raw)
+        assert card.blocks == [{"id": "table", "type": "html", "html": raw}]
+        assert (element.type, element.html) == ("html", raw)
+
+    def test_html_at_the_limit(self, card: HAAnimCard) -> None:
+        """Test an HTML element takes 50 000 characters, and may be empty."""
+        assert len(put(card).html("big", "x" * MAX_HTML_LENGTH).html) == 50_000
+        assert put(card).html("empty", "").html == ""
 
     def test_image_from_asset(self, card: HAAnimCard) -> None:
         """Test an image from assets/ gets the asset's URL."""
@@ -767,6 +781,7 @@ class TestElements:
             card.create_button("g", "Go", "reset"),
             card.create_gauge("h", 1),
             card.create_badge("i", "OK"),
+            card.create_html("j", "<b>x</b>"),
         ]
         assert [element.type for element in created] == [
             "text",
@@ -778,6 +793,7 @@ class TestElements:
             "button",
             "gauge",
             "badge",
+            "html",
         ]
         assert [type(element).__name__ for element in created] == [
             "TextElement",
@@ -789,6 +805,7 @@ class TestElements:
             "ButtonElement",
             "GaugeElement",
             "BadgeElement",
+            "HtmlElement",
         ]
         assert repr(created[0]) == "<TextElement 'a'>"
 
@@ -800,6 +817,13 @@ class TestElements:
         assert title.text == "## Updated title"
         assert card.blocks[0] == {"id": "title", "type": "text", "markdown": "## Updated title"}
         assert [block["id"] for block in card.blocks] == ["title", "v"]
+
+    def test_set_html(self, card: HAAnimCard) -> None:
+        """Test raw HTML is changed in place."""
+        element: HtmlElement = put(card).html("h", "<b>one</b>")
+        element.set_html("<i>two</i>")
+        assert element.html == "<i>two</i>"
+        assert card.blocks == [{"id": "h", "type": "html", "html": "<i>two</i>"}]
 
     def test_set_value_label_unit(self, card: HAAnimCard) -> None:
         """Test each property of a value is changed on its own; the others stay."""
@@ -1010,6 +1034,8 @@ class TestElements:
         [
             (lambda e: e["text"].set_text("x" * 10_001), ValueError, "at most 10000 characters"),
             (lambda e: e["text"].set_text(5), TypeError, "markdown must be a string"),
+            (lambda e: e["html"].set_html("x" * 50_001), ValueError, "at most 50000 characters"),
+            (lambda e: e["html"].set_html(None), TypeError, "html must be a string"),
             (lambda e: e["value"].set_value([1]), TypeError, "string, number or boolean"),
             (lambda e: e["value"].set_label(None), TypeError, "label must be a string"),
             (lambda e: e["image"].set_asset("none.png"), FileNotFoundError, "no asset"),
@@ -1074,6 +1100,7 @@ class TestElements:
             "plain_icon": put(card).icon("plain_icon", icon="mdi:home"),
             "graph": put(card).graph("graph", series={"A": [1]}),
             "button": put(card).button("button", "Go", "reset"),
+            "html": put(card).html("html", "<b>x</b>"),
             "gauge": put(card).gauge("gauge", 5),
             "badge": put(card).badge("badge", "OK"),
         }
@@ -1489,6 +1516,13 @@ INVALID: list[tuple[str, Any, type[Exception], str]] = [
         TypeError,
         "caption must be a string",
     ),
+    (
+        "html too long",
+        lambda c: c.create_html("h", "x" * 50_001),
+        ValueError,
+        "at most 50000 characters, not 50001",
+    ),
+    ("html not a string", lambda c: c.create_html("h", 5), TypeError, "html must be a string"),
     ("gauge without value or entity", lambda c: c.create_gauge("g"), ValueError, "exactly one of value"),
     (
         "gauge with value and entity",

@@ -56,8 +56,8 @@ def end(event: ActionEvent):
 Everything comes from the `haanim` module: `haa`, the decorators, the event classes, `ActionMode`, the error
 classes, and `logging`. Besides it and relative imports within the folder, these modules can be imported:
 `asyncio`, `datetime`, `json`, `logging`, `math`, `random`, `re`, `time`, `typing`, `collections`,
-`functools`, `itertools`, `operator`, `statistics`, `decimal`, `fractions`, `enum`, `dataclasses` and `hass`
-(the running Home Assistant instance). More can be allowed in the integration's options.
+`functools`, `itertools`, `operator`, `statistics`, `decimal`, `fractions`, `enum`, `dataclasses`, `html` and
+`hass` (the running Home Assistant instance). More can be allowed in the integration's options.
 
 Automation code is run by HAAnim's interpreter, on Home Assistant's event loop. Blocking calls
 (`time.sleep`, file and network I/O, threads, subprocesses) are not available; use `await haa.sleep()` and
@@ -296,6 +296,7 @@ actions, which exist only once the file has run: create buttons in `@startup`.
 | Create it with                                              | It shows                                   | Change it with                                  |
 | ----------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------- |
 | `create_text(id, markdown)`                                 | Markdown text                              | `set_text`                                      |
+| `create_html(id, html)`                                     | Raw HTML, shown as it is                   | `set_html`                                      |
 | `create_image(id, asset=None, url=None, alt="", ...)`       | An image from `assets/`, from a URL, or a camera's live picture | `set_asset`, `set_url`, `set_entity`, `set_refresh`, `set_alt`, `set_size`, `set_align`, `set_caption` |
 | `create_value(id, label, value, unit="")`                   | A labelled value                           | `set_value`, `set_label`, `set_unit`            |
 | `create_entity(id, entity_id)`                              | The live state of an entity                | `set_entity`                                    |
@@ -353,6 +354,32 @@ The fixed parts can be hidden, each on its own, and shown again at any time:
 haa.card.configure(state=False, log=False)       # no state badge, no Log button
 haa.card.configure(title=False, state=False, message=False, actions=False, log=False)   # only the content
 ```
+
+### HTML
+
+`create_html()` puts HTML of your own on the card, as it is: tables, inline styles, anything HTML and CSS
+can do. Home Assistant's theme variables (`var(--primary-color)`, `var(--secondary-text-color)`, ...) work in
+it.
+
+```python
+import html
+
+rooms = {"Kitchen": 21.5, "Bedroom <north>": 18.0}
+rows = "".join([f"<tr><td>{html.escape(room)}</td><td>{value} °C</td></tr>" for room, value in rooms.items()])
+table = haa.card.create_html("rooms", f'<table style="width: 100%">{rows}</table>')
+haa.card.add_element(table)
+table.set_html("<em>No rooms</em>")
+```
+
+- Unlike markdown, HTML is **not sanitised**. Escape every text you did not write yourself (entity states,
+  event data, names) with `html.escape()`, as above.
+- A `<script>` element does not run.
+- An element with `data-haanim="run"` and `data-action="<name>"` runs that action when clicked, like a
+  button element: `<a data-haanim="run" data-action="refresh">Refresh</a>`. `data-payload` takes the data of
+  the call as JSON, `data-confirm` a question to ask first.
+- The card draws its content again whenever something on it changes, and the HTML with it: what a visitor
+  typed into a form field or opened in it is not kept.
+- An HTML element has at most 50 000 characters.
 
 ### Images
 

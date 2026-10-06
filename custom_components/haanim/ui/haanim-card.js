@@ -520,6 +520,13 @@ export class HAAnimCard extends HTMLElement {
             error: this._config ? this._error : 'No automation configured',
         });
         this.shadowRoot.innerHTML = `<style>${STYLES}</style><ha-card><div class="card">${body}</div></ha-card>`;
+        // Raw HTML of the automation goes into its own element, so that it cannot break the rest of the card
+        const raw = new Map(this._blocks.filter((block) => block.type === 'html').map((block) => [String(block.id), block]));
+        const holders = this.shadowRoot.querySelectorAll ? this.shadowRoot.querySelectorAll('[data-html]') : [];
+        for (const holder of holders) {
+            const block = raw.get(holder.dataset.html);
+            if (block) holder.innerHTML = String(block.html ?? '');
+        }
         // Home Assistant's own state icons take the entity's state as a property, not as markup
         const states = this._hass ? this._hass.states || {} : {};
         const icons = this.shadowRoot.querySelectorAll ? this.shadowRoot.querySelectorAll('[data-state-icon]') : [];

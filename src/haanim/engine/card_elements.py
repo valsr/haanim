@@ -53,6 +53,7 @@ __all__ = [
     "GRAPH_KINDS",
     "GaugeElement",
     "GraphElement",
+    "HtmlElement",
     "IMAGE_ALIGNMENTS",
     "IconElement",
     "ImageElement",
@@ -64,6 +65,7 @@ __all__ = [
     "MAX_GRAPH_POINTS",
     "MAX_GRAPH_SERIES",
     "MAX_GRAPH_STATE_LENGTH",
+    "MAX_HTML_LENGTH",
     "MAX_IMAGE_SIZE",
     "MAX_ROW_CELLS",
     "MAX_TEXT_LENGTH",
@@ -77,6 +79,9 @@ MAX_BLOCKS = 50
 
 MAX_TEXT_LENGTH = 10_000
 """The most characters a text block can have."""
+
+MAX_HTML_LENGTH = 50_000
+"""The most characters an HTML element can have."""
 
 MAX_TITLE_LENGTH = 100
 """The most characters the card's title can have."""
@@ -201,6 +206,33 @@ class TextElement(CardElement):
             ValueError: If the text is longer than 10 000 characters.
         """
         self._apply(markdown=markdown)
+
+
+class HtmlElement(CardElement):
+    """HTML of the automation's own, put on the card as it is."""
+
+    TYPE = "html"
+
+    def _build(self, **arguments: Any) -> dict[str, Any]:
+        html = _check_str(arguments["html"], "html")
+        if len(html) > MAX_HTML_LENGTH:
+            raise ValueError(
+                f"An HTML element can have at most {MAX_HTML_LENGTH} characters, not {len(html)}"
+            )
+        return {"html": html}
+
+    @property
+    def html(self) -> str:
+        """The HTML."""
+        return str(self._content["html"])
+
+    def set_html(self, html: str) -> None:
+        """Change the HTML.
+
+        Raises:
+            ValueError: If the HTML is longer than 50 000 characters.
+        """
+        self._apply(html=html)
 
 
 class ImageElement(CardElement):

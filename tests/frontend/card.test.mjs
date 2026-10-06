@@ -457,6 +457,27 @@ describe('haanim-card', () => {
         });
     });
 
+    test("raw HTML goes into its own element as it is, and a button in it runs an action", async () => {
+        const { card, hass } = await mounted();
+        const holder = { dataset: { html: 'raw' }, innerHTML: '' };
+        const stale = { dataset: { html: 'gone' }, innerHTML: 'kept' };
+        card.shadowRoot.found = { '[data-html]': [holder, stale] };
+        const raw = '<table><tr><td style="color:red">A</td></tr></table><button data-haanim="run" data-action="reset_alerts">Reset</button><div>never closed';
+        hass.push('haanim/card/subscribe', { blocks: [{ id: 'raw', type: 'html', html: raw }, { id: 'after', type: 'text', markdown: 'after' }] });
+
+        assert.equal(holder.innerHTML, raw);
+        assert.equal(stale.innerHTML, 'kept');
+        assert.match(card.shadowRoot.innerHTML, /data-html="raw"><\/div><div class="block block-text" data-block="after"><p>after<\/p>/);
+        assert.doesNotMatch(card.shadowRoot.innerHTML, /never closed/, 'the HTML is not part of the markup of the card');
+
+        hass.push('haanim/card/subscribe', { blocks: [{ id: 'raw', type: 'html' }] });
+        assert.equal(holder.innerHTML, '');
+
+        card.shadowRoot.fire('click', clicked({ haanim: 'run', action: 'reset_alerts' }));
+        await settle();
+        assert.equal(hass.services.at(-1).data.action, 'reset_alerts');
+    });
+
     test('an icon that does not follow its entity is not redrawn when the entity changes', async () => {
         const { card, hass } = await mounted({ [ENTITY]: entity('on'), 'fan.bedroom': { state: 'off', last_updated: '1' } });
         hass.push('haanim/card/subscribe', {

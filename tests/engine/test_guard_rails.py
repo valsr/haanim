@@ -50,6 +50,7 @@ DESIGN_ALLOWED_MODULES = [
     "fractions",
     "enum",
     "dataclasses",
+    "html",
     "hass",
     "haanim",
 ]
