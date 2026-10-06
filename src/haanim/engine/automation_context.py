@@ -260,7 +260,7 @@ class AutomationContext:
             hass=self.host.hass,
             helpers={
                 "set_status": set_status,
-                "sleep": self.host.clock.sleep,
+                "sleep": self._haa.sleep,
                 "log_debug": self._logger.debug,
                 "log_info": self._logger.info,
                 "log_warning": self._logger.warning,

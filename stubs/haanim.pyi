@@ -352,6 +352,14 @@ class HAAnim:
         """Get the raw state string of an entity, None if it does not exist."""
         ...
 
+    async def sleep(self, duration: str | float) -> None:
+        """Suspend the current action: seconds, or "HH:MM:SS"."""
+        ...
+
+    async def wait_for(self, expr: str, timeout: str | float | None = None) -> bool:
+        """Suspend until a state expression is true; False if the timeout passes first."""
+        ...
+
     @property
     def service(self) -> Any:
         """Access services.

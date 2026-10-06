@@ -13,6 +13,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from haanim.engine.durations import parse_duration
+from haanim.engine.expression_eval import parse_expression
+from haanim.engine.waiting import StateWait
 from haanim.entity import HAAnimEntity
 from haanim.engine.errors import (
     NonExistingAutomationError,
@@ -420,6 +423,52 @@ class HAAnim:
             a test that freezes or advances time; ``datetime.now()`` does not.
         """
         return self._host.clock.now()
+
+    async def sleep(self, duration: str | float) -> None:
+        """Suspend the current action for a duration, on HAAnim's clock.
+
+        Args:
+            duration: Seconds as a number or numeric string, or ``"HH:MM:SS"``.
+                Zero yields to other actions without waiting.
+
+        Raises:
+            ValueError: If the duration cannot be read or is negative.
+        """
+        if not isinstance(duration, bool) and isinstance(duration, (int, float)) and duration == 0:
+            await self._host.clock.sleep(0)
+            return
+        try:
+            seconds = parse_duration(duration)
+        except ValueError as err:
+            raise ValueError(f"haa.sleep: {duration!r} is not valid: {err}") from None
+        await self._host.clock.sleep(seconds)
+
+    async def wait_for(self, expr: str, timeout: str | float | None = None) -> bool:
+        """Suspend the current action until a state expression is true.
+
+        The wait is level-based: if the expression is already true, True is
+        returned at once. Otherwise it is evaluated again each time an entity
+        it refers to changes, as a state trigger is.
+
+        Args:
+            expr: The state expression, such as ``"binary_sensor.motion == 'off'"``.
+            timeout: How long to wait at most, in the formats of ``sleep``.
+                Without it the wait has no limit.
+
+        Returns:
+            True when the expression is true; False if the timeout passed first.
+
+        Raises:
+            AutomationSyntaxError: If the expression is not a state expression.
+            ValueError: If the timeout is not a duration.
+        """
+        expression = parse_expression(expr)
+        try:
+            seconds = parse_duration(timeout) if timeout is not None else None
+        except ValueError as err:
+            raise ValueError(f"haa.wait_for: timeout {timeout!r} is not valid: {err}") from None
+
+        return await StateWait(expression, self._host.states, self._host.clock).wait(seconds)
 
     @property
     def entity(self) -> EntityNamespace:
