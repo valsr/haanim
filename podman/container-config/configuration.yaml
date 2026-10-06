@@ -28,6 +28,9 @@ homeassistant:
 # Enable the frontend
 frontend:
 
+# sun.sun, which the dashboard example shows on its card
+sun:
+
 # The default dashboard comes from ui-lovelace.yaml: the cards of the example automations
 lovelace:
   mode: yaml
