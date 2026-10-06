@@ -171,8 +171,8 @@ See [podman/container-config/README.md](podman/container-config/README.md) for d
 - 🚀 First build takes ~5 minutes, subsequent builds use cache and are faster
 - 💻 Code changes only need restart, not rebuild
 - 🔧 Configuration changes need image rebuild
-- 🧪 Use `make test` for unit tests
-- 🎨 Use `make format` to auto-format code before committing
-- 📝 Use `make lint` to check code quality
+- 🧪 Use `uv run pytest` for the tests
+- 🎨 Use `uv run black .` to format code before committing
+- 📝 Use `uv run pylint custom_components src` to check code quality
 
 Happy coding! 🚀

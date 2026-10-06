@@ -77,20 +77,18 @@ UV is a fast Python package manager that makes dependency management easy:
 git clone https://github.com/valsr/haanim.git
 cd haanim
 
-# Install UV and dependencies
-make install
-
-# Install dev dependencies
-make dev
+# Install UV (https://docs.astral.sh/uv/), then the project with its development dependencies
+uv sync --all-extras
 
 # Run tests
-make test
+uv run pytest
 
 # Format code
-make format
+uv run black .
 
-# Run linting
-make lint
+# Run linting and type checks
+uv run pylint custom_components src
+uv run mypy custom_components src
 ```
 
 See [docs/UV_GUIDE.md](docs/UV_GUIDE.md) for comprehensive UV usage instructions.
@@ -108,11 +106,8 @@ cd haanim
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install Home Assistant for development
-pip install homeassistant
-
-# Install development dependencies
-pip install black flake8 pylint mypy pytest
+# Install the package with its development dependencies, Home Assistant among them
+pip install -e ".[dev]"
 ```
 
 ## Code Style
