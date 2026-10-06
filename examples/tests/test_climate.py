@@ -96,3 +96,11 @@ async def test_shutdown_records_when_it_stopped() -> None:
         await automation.stop()
         assert automation.get_variable("last_shutdown") == "2025-01-06T10:00:00+00:00"
         assert "Shutdown complete" in automation.logs()
+
+
+async def test_hourly_check_run_by_hand() -> None:
+    """Run from the card or a service, the check has no run count to report, and does not fail."""
+    async with AutomationHarness(CLIMATE, states={"sensor.temperature": "21"}) as automation:
+        await automation.call("hourly_check")
+        assert "Temperature: 21.0°C, Alerts: 0" in automation.logs()
+        assert "Executed" not in automation.logs()

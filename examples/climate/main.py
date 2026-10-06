@@ -51,11 +51,12 @@ async def send_notification(event: ActionEvent):
 
 
 @on_interval("01:00:00")
-def hourly_check(event: IntervalEvent):
-    """Hourly status check."""
+def hourly_check(event: ActionEvent):
+    """Hourly status check. Run by hand it gets a ManualEvent, which has no execution count."""
     temp = float(haa.entity.sensor.temperature)
     print(f"Temperature: {temp}°C, Alerts: {alert_count}")
-    print(f"Executed {event.execution_count} times")
+    if isinstance(event, IntervalEvent):
+        print(f"Executed {event.execution_count} times")
 
 
 @shutdown

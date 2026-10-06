@@ -1,0 +1,6 @@
+{
+  "name": "Notifications",
+  "description": "Sends messages for other automations, as notifications in Home Assistant, and counts them.",
+  "author": "HAAnim",
+  "version": "1.0.0"
+}

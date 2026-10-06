@@ -9,6 +9,8 @@ views:
         automation_id: climate
       - type: custom:haanim-card
         automation_id: motion_light
+      - type: custom:haanim-card
+        automation_id: notifications
       - type: entities
         title: Try the examples
         entities:

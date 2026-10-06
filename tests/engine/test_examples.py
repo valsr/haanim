@@ -24,8 +24,8 @@ DESIGN = REPO_ROOT / "_design.md"
 
 
 def test_the_examples() -> None:
-    """Test the examples are the three the README lists."""
-    assert NAMES == ["climate", "dashboard", "motion_light"]
+    """Test the examples are the four the README lists."""
+    assert NAMES == ["climate", "dashboard", "motion_light", "notifications"]
     readme = (EXAMPLES / "README.md").read_text(encoding="utf-8")
     for name in NAMES:
         assert f"`{name}/`" in readme

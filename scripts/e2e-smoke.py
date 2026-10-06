@@ -21,7 +21,7 @@ import aiohttp
 
 USERNAME = "admin"
 PASSWORD = "admin"
-EXAMPLES = ("climate", "dashboard", "motion_light")
+EXAMPLES = ("climate", "dashboard", "motion_light", "notifications")
 STARTUP_SECONDS = 180
 
 

@@ -178,20 +178,27 @@ def toggle_frame(event: ActionEvent) -> bool:
 
 
 @on_interval("00:01:00")
-def uptime(event: IntervalEvent) -> None:
-    """Show for how long the automation has been running."""
-    running.set_value(event.execution_count)
+def uptime(event: ActionEvent) -> None:
+    """Show for how long the automation has been running.
+
+    Run by hand, from the card's Actions, the event is a ``ManualEvent``: it has
+    no ``execution_count``, and the card stays as it is.
+    """
+    if isinstance(event, IntervalEvent):
+        running.set_value(event.execution_count)
 
 
 @on_event("dashboard_count")
 @action(execution_mode=ActionMode.QUEUE, description="Count a dashboard_count event")
-def count_event(event: EventTriggerEvent) -> None:
+def count_event(event: ActionEvent) -> None:
     """Count a `dashboard_count` event; its data may carry a `step`.
 
     Events that arrive while one is being counted wait their turn (``QUEUE``);
-    with the default mode, ``DROP``, they would be lost.
+    with the default mode, ``DROP``, they would be lost. Run by hand, the step
+    comes from the data of the call instead.
     """
-    remember(int(haa.get_variable("count", 0)) + int(event.event_data.get("step", 1)))
+    data = event.event_data if isinstance(event, EventTriggerEvent) else event.data
+    remember(int(haa.get_variable("count", 0)) + int(data.get("step", 1)))
     show_count()
 
 

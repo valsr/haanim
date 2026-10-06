@@ -197,3 +197,14 @@ async def test_goal_and_badge_follow_the_count() -> None:
         assert (level["text"], level["icon"], level["color"]) == ("Goal reached", "mdi:trophy", "success")
         await automation.press("reset")
         assert automation.card.block("level")["text"] == "Not started"
+
+
+async def test_trigger_actions_can_be_run_by_hand() -> None:
+    """Every action of the card's Actions popup runs without an error, also those a trigger normally starts."""
+    async with AutomationHarness(DASHBOARD) as automation:
+        await automation.call("uptime")
+        assert automation.card.block("uptime")["value"] == 0, "run by hand, the uptime is not counted"
+        await automation.call("count_event", step=3)
+        assert automation.card.block("count")["value"] == 3
+        await automation.call("midnight")
+        assert automation.card.block("count")["value"] == 0
