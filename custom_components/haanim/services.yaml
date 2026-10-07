@@ -1,44 +1,105 @@
-# Services for HAAnim integration
+# Services of the HAAnim integration. See "Home Assistant Services" in the design.
 
 run_action:
-  name: Run Action
-  description: Run a specific action from a HAAnim script.
   fields:
-    script_name:
-      name: Script Name
-      description: The name of the script containing the action.
+    automation_id:
       required: true
-      example: 'my_script'
+      example: 'my_automation'
       selector:
         text:
-    action_name:
-      name: Action Name
-      description: The name of the action to run.
+    action:
       required: true
       example: 'my_action'
       selector:
         text:
-
-reload_scripts:
-  name: Reload Scripts
-  description: Reload all HAAnim automation scripts from the script directory.
-
-list_scripts:
-  name: List Scripts
-  description: Get a list of all loaded HAAnim scripts and their metadata.
-
-list_actions:
-  name: List Actions
-  description: Get a list of all available actions, optionally filtered by script.
-  fields:
-    script_name:
-      name: Script Name
-      description: Optional script name to filter actions.
+    data:
       required: false
-      example: 'my_script'
+      example: '{"room": "hall"}'
+      selector:
+        object:
+
+enable:
+  fields:
+    automation_id:
+      required: true
+      example: 'my_automation'
       selector:
         text:
 
-get_config:
-  name: Get Configuration
-  description: Get the current HAAnim configuration values.
+disable:
+  fields:
+    automation_id:
+      required: true
+      example: 'my_automation'
+      selector:
+        text:
+
+start:
+  fields:
+    automation_id:
+      required: true
+      example: 'my_automation'
+      selector:
+        text:
+
+stop:
+  fields:
+    automation_id:
+      required: true
+      example: 'my_automation'
+      selector:
+        text:
+
+restart:
+  fields:
+    automation_id:
+      required: true
+      example: 'my_automation'
+      selector:
+        text:
+
+reload:
+  fields:
+    automation_id:
+      required: false
+      example: 'my_automation'
+      selector:
+        text:
+
+list_automations:
+
+list_actions:
+  fields:
+    automation_id:
+      required: true
+      example: 'my_automation'
+      selector:
+        text:
+
+clear_log:
+  fields:
+    automation_id:
+      required: false
+      example: 'my_automation'
+      selector:
+        text:
+
+set_log_level:
+  fields:
+    automation_id:
+      required: true
+      example: 'my_automation'
+      selector:
+        text:
+    level:
+      required: true
+      example: 'debug'
+      selector:
+        select:
+          options:
+            - 'debug'
+            - 'info'
+            - 'warning'
+            - 'error'
+            - 'critical'
+            - 'default'

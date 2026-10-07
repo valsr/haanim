@@ -5,16 +5,13 @@
   "python.formatting.blackArgs": [
     "--line-length=110"
   ],
-  "python.linting.pylintArgs": [
-    "--ignore=stubs"
-  ],
-  "python.analysis.stubPath": "stubs",
   "python.analysis.extraPaths": [
-    "stubs",
-    "podman/container-config/haanim"
+    "src"
   ],
   "editor.formatOnSave": true,
-  "editor.rulers": [110],
+  "editor.rulers": [
+    110
+  ],
   "files.exclude": {
     "**/__pycache__": true,
     "**/*.pyc": true

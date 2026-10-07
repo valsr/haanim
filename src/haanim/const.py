@@ -1,0 +1,141 @@
+"""Constants for the HAAnim engine."""
+
+from enum import Enum
+from typing import Final
+
+__all__ = [
+    # Enums
+    "ActionMode",
+    # Trigger kinds
+    "TRIGGER_TIME",
+    "TRIGGER_INTERVAL",
+    "TRIGGER_CRON",
+    "TRIGGER_EVENT",
+    "TRIGGER_STATE",
+    # Constraint kinds
+    "CONSTRAINT_TIME",
+    "CONSTRAINT_STATE",
+    # Host events
+    "EVENT_HOST_STARTED",
+    "EVENT_ACTION_ERROR",
+    # Defaults
+    "DEFAULT_ACTION_QUEUE_SIZE",
+    "DEFAULT_ACTION_TIMEOUT",
+    "DEFAULT_MAX_CONCURRENT_ACTIONS",
+    "DEFAULT_WORKER_SHUTDOWN_TIMEOUT",
+    "DEFAULT_STARTUP_TIMEOUT",
+    "DEFAULT_SHUTDOWN_TIMEOUT",
+    "DEFAULT_STOP_GRACE_PERIOD",
+    "DEFAULT_IMPORT_ALLOWLIST",
+    # Security
+    "RESTRICTED_BUILTINS",
+    "DISABLED_MODULE_MEMBERS",
+    "DISABLED_LOOP_MEMBERS",
+    "LOOP_GETTERS",
+]
+
+
+class ActionMode(Enum):
+    """Action execution modes for handling concurrent calls.
+
+    DROP: Drop new action request if already executing.
+    QUEUE: Queue action request to execute sequentially.
+    CANCEL: Cancel current action and start new execution.
+    """
+
+    DROP = "drop"
+    QUEUE = "queue"
+    CANCEL = "cancel"
+
+
+# The kinds of trigger; each is attached with the decorator ``on_<kind>``
+TRIGGER_TIME: Final = "time"
+TRIGGER_INTERVAL: Final = "interval"
+TRIGGER_CRON: Final = "cron"
+TRIGGER_EVENT: Final = "event"
+TRIGGER_STATE: Final = "state"
+
+# The kinds of constraint a trigger can carry
+CONSTRAINT_TIME: Final = "time"
+CONSTRAINT_STATE: Final = "state"
+
+# Event the host fires once it has finished starting
+EVENT_HOST_STARTED: Final = "homeassistant_started"
+
+# Fired when an action called by a trigger fails (see "Trigger Functions Are Actions" in the design)
+EVENT_ACTION_ERROR: Final = "haanim_action_error"
+
+# Default action settings
+DEFAULT_ACTION_QUEUE_SIZE: Final = 100
+DEFAULT_ACTION_TIMEOUT: Final = 0  # 0 = no timeout
+DEFAULT_MAX_CONCURRENT_ACTIONS: Final = 20
+DEFAULT_WORKER_SHUTDOWN_TIMEOUT: Final = 0.2  # 200ms
+
+# Modules an automation can import by default (see "Imports" in the design).
+# "hass" and "haanim" are supplied by the engine; the rest are standard modules.
+DEFAULT_IMPORT_ALLOWLIST: Final[list[str]] = [
+    "asyncio",
+    "datetime",
+    "json",
+    "logging",
+    "math",
+    "random",
+    "re",
+    "time",
+    "typing",
+    "collections",
+    "functools",
+    "itertools",
+    "operator",
+    "statistics",
+    "decimal",
+    "fractions",
+    "enum",
+    "dataclasses",
+    "html",
+    "hass",
+    "haanim",
+]
+
+# Builtins that are not available in automations
+RESTRICTED_BUILTINS: Final[set[str]] = {
+    "eval",
+    "exec",
+    "compile",
+    "__import__",
+    "open",
+    "input",
+    "breakpoint",
+    "globals",
+    "locals",
+}
+
+# Members of allowed modules that block the event loop or leave it, with what to use instead
+DISABLED_MODULE_MEMBERS: Final[dict[str, dict[str, str]]] = {
+    "time": {
+        "sleep": "use 'await haa.sleep()'",
+    },
+    "asyncio": {
+        "run": "automations already run on the event loop",
+        "new_event_loop": "automations run on Home Assistant's event loop",
+        "set_event_loop": "automations run on Home Assistant's event loop",
+        "to_thread": "automations do not use threads",
+        "create_subprocess_exec": "automations cannot start processes",
+        "create_subprocess_shell": "automations cannot start processes",
+    },
+}
+
+# Methods of the event loop that are disabled for the same reason
+DISABLED_LOOP_MEMBERS: Final[dict[str, str]] = {
+    "run_forever": "the event loop is already running",
+    "run_until_complete": "the event loop is already running; use 'await'",
+    "run_in_executor": "automations do not use threads",
+}
+
+# Functions of asyncio that return the event loop
+LOOP_GETTERS: Final[set[str]] = {"get_event_loop", "get_running_loop"}
+
+# Lifecycle time limits, in seconds (see "Automation Lifecycle" in the design)
+DEFAULT_STARTUP_TIMEOUT: Final = 30.0
+DEFAULT_SHUTDOWN_TIMEOUT: Final = 10.0
+DEFAULT_STOP_GRACE_PERIOD: Final = 0.5

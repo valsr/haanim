@@ -22,7 +22,6 @@ from custom_components.haanim.config.config_group import ConfigGroup
 from custom_components.haanim.config.config_option import ConfigOption
 from custom_components.haanim.config.config_type import ConfigType
 
-
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -75,12 +74,12 @@ class ConfigManager:
                     show_in_options=False,
                 ),
                 ConfigOption(
-                    key=const.CONFIG_SCRIPT_PATH,
+                    key=const.CONFIG_AUTOMATION_PATH,
                     config_type=ConfigType.STRING,
-                    default=const.DEFAULT_SCRIPT_PATH,
+                    default=const.DEFAULT_AUTOMATION_PATH,
                     required=True,
-                    label="Script Path",
-                    description="Path for automation scripts (absolute path)",
+                    label="Automation Path",
+                    description="Path for automations (absolute path)",
                 ),
             ],
         )
@@ -98,15 +97,15 @@ class ConfigManager:
                     default=const.DEFAULT_ALLOW_ALL_IMPORTS,
                     required=True,
                     label="Allow All Imports",
-                    description="If enabled, scripts can import any Python module. Use with caution!",
+                    description="If enabled, automations can import any Python module. Use with caution!",
                 ),
                 ConfigOption(
                     key=const.CONFIG_IMPORT_ALLOWLIST,
                     config_type=ConfigType.LIST,
-                    default=const.DEFAULT_IMPORT_ALLOWLIST,
+                    default=[],
                     required=False,
-                    label="Import Allowlist",
-                    description="List of allowed module names for import",
+                    label="Additional Allowed Imports",
+                    description="Modules automations may import in addition to the default allowlist",
                     show_in_setup=False,
                 ),
             ],
@@ -125,7 +124,7 @@ class ConfigManager:
                     default=const.DEFAULT_MAX_CONCURRENT_ACTIONS,
                     required=False,
                     label="Max Concurrent Actions",
-                    description="Maximum number of concurrent actions across all scripts. Minimum value 1.",
+                    description="Maximum concurrent actions across all automations. Minimum value 1.",
                 ),
                 ConfigOption(
                     key=const.CONFIG_WORKER_SHUTDOWN_TIMEOUT,
@@ -196,7 +195,7 @@ class ConfigManager:
         _LOGGER.debug("Loading configuration from entry: %s", self._entry_id)
         data = self._hass.data.get(const.DOMAIN, {}).get(self._entry_id, {})
         if isinstance(data, dict) and "entry" in data:
-            entry = data["entry"]  # type: ignore
+            entry = data["entry"]
             if not isinstance(entry, ConfigEntry):
                 _LOGGER.warning("Invalid entry type in data: %s", type(entry))
                 return
@@ -233,6 +232,17 @@ class ConfigManager:
                 loaded_count += 1
                 _LOGGER.debug("Loaded option '%s' = %s (from data)", key, data[key])
         _LOGGER.info("Loaded %d configuration values from dict", loaded_count)
+
+    def load_entry(self, data: Mapping[str, Any], options: Mapping[str, Any] | None = None) -> None:
+        """Take the values of a config entry; an option the entry does not store gets its default.
+
+        Args:
+            data: The entry's data.
+            options: The entry's options (take precedence).
+        """
+        for key, option in self._options.items():
+            self._values[key] = list(option.default) if isinstance(option.default, list) else option.default
+        self.load_from_dict(data, options)
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value.
@@ -407,6 +417,7 @@ class ConfigManager:
             validator = cv.string
 
         # Create the schema key
+        key: vol.Marker
         if option.required:
             key = vol.Required(option.key, default=default)
         else:
@@ -414,8 +425,8 @@ class ConfigManager:
 
         return {key: validator}
 
-    def validate_script_path(self, path: str) -> tuple[bool, str | None]:
-        """Validate a script path.
+    def validate_automation_path(self, path: str) -> tuple[bool, str | None]:
+        """Validate an automation path.
 
         Args:
             path: The path to validate.
@@ -423,7 +434,7 @@ class ConfigManager:
         Returns:
             Tuple of (is_valid, error_message).
         """
-        _LOGGER.debug("Validating script path: %s", path)
+        _LOGGER.debug("Validating automation path: %s", path)
         if not self._hass:
             _LOGGER.debug("No hass instance, skipping validation")
             return True, None
@@ -435,19 +446,21 @@ class ConfigManager:
 
         parent_dir = os.path.dirname(folder_path)
         if parent_dir and not os.path.exists(parent_dir):
-            _LOGGER.warning("Script path validation failed: parent directory does not exist: %s", parent_dir)
+            _LOGGER.warning(
+                "Automation path validation failed: parent directory does not exist: %s", parent_dir
+            )
             return False, f"Parent directory does not exist: {parent_dir}"
 
-        _LOGGER.debug("Script path validated successfully: %s", folder_path)
+        _LOGGER.debug("Automation path validated successfully: %s", folder_path)
         return True, None
 
-    def get_script_path(self) -> str:
-        """Get the full path to the script folder.
+    def get_automation_path(self) -> str:
+        """Get the full path to the automation folder.
 
         Returns:
-            Absolute path to the script folder.
+            Absolute path to the automation folder.
         """
-        path = self.get(const.CONFIG_SCRIPT_PATH, const.DEFAULT_SCRIPT_PATH)
+        path = str(self.get(const.CONFIG_AUTOMATION_PATH, const.DEFAULT_AUTOMATION_PATH))
 
         if not self._hass:
             return path
@@ -458,16 +471,16 @@ class ConfigManager:
         return os.path.join(self._hass.config.config_dir, path)
 
     def get_import_allowlist(self) -> list[str]:
-        """Get the list of allowed imports.
+        """Get the modules allowed in addition to the default import allowlist.
 
         Returns:
-            List of allowed module names.
+            List of additional module names.
         """
-        allowlist: Any = self.get(const.CONFIG_IMPORT_ALLOWLIST, const.DEFAULT_IMPORT_ALLOWLIST)
+        allowlist: Any = self.get(const.CONFIG_IMPORT_ALLOWLIST, [])
         if not isinstance(allowlist, list):
             _LOGGER.warning("Import allowlist is not a list, returning empty list")
             return []
-        return [str(item) for item in allowlist]  # type: ignore[misc]
+        return [str(item) for item in allowlist]
 
     def get_allow_all_imports(self) -> bool:
         """Check if all imports are allowed.
@@ -476,58 +489,6 @@ class ConfigManager:
             True if all imports are allowed, False otherwise.
         """
         return bool(self.get(const.CONFIG_ALLOW_ALL_IMPORTS, const.DEFAULT_ALLOW_ALL_IMPORTS))
-
-    def get_script_refresh_interval(self) -> int:
-        """Get the script refresh interval in seconds.
-
-        Returns:
-            Refresh interval in seconds.
-        """
-        interval: Any = self.get(const.CONFIG_SCRIPT_REFRESH_INTERVAL, const.DEFAULT_SCRIPT_REFRESH_INTERVAL)
-        try:
-            return int(interval)
-        except (ValueError, TypeError):
-            _LOGGER.warning(
-                "Invalid script refresh interval: %s, defaulting to %d seconds",
-                interval,
-                const.DEFAULT_SCRIPT_REFRESH_INTERVAL,
-            )
-            return const.DEFAULT_SCRIPT_REFRESH_INTERVAL
-
-    def get_max_concurrent_actions(self):
-        """Get the maximum number of concurrent actions.
-
-        Returns:
-            Maximum number of concurrent actions.
-        """
-        max_actions: Any = self.get(const.CONFIG_MAX_CONCURRENT_ACTIONS, const.DEFAULT_MAX_CONCURRENT_ACTIONS)
-        try:
-            value = int(max_actions)
-            return max(1, value)
-        except (ValueError, TypeError):
-            _LOGGER.warning(
-                "Invalid max concurrent actions: %s, defaulting to %d",
-                max_actions,
-                const.DEFAULT_MAX_CONCURRENT_ACTIONS,
-            )
-            return const.DEFAULT_MAX_CONCURRENT_ACTIONS
-
-    def get_worker_shutdown_timeout(self) -> float:
-        """Get the worker shutdown timeout in seconds.
-
-        Returns:
-            Worker shutdown timeout in seconds.
-        """
-        timeout: Any = self.get(const.CONFIG_WORKER_SHUTDOWN_TIMEOUT, const.DEFAULT_WORKER_SHUTDOWN_TIMEOUT)
-        try:
-            return float(timeout)
-        except (ValueError, TypeError):
-            _LOGGER.warning(
-                "Invalid worker shutdown timeout: %s, defaulting to %.2f seconds",
-                timeout,
-                const.DEFAULT_WORKER_SHUTDOWN_TIMEOUT,
-            )
-            return const.DEFAULT_WORKER_SHUTDOWN_TIMEOUT
 
 
 def get_config_manager() -> ConfigManager:

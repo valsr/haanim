@@ -1,0 +1,43 @@
+site_name: HAAnim
+site_description: Python automations for Home Assistant
+repo_url: https://github.com/valsr/haanim
+edit_uri: edit/main/docs/
+docs_dir: docs
+theme:
+  name: readthedocs
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Writing automations: AUTOMATIONS.md
+  - In Home Assistant: home-assistant.md
+  - Examples and demos: examples.md
+
+# docs/ also holds notes on the development environment, which are for contributors and are read in the
+# repository. They are not part of the published documentation.
+exclude_docs: |
+  CONTAINER_DEV.md
+  GITHUB_CI_GUIDE.md
+  GITHUB_CI_MIGRATION.md
+  GITHUB_CI_QUICKREF.md
+  INSTALL_PODMAN.md
+  PODMAN_MIGRATION.md
+  QUICKSTART.md
+  QUICKSTART_CONTAINER.md
+  UV_GUIDE.md
+  UV_MIGRATION.md
+  UV_QUICKREF.md
+  VSCODE_QUICKREF.md
+  VSCODE_TASKS.md
+  info.md
+  requirements.txt
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+
+validation:
+  links:
+    not_found: warn
+    anchors: warn

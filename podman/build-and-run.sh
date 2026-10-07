@@ -38,7 +38,9 @@ if podman run -d \
     -p 5678:5678 \
     --network host \
     -v "$ROOT_DIR/custom_components/haanim:/config/custom_components/haanim:z" \
-    -v "$ROOT_DIR/podman/container-config/haanim:/config/haanim:z" \
+    -v "$ROOT_DIR/src/haanim:/opt/haanim-src/haanim:z" \
+    -e PYTHONPATH=/opt/haanim-src \
+    -v "$ROOT_DIR/examples:/config/haanim/automations:z" \
     haanim-dev:latest; then
     echo ""
     echo "✅ Container started successfully!"

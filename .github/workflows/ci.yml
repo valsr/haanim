@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.13']
+        python-version: ['3.14']
 
     steps:
       - name: Check out code
@@ -29,14 +29,47 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
-      - name: Run tests
-        run: uv run pytest --cov=custom_components/haanim --cov-report=xml
+      - name: Set up Node (the suite runs the frontend unit tests)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Run tests (fails under the overall coverage gate in pyproject.toml)
+        run: uv run pytest --cov=custom_components/haanim --cov=src/haanim --cov-report=term --cov-report=xml --cov-report=html
+
+      - name: Public automation-facing API is covered at 100%
+        run: uv run python scripts/check-public-api-coverage.py coverage.xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-py${{ matrix.python-version }}
+          path: |
+            coverage.xml
+            htmlcov/
+          retention-days: 30
+
+  frontend:
+    name: Frontend unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Run frontend tests with coverage gate
+        run: scripts/test-frontend.sh
 
   lint:
     name: Lint and Format Check
@@ -52,19 +85,37 @@ jobs:
       - name: Set up Python
         run: |
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-          uv python install 3.12
+          uv python install 3.14
 
       - name: Install dependencies
         run: uv sync --all-extras
 
       - name: Check code formatting with Black
-        run: uv run black --check --line-length 110 custom_components/haanim/
+        run: uv run black --check .
 
-      - name: Lint with Pylint
-        run: uv run pylint custom_components/haanim/ || true
+      - name: Lint with Pylint (no messages allowed)
+        run: uv run pylint custom_components/haanim/ src/haanim/
 
       - name: Lint with Flake8
-        run: uv run flake8 custom_components/haanim/ || true
+        run: uv run flake8 custom_components/haanim/ src/haanim/ || true
 
-      - name: Type check with mypy
-        run: uv run mypy custom_components/haanim/ || true
+      - name: Type check with mypy (no errors allowed)
+        run: uv run mypy custom_components/haanim/ src/haanim/
+
+      - name: Type check with pyright (no errors allowed)
+        run: uv run pyright src custom_components examples
+
+  secret-detection:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets with Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

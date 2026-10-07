@@ -150,7 +150,7 @@ Once Podman is installed:
 
 ```bash
 # Clone the HAAnim repository
-git clone https://gitlab.com/valsr/haanim.git
+git clone https://github.com/valsr/haanim.git
 cd haanim
 
 # Start development environment

@@ -1,0 +1,6 @@
+{
+  "name": "Hallway motion light",
+  "description": "Turns the hallway light on with motion at night, and off when the motion has ended.",
+  "author": "HAAnim",
+  "version": "1.0.0"
+}

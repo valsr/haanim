@@ -32,7 +32,6 @@ docs/
 *~
 
 # CI/CD
-.gitlab-ci.yml
 .github/
 
 # Dev environment

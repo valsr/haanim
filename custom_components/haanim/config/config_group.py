@@ -23,7 +23,5 @@ class ConfigGroup:
 
     name: str
     label: str
-    name: str
-    label: str
     description: str = ""
     options: list[ConfigOption] = field(default_factory=list[ConfigOption])

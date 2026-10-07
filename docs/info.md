@@ -1,52 +1,30 @@
-# HAAnim - Animation Integration for Home Assistant
+# HAAnim: Python automations for Home Assistant
 
-HAAnim is a custom Home Assistant integration that provides animation-related functionality for your
-smart home.
+Write automations as Python files with decorators for triggers, and reach entities, services, storage and a
+dashboard card through one object, `haa`.
 
-## ✨ Features
+## Features
 
-- Custom animation controls
-- Integration with Home Assistant entities
-- Config flow for easy setup through UI
-- No YAML configuration required
+- Time, interval, cron, event and state triggers, with constraints
+- Actions with execution modes, timeouts and return values, callable as services
+- One sensor per automation, a management panel, and a `custom:haanim-card` the automation fills itself
+- Hot reload of changed files
+- A test harness: test automations with `pytest`, without Home Assistant
 
-## 📦 Installation
+## Installation
 
-### Via HACS (Recommended)
+1. Add `https://github.com/valsr/haanim` to HACS as a custom **Integration** repository and download HAAnim.
+2. Restart Home Assistant.
+3. **Settings → Devices & services → Add integration → HAAnim**.
 
-1. Open HACS in Home Assistant
-2. Go to "Integrations"
-3. Click the three dots menu (⋮) → "Custom repositories"
-4. Add repository URL: `https://gitlab.com/valsr/haanim`
-5. Category: "Integration"
-6. Click "Explore & Download Repositories"
-7. Search for "HAAnim"
-8. Click "Download"
-9. Restart Home Assistant
+The download has the HAAnim engine in it: no Python package has to be installed into Home Assistant.
 
-### Manual Installation
+## Documentation
 
-1. Copy `custom_components/haanim` to your Home Assistant `custom_components` directory
-2. Restart Home Assistant
+- [README](https://github.com/valsr/haanim#readme)
+- [Automation guide](https://github.com/valsr/haanim/blob/main/docs/AUTOMATIONS.md)
+- [Examples](https://github.com/valsr/haanim/tree/main/examples)
 
-## ⚙️ Configuration
+## Issues
 
-After installation:
-
-1. Go to **Settings** → **Devices & Services**
-2. Click **+ Add Integration**
-3. Search for "HAAnim"
-4. Follow the setup wizard
-
-## 🐛 Issues & Support
-
-- **Report bugs**: <https://gitlab.com/valsr/haanim/issues>
-- **Documentation**: <https://gitlab.com/valsr/haanim>
-
-## 📝 Requirements
-
-- Home Assistant 2024.1.0 or newer
-
-## 📄 License
-
-See [LICENSE](https://gitlab.com/valsr/haanim/-/blob/main/LICENSE) file in the repository.
+<https://github.com/valsr/haanim/issues>

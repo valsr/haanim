@@ -13,21 +13,21 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.haanim.config import get_config_manager
+from custom_components.haanim.options import NUMERIC_OPTIONS, numeric_option
 from custom_components.haanim.const import (
     CONFIG_ALLOW_ALL_IMPORTS,
     CONFIG_IMPORT_ALLOWLIST,
-    CONFIG_SCRIPT_PATH,
+    CONFIG_AUTOMATION_PATH,
     DEFAULT_ALLOW_ALL_IMPORTS,
     DEFAULT_IMPORT_ALLOWLIST,
     NAME,
-    DEFAULT_SCRIPT_PATH,
+    DEFAULT_AUTOMATION_PATH,
     DOMAIN,
 )
 
-_LOGGER = logging.getLogger(__name__)
+DEFAULT_NAME = NAME  # Use integration NAME as default name
 
-# FIXME: ConfigFlow doesn't seem to be working, check what needs to be done to be fixed (if we need to fix
-# it) - https://developers.home-assistant.io/docs/config_entries_config_flow_handler
+_LOGGER = logging.getLogger(__name__)
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
@@ -41,16 +41,16 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         Dictionary containing the validated data.
 
     Raises:
-        InvalidScriptPath: If the script path is invalid.
+        InvalidAutomationPath: If the automation path is invalid.
     """
     config_manager = get_config_manager()
     config_manager.setup(hass)
 
-    script_path = data.get(CONFIG_SCRIPT_PATH, DEFAULT_SCRIPT_PATH)
-    is_valid, error = config_manager.validate_script_path(script_path)
+    automation_path = data.get(CONFIG_AUTOMATION_PATH, DEFAULT_AUTOMATION_PATH)
+    is_valid, error = config_manager.validate_automation_path(automation_path)
 
     if not is_valid:
-        raise InvalidScriptPath(error)
+        raise InvalidAutomationPath(error)
 
     return {"title": data.get("name", NAME)}
 
@@ -91,7 +91,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 info = await validate_input(self.hass, user_input)
-            except InvalidScriptPath:
+            except InvalidAutomationPath:
                 errors["base"] = "invalid_folder"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
@@ -102,14 +102,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title=info["title"],
                     data={
                         "name": user_input.get("name", defaults.get("name", DEFAULT_NAME)),
-                        CONFIG_SCRIPT_PATH: user_input.get(
-                            CONFIG_SCRIPT_PATH, defaults.get("script_path", DEFAULT_SCRIPT_PATH)
+                        CONFIG_AUTOMATION_PATH: user_input.get(
+                            CONFIG_AUTOMATION_PATH, defaults.get("automation_path", DEFAULT_AUTOMATION_PATH)
                         ),
                         CONFIG_ALLOW_ALL_IMPORTS: user_input.get(
                             CONFIG_ALLOW_ALL_IMPORTS,
                             defaults.get("allow_all_imports", DEFAULT_ALLOW_ALL_IMPORTS),
                         ),
-                        CONFIG_IMPORT_ALLOWLIST: defaults.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST),
+                        CONFIG_IMPORT_ALLOWLIST: defaults.get("import_allowlist", []),
                     },
                 )
 
@@ -128,19 +128,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         Returns:
             The options flow handler.
         """
-        return OptionsFlowHandler(config_entry)
+        return OptionsFlowHandler()
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for HAAnim."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow.
-
-        Args:
-            config_entry: The config entry.
-        """
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle options flow.
@@ -154,30 +146,32 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
         config_manager = get_config_manager()
         config_manager.setup(self.hass)
+        stored = {**self.config_entry.data, **self.config_entry.options}
 
         if user_input is not None:
-            # Validate script path using ConfigManager
-            script_path = user_input.get(CONFIG_SCRIPT_PATH, DEFAULT_SCRIPT_PATH)
-            is_valid, _error = config_manager.validate_script_path(script_path)
+            # Validate automation path using ConfigManager
+            automation_path = user_input.get(CONFIG_AUTOMATION_PATH, DEFAULT_AUTOMATION_PATH)
+            is_valid, _error = config_manager.validate_automation_path(automation_path)
 
             if not is_valid:
-                errors[CONFIG_SCRIPT_PATH] = "invalid_path"
+                errors[CONFIG_AUTOMATION_PATH] = "invalid_path"
             else:
-                # Parse import allowlist from comma-separated string
+                # Parse the additional imports from a comma-separated string; empty means none
                 allowlist_str = user_input.get("import_allowlist_str", "")
                 if allowlist_str:
                     allowlist = [m.strip() for m in allowlist_str.split(",") if m.strip()]
                 else:
-                    allowlist = config_manager.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
+                    allowlist = []
 
                 return self.async_create_entry(
                     title="",
                     data={
-                        CONFIG_SCRIPT_PATH: script_path,
+                        CONFIG_AUTOMATION_PATH: automation_path,
+                        **{key: numeric_option({**stored, **user_input}, key) for key in NUMERIC_OPTIONS},
+                        CONFIG_IMPORT_ALLOWLIST: allowlist,
                         CONFIG_ALLOW_ALL_IMPORTS: user_input.get(
                             CONFIG_ALLOW_ALL_IMPORTS, DEFAULT_ALLOW_ALL_IMPORTS
                         ),
-                        CONFIG_IMPORT_ALLOWLIST: allowlist,
                     },
                 )
 
@@ -185,37 +179,40 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         config_manager.load_from_dict(self.config_entry.data, self.config_entry.options)
 
         # Get current values
-        current_path = config_manager.get("script_path", DEFAULT_SCRIPT_PATH)
-        current_allow_all = config_manager.get("allow_all_imports", DEFAULT_ALLOW_ALL_IMPORTS)
-        current_allowlist = config_manager.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
+        current_allowlist = config_manager.get("import_allowlist", [])
 
         # Convert allowlist to comma-separated string for display
         allowlist_str = ", ".join(current_allowlist) if current_allowlist else ""
 
-        options_schema = vol.Schema(
-            {
-                vol.Required(CONFIG_SCRIPT_PATH, default=current_path): str,
-                vol.Required(CONFIG_ALLOW_ALL_IMPORTS, default=current_allow_all): bool,
-                vol.Optional("import_allowlist_str", default=allowlist_str): str,
-            }
-        )
-
-        # Get defaults for description placeholder
-        defaults = config_manager.get_defaults()
-        default_allowlist = defaults.get("import_allowlist", DEFAULT_IMPORT_ALLOWLIST)
+        # The ten options, in the order of the design's table
+        fields: dict[Any, Any] = {
+            vol.Required(
+                CONFIG_AUTOMATION_PATH, default=config_manager.get("automation_path", DEFAULT_AUTOMATION_PATH)
+            ): str
+        }
+        for key, (_, validator) in NUMERIC_OPTIONS.items():
+            fields[vol.Required(key, default=numeric_option(stored, key))] = validator
+        fields[vol.Optional("import_allowlist_str", default=allowlist_str)] = str
+        fields[
+            vol.Required(
+                CONFIG_ALLOW_ALL_IMPORTS,
+                default=config_manager.get("allow_all_imports", DEFAULT_ALLOW_ALL_IMPORTS),
+            )
+        ] = bool
+        options_schema = vol.Schema(fields)
 
         return self.async_show_form(
             step_id="init",
             data_schema=options_schema,
             errors=errors,
             description_placeholders={
-                "default_allowlist": ", ".join(default_allowlist[:5]) + "...",
+                "default_allowlist": ", ".join(DEFAULT_IMPORT_ALLOWLIST),
             },
         )
 
 
-class InvalidScriptPath(HomeAssistantError):
-    """Error to indicate invalid script path."""
+class InvalidAutomationPath(HomeAssistantError):
+    """Error to indicate invalid automation path."""
 
 
 class CannotConnect(HomeAssistantError):

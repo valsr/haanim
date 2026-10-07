@@ -2,29 +2,72 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.components import frontend
-from homeassistant.components.http import StaticPathConfig
 
+# The documented place to import it from, although the module does not list it as exported
+from homeassistant.components.http import StaticPathConfig  # pyright: ignore[reportPrivateImportUsage]
+
+# First of the integration's own modules: it decides where the haanim package comes from, and the
+# modules below import that package
+from custom_components.haanim import engine_path  # noqa: F401  pylint: disable=unused-import  # isort: skip
 from custom_components.haanim.api import async_register_api
-from custom_components.haanim.const import DOMAIN, NAME, VERSION
+from custom_components.haanim.config import get_config_manager
+from custom_components.haanim.const import DOMAIN, NAME
 from custom_components.haanim.ha.events import EventManager
+from custom_components.haanim.ha.host import HAServiceCaller, build_host
 from custom_components.haanim.ha.services import ServiceManager
 from custom_components.haanim.ha.state import StateManager
-from custom_components.haanim.script_manager import ScriptManager
-from custom_components.haanim.engine.triggers import TriggerManager
+from custom_components.haanim.automation_manager import AutomationManager
+from custom_components.haanim.log_buffer import AutomationLogBuffer
+from custom_components.haanim.log_levels import AutomationLogLevels
+from custom_components.haanim.options import engine_options
+from custom_components.haanim.websocket import async_register_websocket
+from haanim.engine.triggers import TriggerManager
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = []  # Add platforms like Platform.SENSOR, Platform.SWITCH, etc.
+PLATFORMS: list[Platform] = [Platform.SENSOR]  # One enum sensor per automation
 
-from .config import get_config_manager
+# Nothing is set in configuration.yaml. Home Assistant looks for this name; pylint takes a callable for a
+# function.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)  # pylint: disable=invalid-name
+
+UI_URL = f"/{DOMAIN}/ui"
+"""Where the files of the frontend are served. Browsers load them from ``ui_url()`` instead."""
+
+CARD_URLS = "frontend_card_urls"
+"""Key in ``hass.data``: the address the frontend was told to load the card from."""
+
+
+def ui_fingerprint(ui_dir: str) -> str:
+    """Return a short text that changes whenever a file of the frontend changes."""
+    digest = hashlib.sha256()
+    for name in sorted(os.listdir(ui_dir)):
+        path = os.path.join(ui_dir, name)
+        if os.path.isfile(path):
+            digest.update(name.encode())
+            with open(path, "rb") as file:
+                digest.update(file.read())
+    return digest.hexdigest()[:12]
+
+
+def ui_url(fingerprint: str) -> str:
+    """Return the folder browsers load the frontend from: it has the fingerprint of the files in its name.
+
+    The modules import each other by relative addresses, so a new folder is a
+    new address for every one of them: a browser cannot mix a new module
+    with an old one it has kept, and needs no reload to get a new version.
+    """
+    return f"{UI_URL}-{fingerprint}"
 
 
 async def async_setup(hass: HomeAssistant, _: ConfigType) -> bool:  # noqa: ARG001
@@ -56,25 +99,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Initialize the config manager
     config_manager = get_config_manager()
     config_manager.setup(hass, entry.entry_id)
+    # The entry is not in hass.data yet, so the manager cannot find it itself
+    config_manager.load_entry(entry.data, entry.options)
 
     # Initialize managers
     state_manager = StateManager(hass)
     event_manager = EventManager(hass)
     service_manager = ServiceManager(hass)
-    trigger_manager = TriggerManager(hass, state_manager, event_manager)
-    script_manager = ScriptManager(hass, entry)
+    host = build_host(hass, state_manager, event_manager)
+    # Keep the recent log records of the automations, from the first one they write
+    log_buffer = AutomationLogBuffer()
+    log_buffer.install()
+    entry.async_on_unload(log_buffer.remove)
+    # The level set for an automation in the panel is on its logger before the automation starts
+    log_levels = AutomationLogLevels(host.storage)
+    await log_levels.async_load()
+    entry.async_on_unload(log_levels.remove)
+
+    automation_manager = AutomationManager(
+        hass, entry, host, options=engine_options({**entry.data, **entry.options})
+    )
+    trigger_manager = TriggerManager(host, automation_manager.dispatcher)
+    automation_manager.set_trigger_registrar(trigger_manager)
 
     # Set up managers
     await state_manager.async_setup()
     await event_manager.async_setup()
     await service_manager.async_setup()
-    await trigger_manager.async_setup()
-    await script_manager.async_setup()
+    if isinstance(host.services, HAServiceCaller):
+        await host.services.async_refresh_descriptions()
+    await automation_manager.async_setup()
 
     # Store managers in hass.data
     hass.data[DOMAIN][entry.entry_id] = {
         "entry": entry,
-        "manager": script_manager,
+        "manager": automation_manager,
+        "log_buffer": log_buffer,
+        "log_levels": log_levels,
         "state_manager": state_manager,
         "event_manager": event_manager,
         "service_manager": service_manager,
@@ -83,6 +144,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Register API views for the frontend
     async_register_api(hass)
+    async_register_websocket(hass)
 
     # Register the frontend panel
     await _async_register_panel(hass)
@@ -123,13 +185,19 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     # Get the path to the UI directory
     ui_dir = os.path.join(os.path.dirname(__file__), "ui")
 
-    # Register static path for serving UI assets (includes the panel JS file)
+    # The files are served twice: under a plain address, and under one that changes with the files,
+    # which is the one the frontend is given
+    versioned = ui_url(await hass.async_add_executor_job(ui_fingerprint, ui_dir))
     await hass.http.async_register_static_paths(
-        [StaticPathConfig(f"/{DOMAIN}/ui", ui_dir, cache_headers=False)]
+        [
+            StaticPathConfig(UI_URL, ui_dir, cache_headers=False),
+            StaticPathConfig(versioned, ui_dir, cache_headers=False),
+        ]
     )
+    card_url = f"{versioned}/haanim-card.js"
 
     # Register as a custom panel using Web Component
-    # The haanim-panel.js file defines the 'haanim-panel' custom element
+    # haanim-panel.js is an ES module that defines the 'haanim-panel' custom element
     frontend.async_register_built_in_panel(
         hass,
         component_name="custom",
@@ -139,13 +207,17 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
         config={
             "_panel_custom": {
                 "name": "haanim-panel",
-                "js_url": f"/{DOMAIN}/ui/haanim-panel.js?v={VERSION}",
+                "module_url": f"{versioned}/haanim-panel.js",
                 "embed_iframe": False,
                 "trust_external": False,
             }
         },
         require_admin=False,
     )
+
+    # Dashboards load the card with the rest of the frontend
+    frontend.add_extra_js_url(hass, card_url)
+    hass.data[CARD_URLS] = card_url
 
     _LOGGER.info("HAAnim panel registered successfully")
 
@@ -159,6 +231,9 @@ async def _async_unregister_panel(hass: HomeAssistant) -> None:
     # Remove the panel if it exists
     if DOMAIN in hass.data.get("frontend_panels", {}):
         frontend.async_remove_panel(hass, DOMAIN)
+        card_url = hass.data.pop(CARD_URLS, None)
+        if card_url is not None:
+            frontend.remove_extra_js_url(hass, card_url)
         _LOGGER.debug("HAAnim panel unregistered")
 
 
@@ -174,6 +249,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
     # Get managers
     data = hass.data[DOMAIN].get(entry.entry_id, {})
+
+    # Stop and unload the automations first, while triggers and services still work
+    if "manager" in data:
+        await data["manager"].async_shutdown()
 
     # Tear down managers in reverse order
     if "trigger_manager" in data:

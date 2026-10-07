@@ -1,227 +1,185 @@
 # HAAnim
 
-[![pipeline status](https://img.shields.io/badge/pipeline-passing-brightgreen)](https://gitlab.com/valsr/haanim/-/pipelines)
-[![coverage report](https://img.shields.io/badge/coverage-check%20CI-blue)](https://gitlab.com/valsr/haanim/-/commits/main)
+[![CI](https://github.com/valsr/haanim/actions/workflows/ci.yml/badge.svg)](https://github.com/valsr/haanim/actions/workflows/ci.yml)
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
-[![GitHub release](https://img.shields.io/github/release/valsr/haanim.svg)](https://github.com/valsr/haanim/releases)
-[![License](https://img.shields.io/github/license/valsr/haanim.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/haanim.svg)](https://pypi.org/project/haanim/)
+[![Documentation](https://readthedocs.org/projects/haanim/badge/?version=latest)](https://haanim.readthedocs.io/)
+[![License](https://img.shields.io/github/license/valsr/haanim.svg)](https://github.com/valsr/haanim/blob/main/LICENSE)
 
-A Home Assistant custom component for HAAnim integration.
+Write Home Assistant automations in Python. An automation is a folder with a `main.py`; decorators say when
+its functions run, and the `haa` object reaches entities, services, storage and the automation's own
+dashboard card.
 
-## Description
+```python
+from haanim import StateEvent, TimeEvent, haa, on_state, on_time
 
-HAAnim is a custom integration for Home Assistant that allows you to [describe what your integration does].
 
-## Features
+@on_state("sensor.temperature > 30")
+async def high_temperature(event: StateEvent):
+    await haa.service.notify.mobile_app(message=f"It is {float(haa.entity.sensor.temperature)}°C")
 
-- Easy configuration through the UI
-- [Add your features here]
-- [Add more features]
+
+@on_time("09:00", day_of_week="weekdays", when="person.john == 'home'")
+async def morning(event: TimeEvent):
+    await haa.service.light.turn_on(entity_id="light.bedroom", brightness=150)
+```
+
+## What you get
+
+- **Triggers**: time (including sunrise and sunset), interval, cron, Home Assistant events and state
+  expressions, each with optional constraints (time of day, date range, day of week, state).
+- **Actions** that can be run by hand, by a service, by another automation or by a trigger, with `DROP`,
+  `QUEUE` and `CANCEL` execution modes, timeouts and a concurrency limit.
+- **`haa`**: entity access, service calls, `sleep` and `wait_for`, persistent variables, assets, calling and
+  controlling other automations.
+- **A sensor per automation** (`sensor.haanim_<id>`: `on`, `off`, `error`) with status attributes.
+- **A dashboard card** (`custom:haanim-card`) that the automation titles and fills with text, images,
+  values, live entities and buttons, plus a management panel in the sidebar with each automation's
+  controls, actions and log.
+- **Hot reload**: edit a file and the automation is reloaded.
+- **A test harness**: test an automation with `pytest`, with no Home Assistant running.
+
+The interpreter keeps automations from blocking Home Assistant by accident (no blocking I/O, an import
+allowlist, loops that yield). It is a guard rail, not a sandbox: an automation can do whatever Home Assistant
+can. Only install automations you trust.
 
 ## Installation
 
-### HACS (Recommended)
+HAAnim needs Home Assistant 2026.9 or newer.
 
-#### Quick Install
+1. Install the integration with HACS: **HACS → ⋮ → Custom repositories**, add
+   `https://github.com/valsr/haanim` as an **Integration**, then download HAAnim.
+2. Restart Home Assistant.
+3. **Settings → Devices & services → Add integration → HAAnim**.
 
-1. Open **HACS** → **⋮** (three dots) → **Custom repositories**
-2. Repository: `https://gitlab.com/valsr/haanim`
-3. Category: **Integration**
-4. Click **ADD**
+That is all: a release of the integration has the HAAnim engine in it, so no Python package has to be
+installed into Home Assistant.
 
-### Manual Installation
+To install by hand, download `haanim.zip` from a
+[release](https://github.com/valsr/haanim/releases) and unpack it into
+`<config>/custom_components/haanim`. Copying `custom_components/haanim` out of a checkout of the repository is
+not enough, because the engine is not in that folder there; build the folder to copy with
+`python scripts/build-integration.py --folder OUT`.
 
-1. Copy the `custom_components/haanim` folder to your Home Assistant's `custom_components` directory
-2. If the `custom_components` directory doesn't exist, create it in your Home Assistant
-   configuration directory
-3. Restart Home Assistant
+Automations live in `/config/haanim/automations/` by default. The folder, the rescan interval, the limits and
+the import options are set under **Configure** on the integration.
 
-## Configuration
+## Your first automation
 
-1. Go to Home Assistant Settings
-2. Select "Devices & Services"
-3. Click "+ Add Integration"
-4. Search for "HAAnim"
-5. Follow the configuration steps
+Create `/config/haanim/automations/hello/main.py`:
 
-## Usage
+```python
+from haanim import ActionEvent, action, haa, startup
 
-After installation and configuration, you can [describe how to use your integration].
+
+@startup
+def ready(event: ActionEvent):
+    haa.card.add_element(haa.card.create_text("hello", "## Hello\nPress the button."))
+    haa.card.add_element(haa.card.create_button("greet", label="Greet", action="greet"))
+
+
+@action
+async def greet(event: ActionEvent):
+    await haa.service.persistent_notification.create(message="Hello from HAAnim")
+```
+
+Within the rescan interval the automation is running: `sensor.haanim_hello` is `on`, and the action can be run
+from the HAAnim panel, with the `haanim.run_action` service, or from the automation's card:
+
+```yaml
+type: custom:haanim-card
+automation_id: hello
+```
+
+The [automation guide](https://haanim.readthedocs.io/en/latest/AUTOMATIONS/) covers everything an automation can do, and
+[`examples/`](https://github.com/valsr/haanim/tree/main/examples) has complete automations with tests, among them a demo for each part of
+HAAnim. The same documentation is built for Read the Docs from `docs/` (`mkdocs.yml`).
+
+## Testing an automation
+
+The engine is also a Python package, `haanim`, for your own machine: it gives your editor completion and
+types for `from haanim import ...`, and the test harness. It is not needed in Home Assistant.
+
+```sh
+pip install haanim pytest pytest-asyncio
+```
+
+The package needs Python 3.14, the Python that Home Assistant 2026.9 runs on.
+
+```python
+from haanim.testing import AutomationHarness
+
+
+async def test_greeting():
+    async with AutomationHarness("automations/hello") as automation:
+        await automation.press("greet")
+        assert automation.service_calls("persistent_notification.create")[0].data == {
+            "message": "Hello from HAAnim"
+        }
+```
+
+The harness runs the automation with the same interpreter and triggers as Home Assistant, against a fake Home
+Assistant whose clock only moves when the test moves it. Installing the package does not install Home
+Assistant.
+
+## Services
+
+| Service                   | Data                              | What it does                                             |
+| ------------------------- | --------------------------------- | -------------------------------------------------------- |
+| `haanim.run_action`       | `automation_id`, `action`, `data` | Runs an action; returns its result as response data      |
+| `haanim.enable`           | `automation_id`                   | Enables and starts the automation                        |
+| `haanim.disable`          | `automation_id`                   | Stops and disables the automation                        |
+| `haanim.start`            | `automation_id`                   | Starts the automation                                    |
+| `haanim.stop`             | `automation_id`                   | Stops the automation                                     |
+| `haanim.restart`          | `automation_id`                   | Restarts the automation                                  |
+| `haanim.reload`           | `automation_id` (optional)        | Rescans now and reloads one automation, or all           |
+| `haanim.list_automations` | -                                 | Returns ID, name, state and enabled flag of every one    |
+| `haanim.list_actions`     | `automation_id`                   | Returns the automation's actions                         |
+| `haanim.clear_log`        | `automation_id` (optional)        | Empties the log HAAnim keeps for one automation, or all  |
+| `haanim.set_log_level`    | `automation_id`, `level`          | Sets the automation's log level; `default` takes it away |
 
 ## Development
 
-### Quick Start with Pre-configured Container (Recommended)
-
-The fastest way to develop and test the integration is using the pre-configured container image:
-
-```bash
-# Clone the repository
-git clone https://gitlab.com/valsr/haanim.git
+```sh
+git clone https://github.com/valsr/haanim.git
 cd haanim
-
-# Build and start the development environment (one command!)
-./podman/build-and-run.sh
-```
-
-This will:
-
-- ✅ Build a pre-configured Home Assistant image (~5 minutes first time)
-- ✅ Start the container with your code mounted for live development
-- ✅ Auto-login as admin (no password needed)
-- ✅ HACS pre-installed and configured
-- ✅ HAAnim integration pre-configured
-- ✅ Automatically open your browser to Home Assistant
-
-**Development workflow:**
-
-```bash
-# Edit code in custom_components/haanim/
-vim custom_components/haanim/sensor.py
-
-# Restart to apply changes (no rebuild needed!)
-./podman/restart.sh
-
-# View logs
-./podman/logs.sh
-
-# Stop when done
-./podman/stop.sh
-```
-
-**Pre-configured features:**
-
-- Admin credentials: username `admin`, password `admin` (auto-login enabled)
-- HACS installed and ready
-- HAAnim integration already configured
-- Debug logging enabled
-- All setup wizards completed
-
-See [docs/CONTAINER_DEV.md](docs/CONTAINER_DEV.md) or [docs/QUICKSTART_CONTAINER.md](docs/QUICKSTART_CONTAINER.md)
-for complete documentation.
-
-### VS Code Tasks (Recommended for VS Code Users)
-
-The project includes pre-configured VS Code tasks for an optimal development experience:
-
-**Quick Start:**
-
-1. Open the project in VS Code
-2. Press **`Ctrl+Shift+B`** (or **`Cmd+Shift+B`** on Mac)
-3. Select "Container: Build and Run"
-4. Home Assistant starts automatically and opens in your browser!
-
-**Available Features:**
-
-- One-click container build and start
-- Automatic browser opening
-- Run and Debug configurations
-- Integrated testing and linting
-- Container management tasks
-- Python debugging support
-
-See [docs/VSCODE_TASKS.md](docs/VSCODE_TASKS.md) for complete documentation.
-
-### VS Code DevContainer
-
-For an integrated development experience:
-
-1. Open this project in VS Code
-2. Click "Reopen in Container" when prompted (or use Command Palette: "Dev Containers: Reopen in Container")
-3. VS Code will start Home Assistant and configure the development environment
-4. Start coding with full IntelliSense and debugging support
-
-**Note**: DevContainer support with Podman may require additional setup. See the VS Code documentation for Podman integration.
-
-### Manual Setup
-
-For local development without containers:
-
-```bash
-# Clone the repository
-git clone https://gitlab.com/valsr/haanim.git
-cd haanim
-
-# Install UV (if not already installed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Or use the Makefile
-make install
-
-# Sync all dependencies including dev tools
 uv sync --all-extras
-# Or: make dev
 
-# Run tests
-uv run pytest
-# Or: make test
-
-# Format code
-uv run black custom_components/haanim/
-# Or: make format
-
-# Run linting
-uv run pylint custom_components/haanim/
-# Or: make lint
+uv run pytest                                         # Python tests, frontend tests and the coverage gate
+uv run python scripts/check-public-api-coverage.py    # the automation-facing API must be at 100%
+scripts/test-frontend.sh                              # only the JavaScript tests (needs node 22+)
+uv run black --check . && uv run pylint custom_components src
+uv run mypy custom_components src && uv run pyright src custom_components examples
 ```
 
-#### Alternative: Traditional Setup
+A Home Assistant with the integration, the package and the examples, in a container:
 
-If you prefer not to use UV:
-
-```bash
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install homeassistant
-pip install -e ".[dev]"
-
-# Copy custom component to your Home Assistant config
-cp -r custom_components/haanim ~/.homeassistant/custom_components/
-
-# Start Home Assistant
-hass -c ~/.homeassistant
+```sh
+./build-and-run.sh                     # http://localhost:8123, user admin, password admin
+uv run python scripts/e2e-smoke.py     # end-to-end checks against that container
 ```
 
-### Available Make Commands
+The engine has one source, `src/haanim`. In a checkout the integration imports it as the installed `haanim`
+package (`uv sync` installs it in place). A release carries a copy of it inside the integration:
 
-```bash
-make help      # Show all available commands
-make install   # Install UV and sync dependencies
-make sync      # Sync dependencies with lockfile
-make dev       # Install dev dependencies
-make test      # Run tests with pytest
-make lint      # Run linting checks
-make format    # Format code with black
-make check     # Run all checks
+```sh
+uv run python scripts/build-integration.py    # dist/haanim.zip: what a GitHub release attaches and HACS installs
 ```
 
-## Continuous Integration
+The repository:
 
-This project uses GitLab CI for automated testing and quality checks. Every push and merge request triggers:
+| Path                        | What is there                                                              |
+| --------------------------- | -------------------------------------------------------------------------- |
+| `src/haanim/`               | The engine: interpreter, triggers, dispatcher, `haa`. No Home Assistant imports |
+| `src/haanim/testing/`       | The test harness and the fakes it is built on                              |
+| `custom_components/haanim/` | The integration: entity, services, options, websocket commands, frontend   |
+| `examples/`                 | Example automations and their harness tests                                |
+| `tests/`                    | `engine/` (no Home Assistant), `integration/`, `frontend/`                 |
+| `docs/`                     | The documentation (built with MkDocs) and notes on the development environment |
 
-- **Code quality checks**: Black, Pylint, Flake8, and Mypy
-- **Coverage reporting**: Automatic coverage calculation and reporting
-- **Security scanning**: Secret detection and dependency scanning
-
-See [docs/GITLAB_CI_GUIDE.md](docs/GITLAB_CI_GUIDE.md) for detailed pipeline documentation.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Support
-
-If you encounter any issues or have questions:
-
-- Open an issue on [GitLab](https://gitlab.com/valsr/haanim/-/issues)
-- Check the [Home Assistant Community](https://community.home-assistant.io/)
+See [CONTRIBUTING.md](https://github.com/valsr/haanim/blob/main/CONTRIBUTING.md) before sending a pull request.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Disclaimer
-
-This is a custom component and is not officially supported by Home Assistant.
+MIT, see [LICENSE](https://github.com/valsr/haanim/blob/main/LICENSE). HAAnim is a custom integration and is not supported by the Home Assistant
+project.

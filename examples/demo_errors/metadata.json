@@ -1,0 +1,6 @@
+{
+  "name": "Demo: errors",
+  "description": "What happens when an action fails, times out or is dropped, and how an automation handles it.",
+  "author": "HAAnim",
+  "version": "1.0.0"
+}

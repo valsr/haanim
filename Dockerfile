@@ -1,4 +1,4 @@
-FROM docker.io/homeassistant/home-assistant:2025.11.3
+FROM docker.io/homeassistant/home-assistant:2026.9.4
 
 # Set environment variables
 ENV TZ=America/Toronto
@@ -26,8 +26,21 @@ COPY podman/container-config/.storage/auth_provider.homeassistant /config/.stora
 COPY podman/container-config/.storage/core.config_entries /config/.storage/core.config_entries
 COPY podman/container-config/.storage/frontend.user_data_admin_user_id_12345 /config/.storage/frontend.user_data_admin_user_id_12345
 
-# Note: HAAnim integration is mounted as a volume from the host
-# This allows live code changes without rebuilding the container
+# The still picture of the demo camera (camera.demo), which the dashboard example shows
+COPY podman/container-config/demo /config/demo
+
+# A dashboard with the card of each example automation
+COPY podman/container-config/ui-lovelace.yaml /config/ui-lovelace.yaml
+
+# The integration mounted into this container is the repository's, which has no engine bundled with it
+# (only a release has, see scripts/build-integration.py). So the haanim package is installed here;
+# start.sh then mounts src/haanim over it with PYTHONPATH, which allows live code changes without
+# rebuilding the container.
+COPY pyproject.toml README.md LICENSE /opt/haanim-package/
+COPY src /opt/haanim-package/src
+RUN pip install --no-cache-dir /opt/haanim-package
+
+# Note: the HAAnim integration and the example automations are mounted as volumes from the host
 
 # Set proper permissions
 RUN chown -R root:root /config

@@ -1,7 +1,7 @@
 """Home Assistant state integration for HAAnim.
 
 This module provides state access, manipulation, and change notifications
-for use within HAAnim scripts.
+for use within HAAnim automations.
 """
 
 from __future__ import annotations
@@ -9,236 +9,22 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
-from homeassistant.const import EVENT_STATE_CHANGED, STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import Event, HomeAssistant, State as HAState, callback
+from homeassistant.const import EVENT_STATE_CHANGED
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
-from homeassistant.util import dt as dt_util
+
+from custom_components.haanim.ha.subscriptions import Subscriptions
+from haanim.types import StateChangedEvent, StateVal
 
 _LOGGER = logging.getLogger(__name__)
 
-
-@dataclass
-class StateChangedEvent:
-    """Data class representing a state changed event.
-
-    Used for strongly typed state change notifications in queues.
-    """
-
-    entity_id: str
-    old_state: StateVal | None
-    new_state: StateVal
-
-
-class StateVal:
-    """Wrapper class for Home Assistant entity states.
-
-    Provides convenient access to entity state values and attributes,
-    with helper methods for type conversion.
-    """
-
-    def __init__(self, state: HAState | None, entity_id: str | None = None) -> None:
-        """Initialize a StateVal wrapper.
-
-        Args:
-            state: The Home Assistant State object, or None if entity not found.
-            entity_id: The entity ID (used when state is None).
-        """
-        self._state = state
-        self._entity_id = entity_id or (state.entity_id if state else None)
-
-    @property
-    def state(self) -> str | None:
-        """Get the state value as a string.
-
-        Returns:
-            The state value, or None if unavailable.
-        """
-        if self._state is None:
-            return None
-        return self._state.state
-
-    @property
-    def entity_id(self) -> str | None:
-        """Get the entity ID.
-
-        Returns:
-            The entity ID.
-        """
-        return self._entity_id
-
-    @property
-    def attributes(self) -> dict[str, Any]:
-        """Get all state attributes.
-
-        Returns:
-            Dictionary of attributes.
-        """
-        if self._state is None:
-            return {}
-        return dict(self._state.attributes)
-
-    @property
-    def last_changed(self) -> datetime | None:
-        """Get the time the state last changed.
-
-        Returns:
-            Datetime of last change.
-        """
-        if self._state is None:
-            return None
-        return self._state.last_changed
-
-    @property
-    def last_updated(self) -> datetime | None:
-        """Get the time the state was last updated.
-
-        Returns:
-            Datetime of last update.
-        """
-        if self._state is None:
-            return None
-        return self._state.last_updated
-
-    def __str__(self) -> str:
-        """Get string representation (the state value).
-
-        Returns:
-            The state value as string.
-        """
-        return self.state or ""
-
-    def __repr__(self) -> str:
-        """Get detailed representation.
-
-        Returns:
-            Detailed string representation.
-        """
-        return f"StateVal({self._entity_id}={self.state})"
-
-    def __eq__(self, other: Any) -> bool:
-        """Compare state value equality.
-
-        Args:
-            other: Value to compare with.
-
-        Returns:
-            True if state equals other.
-        """
-        if isinstance(other, StateVal):
-            return self.state == other.state
-        return self.state == str(other)
-
-    def __bool__(self) -> bool:
-        """Boolean evaluation of state.
-
-        Returns:
-            True if state is truthy (not None, unavailable, unknown, off, false, 0).
-        """
-        if self._state is None:
-            return False
-        state = self.state
-        if state in (None, STATE_UNAVAILABLE, STATE_UNKNOWN, "off", "false", "0", ""):
-            return False
-        return True
-
-    def __getattr__(self, name: str) -> Any:
-        """Get a state attribute by name.
-
-        Args:
-            name: Attribute name.
-
-        Returns:
-            Attribute value.
-
-        Raises:
-            AttributeError: If attribute not found.
-        """
-        if name.startswith("_"):
-            raise AttributeError(f"'{type(self).__name__}' has no attribute '{name}'")
-        if self._state is None:
-            raise AttributeError(f"Entity '{self._entity_id}' not found")
-        if name in self._state.attributes:
-            return self._state.attributes[name]
-        raise AttributeError(f"Entity '{self._entity_id}' has no attribute '{name}'")
-
-    def get(self, attr: str, default: Any = None) -> Any:
-        """Get an attribute with a default value.
-
-        Args:
-            attr: Attribute name.
-            default: Default value if not found.
-
-        Returns:
-            Attribute value or default.
-        """
-        if self._state is None:
-            return default
-        return self._state.attributes.get(attr, default)
-
-    def as_int(self, default: int = 0) -> int:
-        """Convert state to integer.
-
-        Args:
-            default: Default value if conversion fails.
-
-        Returns:
-            State as integer.
-        """
-        try:
-            return int(float(self.state or default))
-        except (ValueError, TypeError):
-            return default
-
-    def as_float(self, default: float = 0.0) -> float:
-        """Convert state to float.
-
-        Args:
-            default: Default value if conversion fails.
-
-        Returns:
-            State as float.
-        """
-        try:
-            return float(self.state or default)
-        except (ValueError, TypeError):
-            return default
-
-    def as_bool(self) -> bool:
-        """Convert state to boolean.
-
-        Returns:
-            State as boolean.
-        """
-        if self.state in ("on", "true", "yes", "1", "home", "open"):
-            return True
-        return False
-
-    def as_datetime(self) -> datetime | None:
-        """Convert state to datetime.
-
-        Returns:
-            State as datetime, or None if conversion fails.
-        """
-        try:
-            return dt_util.parse_datetime(self.state or "")
-        except (ValueError, TypeError):
-            return None
-
-    def is_available(self) -> bool:
-        """Check if the entity state is available.
-
-        Returns:
-            True if state is not unavailable or unknown.
-        """
-        return self.state not in (None, STATE_UNAVAILABLE, STATE_UNKNOWN)
+__all__ = ["StateChangedEvent", "StateManager", "StateVal"]
 
 
 class StateManager:
-    """Manages state access and change notifications for HAAnim scripts.
+    """Manages state access and change notifications for HAAnim automations.
 
     Provides methods to get, set, and watch entity states, with notification
     queues for trigger evaluation.
@@ -251,8 +37,7 @@ class StateManager:
             hass: Home Assistant instance.
         """
         self.hass = hass
-        self._listeners: dict[str, list[asyncio.Queue[StateChangedEvent | None]]] = {}
-        self._global_listeners: list[asyncio.Queue[StateChangedEvent | None]] = []
+        self._subscriptions: Subscriptions[StateChangedEvent] = Subscriptions("state")
         self._unsub_state_changed: Callable[[], None] | None = None
 
     async def async_setup(self) -> None:
@@ -269,19 +54,10 @@ class StateManager:
             self._unsub_state_changed()
             self._unsub_state_changed = None
 
-        # Clear all queues
-        for queues in self._listeners.values():
-            for queue in queues:
-                # Put None to signal shutdown
-                await queue.put(None)
-        self._listeners.clear()
-
-        for queue in self._global_listeners:
-            await queue.put(None)
-        self._global_listeners.clear()
+        await self._subscriptions.close()
 
     @callback
-    def _handle_state_changed(self, event: Event) -> None:
+    def _handle_state_changed(self, event: Event[EventStateChangedData]) -> None:
         """Handle a state changed event.
 
         Args:
@@ -304,20 +80,8 @@ class StateManager:
             new_state=new_val,
         )
 
-        # Notify entity-specific listeners
-        if entity_id in self._listeners:
-            for queue in self._listeners[entity_id]:
-                try:
-                    queue.put_nowait(notification)
-                except asyncio.QueueFull:
-                    _LOGGER.warning("State notification queue full for %s", entity_id)
-
-        # Notify global listeners
-        for queue in self._global_listeners:
-            try:
-                queue.put_nowait(notification)
-            except asyncio.QueueFull:
-                _LOGGER.warning("Global state notification queue full")
+        self._subscriptions.deliver(entity_id, notification)
+        self._subscriptions.deliver_to_all(notification)
 
     def get(self, entity_id: str) -> StateVal:
         """Get the current state of an entity.
@@ -378,16 +142,7 @@ class StateManager:
         Returns:
             Queue that receives state change notifications (StateChangedEvent or None on shutdown).
         """
-        queue: asyncio.Queue[StateChangedEvent | None] = asyncio.Queue(maxsize=100)
-
-        if entity_id:
-            if entity_id not in self._listeners:
-                self._listeners[entity_id] = []
-            self._listeners[entity_id].append(queue)
-        else:
-            self._global_listeners.append(queue)
-
-        return queue
+        return self._subscriptions.add(entity_id)
 
     def unsubscribe(
         self, queue: asyncio.Queue[StateChangedEvent | None], entity_id: str | None = None
@@ -398,16 +153,7 @@ class StateManager:
             queue: The queue to remove.
             entity_id: Entity ID if subscribed to specific entity.
         """
-        if entity_id and entity_id in self._listeners:
-            try:
-                self._listeners[entity_id].remove(queue)
-            except ValueError:
-                pass
-        else:
-            try:
-                self._global_listeners.remove(queue)
-            except ValueError:
-                pass
+        self._subscriptions.remove(queue, entity_id)
 
     def exists(self, entity_id: str) -> bool:
         """Check if an entity exists.
@@ -447,7 +193,7 @@ class StateManager:
         }
 
 
-# Convenience functions for use in scripts
+# Convenience functions for use in automations
 
 
 def state_get(hass: HomeAssistant, entity_id: str) -> StateVal:

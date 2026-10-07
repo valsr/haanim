@@ -1,0 +1,674 @@
+"""HAAnim API providing access to Home Assistant entities, services, and automations.
+
+This module implements the `haa` instance that is injected into automation namespaces,
+providing a clean API for interacting with Home Assistant and other automations.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from haanim.engine.assets import AssetStore
+from haanim.engine.card import HAAnimCard
+from haanim.engine.durations import parse_duration
+from haanim.engine.expression_eval import parse_expression
+from haanim.engine.variables import VariableStore
+from haanim.engine.waiting import StateWait
+from haanim.entity import HAAnimEntity
+from haanim.engine.errors import (
+    NonExistingAutomationError,
+    NonExistingServiceError,
+    ServiceCallError,
+)
+
+if TYPE_CHECKING:
+    from haanim.interfaces import AutomationRegistry, Host
+
+_LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class HAAnimServiceCall:
+    """The result of a service call.
+
+    Args:
+        domain: Service domain that was called.
+        service: Service name that was called.
+        call_time: When the service was called.
+        complete_time: When the service call completed.
+        success: True if the service call succeeded.
+        error: Error message if the call failed; None if it succeeded.
+        error_code: Error code if the call failed; None if it succeeded.
+        response_data: Response data from the service; empty if it returned none.
+    """
+
+    domain: str
+    service: str
+    call_time: datetime
+    complete_time: datetime
+    success: bool = True
+    error: str | None = None
+    error_code: str | None = None
+    response_data: dict[str, Any] = field(default_factory=dict[str, Any])
+
+
+# The error codes of a failed service call
+ERROR_CODE_HOST = "home_assistant_error"
+ERROR_CODE_UNKNOWN = "unknown_error"
+
+
+class HAAnimServiceProxy:
+    """A service of the host: its description and the means to call it."""
+
+    def __init__(
+        self,
+        host: Host,
+        domain: str,
+        service: str,
+    ) -> None:
+        """Initialize service proxy.
+
+        Args:
+            host: The host the engine runs in.
+            domain: Service domain.
+            service: Service name.
+        """
+        self._host = host
+        self._domain = domain
+        self._name = service
+        self._description = ""
+        self._param_info: dict[str, Any] = {}
+        for info in host.services.services():
+            if info.domain == domain and info.name == service:
+                self._description = info.description
+                self._param_info = dict(info.fields)
+                break
+
+    @property
+    def domain(self) -> str:
+        """Service domain name, such as ``'light'``."""
+        return self._domain
+
+    @property
+    def name(self) -> str:
+        """Service name without the domain, such as ``'turn_on'``."""
+        return self._name
+
+    @property
+    def description(self) -> str:
+        """Human-readable description of the service; empty if the host has none."""
+        return self._description
+
+    @property
+    def param_info(self) -> dict[str, Any]:
+        """Parameter details by parameter name: description, example, required, selector."""
+        return {name: dict(details) for name, details in self._param_info.items()}
+
+    def __repr__(self) -> str:
+        """Describe the proxy."""
+        return f"HAAnimServiceProxy('{self._domain}.{self._name}')"
+
+    async def call(self, **params: Any) -> HAAnimServiceCall:
+        """Call the service with the given parameters.
+
+        A service that fails does not raise: the failure is in the result.
+
+        Args:
+            **params: Service parameters.
+
+        Returns:
+            The result of the call.
+
+        Raises:
+            NonExistingServiceError: If the service doesn't exist.
+        """
+        clock = self._host.clock
+        call_time = clock.now()
+        if not self._host.services.has_service(self._domain, self._name):
+            raise NonExistingServiceError(self._domain, self._name)
+
+        error: str | None = None
+        error_code: str | None = None
+        response: dict[str, Any] | None = None
+        try:
+            response = await self._host.services.async_call(
+                self._domain, self._name, params, return_response=True
+            )
+        except ServiceCallError as err:
+            error, error_code = err.reason, ERROR_CODE_HOST
+        except Exception as err:  # pylint: disable=broad-exception-caught
+            error, error_code = str(err) or type(err).__name__, ERROR_CODE_UNKNOWN
+            _LOGGER.exception("Unexpected error calling service %s.%s", self._domain, self._name)
+
+        return HAAnimServiceCall(
+            domain=self._domain,
+            service=self._name,
+            call_time=call_time,
+            complete_time=clock.now(),
+            success=error is None,
+            error=error,
+            error_code=error_code,
+            response_data=dict(response) if response else {},
+        )
+
+    async def __call__(self, **params: Any) -> HAAnimServiceCall:
+        """Call the service: the proxy can be called directly.
+
+        Args:
+            **params: Service parameters.
+
+        Returns:
+            The result of the call.
+        """
+        return await self.call(**params)
+
+
+class HAAnimAutomationProxy:
+    """Proxy object for interacting with another automation."""
+
+    def __init__(
+        self,
+        automation_id: str,
+        automation_manager: AutomationRegistry,
+        caller: str | None = None,
+    ) -> None:
+        """Initialize automation proxy.
+
+        Args:
+            automation_id: The automation ID.
+            automation_manager: The automation manager instance.
+            caller: ID of the automation that uses the proxy; calls made through it name this caller.
+        """
+        self.id = automation_id
+        self._manager = automation_manager
+        self._caller = caller
+
+    @property
+    def state(self) -> str:
+        """Get the current state of the automation: ``unavailable``, ``off``, ``on`` or ``error``."""
+        return self._manager.automation_state(self.id)
+
+    @property
+    def message(self) -> str:
+        """Get the automation's status message; empty if it has set none."""
+        context = self._manager.get_context_by_name(self.id)
+        metadata = context.get_metadata() if context else None
+        return (metadata.message or "") if metadata else ""
+
+    @property
+    def file_path(self) -> str:
+        """Get the absolute path of the automation's folder."""
+        context = self._manager.get_context_by_name(self.id)
+        return str(Path(context.automation_path).absolute()) if context else ""
+
+    @property
+    def load_time(self) -> datetime | None:
+        """Get when the automation was loaded."""
+        return self._manager.automation_times(self.id).load_time
+
+    @property
+    def run_time(self) -> datetime | None:
+        """Get when the automation was last started; None if it never was."""
+        return self._manager.automation_times(self.id).run_time
+
+    @property
+    def actions(self) -> list[str]:
+        """Get the names of the automation's actions. Empty unless the automation is running."""
+        context = self._manager.get_context_by_name(self.id)
+        return [action.name for action in context.get_actions()] if context else []
+
+    @property
+    def last_action_time(self) -> datetime | None:
+        """Get when an action of the automation last started executing; None if none has."""
+        return self._manager.automation_times(self.id).last_action_time
+
+    @property
+    def error_message(self) -> str | None:
+        """Get why the automation is in the ``error`` state, or None if it is not."""
+        return self._manager.automation_message(self.id)
+
+    def is_running(self) -> bool:
+        """Check if the automation is running."""
+        return self.state == "on"
+
+    def is_enabled(self) -> bool:
+        """Check if the automation is enabled."""
+        return self._manager.is_automation_enabled(self.id)
+
+    async def call(self, action_name: str, **data: Any) -> Any:
+        """Call an action of this automation.
+
+        Args:
+            action_name: A name of the action.
+            **data: The arguments of the call. The action receives them as ``event.data``.
+
+        Returns:
+            What the action returns.
+
+        Raises:
+            NonExistingAutomationError: If the automation doesn't exist.
+            AutomationNotLoadedError: If the automation is not loaded.
+            AutomationNotRunningError: If the automation is stopped, disabled or in error.
+            ActionNotFoundError: If the action doesn't exist or is disabled.
+            ActionDroppedError: If the request is dropped (DROP mode, or a re-entrant call).
+            QueueFullError: If the action's queue is full (QUEUE mode).
+            PoolExhaustedError: If the concurrency limit is reached.
+            ActionTimeOutError: If the action times out.
+            ActionCancelledError: If the action is cancelled.
+            Exception: Whatever the action raises, unchanged.
+        """
+        return await self._manager.async_call_action(self.id, action_name, data, caller=self._caller)
+
+    async def enable(self) -> None:
+        """Enable and start the automation."""
+        await self._manager.async_enable_automation(self.id)
+
+    async def disable(self) -> None:
+        """Disable and stop the automation."""
+        await self._manager.async_disable_automation(self.id)
+
+    async def start(self) -> None:
+        """Start the automation if enabled."""
+        await self._manager.async_start_automation(self.id)
+
+    async def stop(self) -> None:
+        """Stop the automation if running."""
+        await self._manager.async_stop_automation(self.id)
+
+    async def restart(self) -> None:
+        """Restart the automation."""
+        await self._manager.async_restart_automation(self.id)
+
+
+def read_entity(host: Host, entity_id: str) -> HAAnimEntity:
+    """Take a snapshot of an entity. A missing entity gives an object with ``exists == False``."""
+    found = host.states.get(entity_id)
+    return HAAnimEntity(
+        entity_id,
+        state=found.state,
+        attributes=found.attributes,
+        last_changed=found.last_changed,
+        last_updated=found.last_updated,
+    )
+
+
+class EntityDomain:
+    """The entities of one domain: ``haa.entity.<domain>``."""
+
+    def __init__(self, host: Host, domain: str) -> None:
+        """Initialize the domain.
+
+        Args:
+            host: The host the engine runs in.
+            domain: Entity domain (e.g., 'sensor', 'light').
+        """
+        self._host = host
+        self._domain = domain
+
+    def __getattr__(self, name: str) -> HAAnimEntity:
+        """Read the entity ``<domain>.<name>`` as it is now."""
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return read_entity(self._host, f"{self._domain}.{name}")
+
+
+class EntityNamespace:
+    """All entities: ``haa.entity.<domain>.<name>`` and ``haa.entity["<domain>.<name>"]``."""
+
+    def __init__(self, host: Host) -> None:
+        """Initialize the namespace.
+
+        Args:
+            host: The host the engine runs in.
+        """
+        self._host = host
+
+    def __getattr__(self, domain: str) -> EntityDomain:
+        """Return the entities of a domain."""
+        if domain.startswith("_"):
+            raise AttributeError(domain)
+        return EntityDomain(self._host, domain)
+
+    def __getitem__(self, entity_id: str) -> HAAnimEntity:
+        """Read an entity by its ID, for IDs that are not identifiers or only known at run time."""
+        return read_entity(self._host, entity_id)
+
+
+class ServiceDomainProxy:
+    """Proxy for accessing services in a domain."""
+
+    def __init__(self, host: Host, domain: str) -> None:
+        """Initialize service domain proxy.
+
+        Args:
+            host: The host the engine runs in.
+            domain: Service domain.
+        """
+        self._host = host
+        self._domain = domain
+
+    def __getattr__(self, service_name: str) -> HAAnimServiceProxy:
+        """Get a service proxy by name.
+
+        Args:
+            service_name: The service name.
+
+        Returns:
+            HAAnimServiceProxy for the service.
+        """
+        if service_name.startswith("_"):
+            raise AttributeError(service_name)
+        return HAAnimServiceProxy(self._host, self._domain, service_name)
+
+
+class HAAnim:  # pylint: disable=too-many-public-methods  # The methods are the API the design lists
+    """Main HAAnim API object providing access to Home Assistant and automations.
+
+    This object is injected into automation namespaces as `haa` and provides
+    a clean interface for:
+    - Accessing entity states and attributes
+    - Calling Home Assistant services
+    - Interacting with other automations
+    - Persistent storage
+    - Automation control
+    """
+
+    def __init__(
+        self,
+        host: Host,
+        automation_id: str,
+        automation_manager: AutomationRegistry,
+        variables: VariableStore | None = None,
+        *,
+        folder: Path | None = None,
+    ) -> None:
+        """Initialize HAAnim API.
+
+        Args:
+            host: The host the engine runs in.
+            automation_id: The current automation's ID.
+            automation_manager: The automation manager instance.
+            variables: The automation's persistent variables. A store on the
+                host's storage if omitted; it starts empty until it is loaded.
+            folder: The automation's folder, which holds its ``assets/``.
+                Without it the automation has no assets.
+        """
+        self._host = host
+        self._automation_id = automation_id
+        self._manager = automation_manager
+        self._variables = variables or VariableStore(automation_id, host.storage, host.clock)
+        self._assets = AssetStore(automation_id, folder, host.files, host.asset_signer)
+        self._card = HAAnimCard(automation_id, self._assets, self._has_action, host.cards)
+
+    @property
+    def variables(self) -> VariableStore:
+        """The store behind the persistent variables."""
+        return self._variables
+
+    @property
+    def id(self) -> str:
+        """Get the current automation's ID."""
+        return self._automation_id
+
+    def now(self) -> datetime:
+        """Get the current time.
+
+        Returns:
+            The current time as a timezone-aware datetime in the host's time zone.
+            This is the clock that drives triggers and timeouts, so it follows
+            a test that freezes or advances time; ``datetime.now()`` does not.
+        """
+        return self._host.clock.now()
+
+    async def sleep(self, duration: str | float) -> None:
+        """Suspend the current action for a duration, on HAAnim's clock.
+
+        Args:
+            duration: Seconds as a number or numeric string, or ``"HH:MM:SS"``.
+                Zero yields to other actions without waiting.
+
+        Raises:
+            ValueError: If the duration cannot be read or is negative.
+        """
+        if not isinstance(duration, bool) and isinstance(duration, (int, float)) and duration == 0:
+            await self._host.clock.sleep(0)
+            return
+        try:
+            seconds = parse_duration(duration)
+        except ValueError as err:
+            raise ValueError(f"haa.sleep: {duration!r} is not valid: {err}") from None
+        await self._host.clock.sleep(seconds)
+
+    async def wait_for(self, expr: str, timeout: str | float | None = None) -> bool:
+        """Suspend the current action until a state expression is true.
+
+        The wait is level-based: if the expression is already true, True is
+        returned at once. Otherwise it is evaluated again each time an entity
+        it refers to changes, as a state trigger is.
+
+        Args:
+            expr: The state expression, such as ``"binary_sensor.motion == 'off'"``.
+            timeout: How long to wait at most, in the formats of ``sleep``.
+                Without it the wait has no limit.
+
+        Returns:
+            True when the expression is true; False if the timeout passed first.
+
+        Raises:
+            AutomationSyntaxError: If the expression is not a state expression.
+            ValueError: If the timeout is not a duration.
+        """
+        expression = parse_expression(expr)
+        try:
+            seconds = parse_duration(timeout) if timeout is not None else None
+        except ValueError as err:
+            raise ValueError(f"haa.wait_for: timeout {timeout!r} is not valid: {err}") from None
+
+        return await StateWait(expression, self._host.states, self._host.clock).wait(seconds)
+
+    @property
+    def entity(self) -> EntityNamespace:
+        """The entities of the host: ``haa.entity.<domain>.<name>`` or ``haa.entity["<id>"]``.
+
+        Each read returns a new snapshot (``HAAnimEntity``).
+        """
+        return EntityNamespace(self._host)
+
+    def state(self, entity_id: str) -> str | None:
+        """Return the raw state string of an entity, without any conversion.
+
+        Args:
+            entity_id: Full entity ID, such as ``"sensor.temperature"``.
+
+        Returns:
+            The state, or None if the entity does not exist.
+        """
+        return self._host.states.get(entity_id).state
+
+    class _ServiceAccessor:
+        """Internal accessor for services."""
+
+        def __init__(self, host: Host) -> None:
+            """Initialize service accessor.
+
+            Args:
+                host: The host the engine runs in.
+            """
+            self._host = host
+
+        def __getattr__(self, domain: str) -> ServiceDomainProxy:
+            """Get service domain proxy.
+
+            Args:
+                domain: Service domain.
+
+            Returns:
+                ServiceDomainProxy for the domain.
+            """
+            if domain.startswith("_"):
+                raise AttributeError(domain)
+            return ServiceDomainProxy(self._host, domain)
+
+    @property
+    def service(self) -> _ServiceAccessor:
+        """Get service accessor."""
+        return self._ServiceAccessor(self._host)
+
+    def services(self) -> list[HAAnimServiceProxy]:
+        """Get list of all available service proxies.
+
+        Returns:
+            List of HAAnimServiceProxy objects.
+        """
+        result = []
+        for info in self._host.services.services():
+            result.append(HAAnimServiceProxy(self._host, info.domain, info.name))
+        return result
+
+    def automation(self, automation_id: str) -> HAAnimAutomationProxy:
+        """Get a proxy for another automation.
+
+        Args:
+            automation_id: The automation ID.
+
+        Returns:
+            HAAnimAutomationProxy for the automation.
+
+        Raises:
+            NonExistingAutomationError: If automation doesn't exist.
+        """
+        if self._manager.get_context_by_name(automation_id) is None:
+            raise NonExistingAutomationError(automation_id)
+        return HAAnimAutomationProxy(automation_id, self._manager, self._automation_id)
+
+    def automations(self) -> list[HAAnimAutomationProxy]:
+        """Get list of all automation proxies.
+
+        Returns:
+            List of HAAnimAutomationProxy objects for all loaded automations.
+        """
+        return [
+            HAAnimAutomationProxy(context.automation_id, self._manager, self._automation_id)
+            for context in self._manager.get_all_contexts()
+        ]
+
+    async def call(self, action_name: str, **data: Any) -> Any:
+        """Call an action of the current automation.
+
+        Args:
+            action_name: A name of the action.
+            **data: The arguments of the call. The action receives them as ``event.data``.
+
+        Returns:
+            What the action returns.
+        """
+        return await self._manager.async_call_action(
+            self._automation_id, action_name, data, caller=self._automation_id
+        )
+
+    async def disable(self) -> None:
+        """Disable the current automation, which stops it. The calling action ends at this call."""
+        await self._manager.async_disable_automation(self._automation_id)
+
+    async def stop(self) -> None:
+        """Stop the current automation. The calling action ends at this call."""
+        await self._manager.async_stop_automation(self._automation_id)
+
+    async def restart(self) -> None:
+        """Restart the current automation. The calling action ends at this call."""
+        await self._manager.async_restart_automation(self._automation_id)
+
+    def set_message(self, message: str) -> None:
+        """Set the automation's status message.
+
+        Args:
+            message: The status message to set.
+        """
+        context = self._manager.get_context_by_name(self._automation_id)
+        if context and context._metadata:
+            context._metadata.message = message
+            context.status_manager.notify(self._automation_id)
+
+    # --- Persistent storage: synchronous, on the in-memory store -------------------
+
+    def set_variable(self, key: str, value: Any) -> None:
+        """Store a persistent value. A copy is stored.
+
+        Args:
+            key: Variable name.
+            value: Any JSON value: a string, number, boolean, None, list, or
+                dictionary with string keys. A tuple is stored as a list.
+
+        Raises:
+            TypeError: If the value is not a JSON value; nothing is stored.
+        """
+        self._variables.set(key, value)
+
+    def get_variable(self, key: str, default: Any = None) -> Any:
+        """Retrieve a persistent value. A copy is returned.
+
+        Args:
+            key: Variable name.
+            default: What to return if the variable is not set.
+
+        Returns:
+            The stored value, or ``default``.
+        """
+        return self._variables.get(key, default)
+
+    def unset_variable(self, key: str) -> None:
+        """Remove a single variable; does nothing if it is not set.
+
+        Args:
+            key: Variable name.
+        """
+        self._variables.unset(key)
+
+    def clear_variables(self) -> None:
+        """Clear all stored variables."""
+        self._variables.clear()
+
+    # --- Card: what the automation shows on its card --------------------------------
+
+    @property
+    def card(self) -> HAAnimCard:
+        """The content of the automation's card."""
+        return self._card
+
+    def _has_action(self, name: str) -> bool:
+        """Return whether this automation has an action by a name."""
+        context = self._manager.get_context_by_name(self._automation_id)
+        return context is not None and context.get_action(name) is not None
+
+    # --- Assets: the files in the automation's assets/ folder ----------------------
+
+    async def read_asset(self, name: str, text: bool = False) -> bytes | str:
+        """Read a file from the automation's ``assets/`` folder.
+
+        Args:
+            name: Path of the file relative to ``assets/``, using ``/``.
+            text: Return a string decoded as UTF-8 instead of bytes.
+
+        Raises:
+            ValueError: If the name resolves outside ``assets/``.
+            FileNotFoundError: If the file does not exist.
+        """
+        return await self._assets.read(name, text)
+
+    def asset_url(self, name: str, expires: float | None = None) -> str:
+        """Return the URL path of an asset, served by Home Assistant.
+
+        Args:
+            name: Path of the file relative to ``assets/``, using ``/``.
+            expires: Seconds for which the URL works without login. Without
+                it the URL needs a logged-in Home Assistant session.
+
+        Raises:
+            ValueError: If the name resolves outside ``assets/``.
+            FileNotFoundError: If the file does not exist.
+        """
+        return self._assets.url(name, expires)

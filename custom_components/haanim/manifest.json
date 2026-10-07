@@ -1,13 +1,19 @@
 {
     "domain": "haanim",
     "name": "HAAnim",
+    "after_dependencies": [
+        "http",
+        "frontend",
+        "websocket_api"
+    ],
     "codeowners": [
         "@valsr"
     ],
     "config_flow": true,
-    "documentation": "https://gitlab.com/valsr/haanim",
-    "issue_tracker": "https://gitlab.com/valsr/haanim/issues",
+    "documentation": "https://haanim.readthedocs.io/",
+    "integration_type": "service",
+    "iot_class": "local_polling",
+    "issue_tracker": "https://github.com/valsr/haanim/issues",
     "requirements": [],
-    "version": "0.1.0",
-    "iot_class": "local_polling"
+    "version": "0.2.0"
 }

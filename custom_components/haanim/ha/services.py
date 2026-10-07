@@ -1,41 +1,74 @@
 """Home Assistant service integration for HAAnim.
 
 This module provides service calling capabilities and the ability to
-expose script functions as Home Assistant services.
+expose automation functions as Home Assistant services.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 
+from custom_components.haanim.automation_manager import AutomationManager, async_get_manager
 from custom_components.haanim.const import (
-    ATTRIBUTE_ACTION_NAME,
-    ATTRIBUTE_SCRIPT_NAME,
+    ATTRIBUTE_ACTION,
+    ATTRIBUTE_AUTOMATION_ID,
+    ATTRIBUTE_DATA,
+    ATTRIBUTE_LEVEL,
     DOMAIN,
-    SERVICE_GET_CONFIG,
+    SERVICE_CLEAR_LOG,
+    SERVICE_DISABLE,
+    SERVICE_ENABLE,
     SERVICE_LIST_ACTIONS,
-    SERVICE_LIST_SCRIPTS,
-    SERVICE_RELOAD_SCRIPTS,
+    SERVICE_LIST_AUTOMATIONS,
+    SERVICE_RELOAD,
+    SERVICE_RESTART,
     SERVICE_RUN_ACTION,
-    VERSION,
+    SERVICE_SET_LOG_LEVEL,
+    SERVICE_START,
+    SERVICE_STOP,
 )
-from custom_components.haanim.script_manager import async_get_manager, get_config_manager
+from custom_components.haanim.log_buffer import AutomationLogBuffer, entry_item
+from custom_components.haanim.log_levels import DEFAULT_LEVEL, LOG_LEVELS, AutomationLogLevels
+from haanim.engine.callables import as_coroutine_function
+from haanim.engine.errors import HAAnimError
 
 _LOGGER = logging.getLogger(__name__)
 
+CONTROL_SERVICES = (SERVICE_ENABLE, SERVICE_DISABLE, SERVICE_START, SERVICE_STOP, SERVICE_RESTART)
+SERVICES = (
+    SERVICE_RUN_ACTION,
+    *CONTROL_SERVICES,
+    SERVICE_RELOAD,
+    SERVICE_LIST_AUTOMATIONS,
+    SERVICE_LIST_ACTIONS,
+    SERVICE_CLEAR_LOG,
+    SERVICE_SET_LOG_LEVEL,
+)
+"""The services of the design's table."""
+
+
+@contextmanager
+def service_errors() -> Iterator[None]:
+    """Turn a HAAnim error into a service error carrying the error's type and message."""
+    try:
+        yield
+    except HAAnimError as err:
+        raise HomeAssistantError(f"{type(err).__name__}: {err}") from err
+
 
 class ServiceManager:
-    """Manages service calls and service registration for HAAnim scripts.
+    """Manages service calls and service registration for HAAnim automations.
 
-    Provides methods to call Home Assistant services and expose script
+    Provides methods to call Home Assistant services and expose automation
     functions as services.
     """
 
@@ -49,193 +82,184 @@ class ServiceManager:
         self._registered_services: dict[str, dict[str, Any]] = {}
 
     async def async_setup(self) -> None:
-        """Set up the service manager and register core services."""
-        # Register the run_action service
-        self.hass.services.async_register(
+        """Set up the service manager and register the HAAnim services."""
+        automation = vol.Schema({vol.Required(ATTRIBUTE_AUTOMATION_ID): cv.string})
+        register = self.hass.services.async_register
+
+        register(
             DOMAIN,
             SERVICE_RUN_ACTION,
-            service_func=self._handle_run_action,
+            self._handle_run_action,
             schema=vol.Schema(
                 {
-                    vol.Required(ATTRIBUTE_SCRIPT_NAME): cv.string,
-                    vol.Required(ATTRIBUTE_ACTION_NAME): cv.string,
+                    vol.Required(ATTRIBUTE_AUTOMATION_ID): cv.string,
+                    vol.Required(ATTRIBUTE_ACTION): cv.string,
+                    vol.Optional(ATTRIBUTE_DATA, default=dict): dict,
                 }
             ),
+            supports_response=SupportsResponse.OPTIONAL,
         )
-
-        # Register the reload_scripts service
-        self.hass.services.async_register(
+        for service in CONTROL_SERVICES:
+            register(DOMAIN, service, self._handle_control, schema=automation)
+        register(
             DOMAIN,
-            SERVICE_RELOAD_SCRIPTS,
-            service_func=self._handle_reload_scripts,
-            schema=vol.Schema({}),
+            SERVICE_RELOAD,
+            self._handle_reload,
+            schema=vol.Schema({vol.Optional(ATTRIBUTE_AUTOMATION_ID): cv.string}),
         )
-
-        # Register the list_scripts service
-        self.hass.services.async_register(
+        register(
             DOMAIN,
-            SERVICE_LIST_SCRIPTS,
-            self._handle_list_scripts,
+            SERVICE_LIST_AUTOMATIONS,
+            self._handle_list_automations,
             schema=vol.Schema({}),
+            supports_response=SupportsResponse.ONLY,
         )
-
-        # Register the list_actions service
-        self.hass.services.async_register(
+        register(
             DOMAIN,
             SERVICE_LIST_ACTIONS,
             self._handle_list_actions,
-            schema=vol.Schema(
-                {
-                    vol.Optional(ATTRIBUTE_SCRIPT_NAME): cv.string,
-                }
-            ),
+            schema=automation,
+            supports_response=SupportsResponse.ONLY,
         )
 
-        # Register the get_config service
-        self.hass.services.async_register(
+        register(
             DOMAIN,
-            SERVICE_GET_CONFIG,
-            self._handle_get_config,
-            schema=vol.Schema({}),
+            SERVICE_CLEAR_LOG,
+            self._handle_clear_log,
+            schema=vol.Schema({vol.Optional(ATTRIBUTE_AUTOMATION_ID): cv.string}),
+        )
+        register(
+            DOMAIN,
+            SERVICE_SET_LOG_LEVEL,
+            self._handle_set_log_level,
+            schema=vol.Schema(
+                {
+                    vol.Required(ATTRIBUTE_AUTOMATION_ID): cv.string,
+                    vol.Required(ATTRIBUTE_LEVEL): vol.In([*LOG_LEVELS, DEFAULT_LEVEL]),
+                }
+            ),
         )
 
         _LOGGER.debug("Service manager set up")
 
     async def async_teardown(self) -> None:
         """Tear down the service manager."""
-        # Unregister core services
-        self.hass.services.async_remove(DOMAIN, SERVICE_RUN_ACTION)
-        self.hass.services.async_remove(DOMAIN, SERVICE_RELOAD_SCRIPTS)
-        self.hass.services.async_remove(DOMAIN, SERVICE_LIST_SCRIPTS)
-        self.hass.services.async_remove(DOMAIN, SERVICE_LIST_ACTIONS)
-        self.hass.services.async_remove(DOMAIN, SERVICE_GET_CONFIG)
+        for service in SERVICES:
+            self.hass.services.async_remove(DOMAIN, service)
 
-        # Unregister script services
+        # Unregister automation services
         for service_name in list(self._registered_services.keys()):
             await self.async_unregister_service(service_name)
 
-    async def _handle_run_action(self, call: ServiceCall) -> None:
-        """Handle the run_action service call.
+    async def _manager(self) -> AutomationManager:
+        """Return the automation manager.
 
-        Args:
-            call: The service call.
-        """
-
-        script_name = call.data[ATTRIBUTE_SCRIPT_NAME]
-        action_name = call.data[ATTRIBUTE_ACTION_NAME]
-
-        manager = await async_get_manager(self.hass)
-        if not manager:
-            _LOGGER.error("Script manager not available")
-            return
-
-        try:
-            await manager.async_run_action(script_name, action_name, manual=True)
-        except Exception as err:
-            _LOGGER.error("Failed to run action %s.%s: %s", script_name, action_name, err)
-            raise
-
-    async def _handle_reload_scripts(self, _: ServiceCall) -> None:
-        """Handle the reload_scripts service call.
-
-        Args:
-            call: The service call.
+        Raises:
+            HomeAssistantError: If HAAnim is not set up.
         """
         manager = await async_get_manager(self.hass)
-        if not manager:
-            _LOGGER.error("Script manager not available")
-            return
+        if manager is None:
+            raise HomeAssistantError("HAAnim is not set up")
+        return manager
 
-        await manager.async_reload_all_scripts()
-
-    async def _handle_list_scripts(self, _: ServiceCall) -> dict[str, Any]:
-        """Handle the list_scripts service call.
-
-        Args:
-            call: The service call.
-
-        Returns:
-            Dictionary with script information.
-        """
-        manager = await async_get_manager(self.hass)
-        if not manager:
-            return {"scripts": []}
-
-        scripts: list[dict[str, Any]] = []
-        for metadata in manager.get_all_metadata():
-            scripts.append(
-                {
-                    "name": metadata.id,
-                    "path": metadata.path,
-                    "actions": [{"name": a.name, "func_name": a.func_name} for a in metadata.actions],
-                    "triggers": len(metadata.triggers),
-                    "enabled": metadata.enabled,
-                }
+    async def _handle_run_action(self, call: ServiceCall) -> ServiceResponse:
+        """Run an action as a manual call and return its result as response data."""
+        manager = await self._manager()
+        with service_errors():
+            result = await manager.async_call_action(
+                call.data[ATTRIBUTE_AUTOMATION_ID],
+                call.data[ATTRIBUTE_ACTION],
+                dict(call.data[ATTRIBUTE_DATA]),
             )
+        return {"result": result} if call.return_response else None
 
-        return {"scripts": scripts}
+    async def _handle_control(self, call: ServiceCall) -> None:
+        """Enable, disable, start, stop or restart an automation."""
+        manager = await self._manager()
+        operation = {
+            SERVICE_ENABLE: manager.async_enable_automation,
+            SERVICE_DISABLE: manager.async_disable_automation,
+            SERVICE_START: manager.async_start_automation,
+            SERVICE_STOP: manager.async_stop_automation,
+            SERVICE_RESTART: manager.async_restart_automation,
+        }[call.service]
+        with service_errors():
+            await operation(call.data[ATTRIBUTE_AUTOMATION_ID])
 
-    async def _handle_list_actions(self, call: ServiceCall) -> dict[str, Any]:
-        """Handle the list_actions service call.
+    async def _handle_reload(self, call: ServiceCall) -> None:
+        """Rescan now and reload one automation, or all without an ID."""
+        manager = await self._manager()
+        with service_errors():
+            await manager.async_reload(call.data.get(ATTRIBUTE_AUTOMATION_ID))
 
-        Args:
-            call: The service call.
+    async def _known(self, automation_id: str) -> str:
+        """Return an automation ID given to a service, checked to be an automation's.
 
-        Returns:
-            Dictionary with action information.
+        Raises:
+            HomeAssistantError: If there is no such automation.
         """
-        manager = await async_get_manager(self.hass)
-        if not manager:
-            return {"actions": []}
+        manager = await self._manager()
+        if automation_id not in manager.automation_ids():
+            raise HomeAssistantError(
+                f"NonExistingAutomationError: Automation '{automation_id}' does not exist"
+            )
+        return automation_id
 
-        script_name = call.data.get(ATTRIBUTE_SCRIPT_NAME)
+    async def _handle_clear_log(self, call: ServiceCall) -> None:
+        """Forget the kept log records of one automation, or of all without an ID."""
+        automation_id = call.data.get(ATTRIBUTE_AUTOMATION_ID)
+        if automation_id is not None:
+            await self._known(automation_id)
+        buffer = entry_item(self.hass, "log_buffer", AutomationLogBuffer)
+        if buffer is None:
+            raise HomeAssistantError("HAAnim is not set up")
+        buffer.clear(automation_id)
 
-        actions: list[dict[str, Any]] = []
-        for action in manager.get_all_actions():
-            if script_name and action.script_name != script_name:
-                continue
+    async def _handle_set_log_level(self, call: ServiceCall) -> None:
+        """Set the log level of an automation, or take it away with ``default``."""
+        automation_id = await self._known(call.data[ATTRIBUTE_AUTOMATION_ID])
+        levels = entry_item(self.hass, "log_levels", AutomationLogLevels)
+        if levels is None:
+            raise HomeAssistantError("HAAnim is not set up")
+        await levels.async_set(automation_id, call.data[ATTRIBUTE_LEVEL])
 
-            actions.append(
+    async def _handle_list_automations(self, _: ServiceCall) -> ServiceResponse:
+        """Return ID, name, state and enabled flag of every automation."""
+        manager = await self._manager()
+        return {
+            "automations": [
+                {
+                    "id": automation_id,
+                    "name": manager.automation_name(automation_id),
+                    "state": manager.automation_state(automation_id),
+                    "enabled": manager.is_automation_enabled(automation_id),
+                }
+                for automation_id in manager.automation_ids()
+            ]
+        }
+
+    async def _handle_list_actions(self, call: ServiceCall) -> ServiceResponse:
+        """Return the actions of an automation with name, aliases and description."""
+        manager = await self._manager()
+        with service_errors():
+            actions = manager.automation_actions(call.data[ATTRIBUTE_AUTOMATION_ID])
+        return {
+            "actions": [
                 {
                     "name": action.name,
-                    "func_name": action.func_name,
-                    "script_name": action.script_name,
-                    "description": action.description,
+                    "aliases": list(action.aliases),
+                    "description": action.description or "",
                 }
-            )
-
-        return {"actions": actions}
-
-    async def _handle_get_config(self, _: ServiceCall) -> dict[str, Any]:
-        """Handle the get_config service call.
-
-        Args:
-            call: The service call.
-
-        Returns:
-            Dictionary with configuration values.
-        """
-        config_manager = get_config_manager()
-        # Get the config entry data
-        for _, data in self.hass.data.get(DOMAIN, {}).items():
-            if isinstance(data, dict) and "entry" in data:
-                entry = data["entry"]  # type: ignore
-                if isinstance(entry, ConfigEntry):
-                    config_manager.load_from_dict(entry.data, entry.options)
-                    break
-                break
-
-        # Return all config values plus version
-        config = config_manager.get_all()
-        config["version"] = VERSION
-
-        return config
+                for action in actions
+            ]
+        }
 
     async def call(
         self,
         domain: str,
         service: str,
         service_data: dict[str, Any] | None = None,
+        *,
         blocking: bool = True,
         return_response: bool = False,
     ) -> Any:
@@ -266,7 +290,7 @@ class ServiceManager:
         schema: vol.Schema | None = None,
         description: str | None = None,
     ) -> None:
-        """Register a script function as a Home Assistant service.
+        """Register an automation function as a Home Assistant service.
 
         Args:
             service_name: The service name.
@@ -283,9 +307,7 @@ class ServiceManager:
         async def service_handler(call: ServiceCall) -> Any:
             """Handle the service call."""
             try:
-                if asyncio.iscoroutinefunction(handler):
-                    return await handler(**call.data)
-                return await self.hass.async_add_executor_job(lambda: handler(**call.data))
+                return await as_coroutine_function(handler)(**call.data)
             except Exception as err:
                 _LOGGER.error("Service %s failed: %s", full_name, err)
                 raise
@@ -306,7 +328,7 @@ class ServiceManager:
         _LOGGER.info("Registered service: %s", full_name)
 
     async def async_unregister_service(self, service_name: str) -> bool:
-        """Unregister a script service.
+        """Unregister an automation service.
 
         Args:
             service_name: The service name.
@@ -324,7 +346,7 @@ class ServiceManager:
         return True
 
     def get_registered_services(self) -> list[str]:
-        """Get list of registered script services.
+        """Get list of registered automation services.
 
         Returns:
             List of service names.
@@ -332,7 +354,7 @@ class ServiceManager:
         return list(self._registered_services.keys())
 
 
-# Convenience functions for use in scripts
+# Convenience functions for use in automations
 
 
 async def service_call(
