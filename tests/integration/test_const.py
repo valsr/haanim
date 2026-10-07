@@ -52,7 +52,7 @@ class TestCoreConstants:
 
     def test_version(self) -> None:
         """Test version constant."""
-        assert VERSION == "0.1.0"
+        assert VERSION == "0.2.0"
 
 
 class TestKindConstants:

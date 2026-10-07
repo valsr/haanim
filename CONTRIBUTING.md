@@ -172,7 +172,7 @@ One version number serves the integration and the package. A release is made fro
 
 1. Set the version in `src/haanim/__init__.py` and in `custom_components/haanim/manifest.json` (a test
    fails when they differ), and move the entries under "Unreleased" in `CHANGELOG.md` to the new version.
-2. Publish a GitHub release whose tag is the version, with or without a leading `v` (`v0.2.0`).
+2. Publish a GitHub release whose tag is the version, with or without a leading `v` (`v0.3.0`).
 
 Publishing the release runs `.github/workflows/release.yml`, which
 
