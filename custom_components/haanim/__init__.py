@@ -13,6 +13,9 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 
+# First of the integration's own modules: it decides where the haanim package comes from, and the
+# modules below import that package
+from custom_components.haanim import engine_path  # noqa: F401  pylint: disable=unused-import  # isort: skip
 from custom_components.haanim.api import async_register_api
 from custom_components.haanim.config import get_config_manager
 from custom_components.haanim.const import DOMAIN, NAME

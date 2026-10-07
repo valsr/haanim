@@ -43,18 +43,19 @@ can. Only install automations you trust.
 
 ## Installation
 
-HAAnim has two parts: the integration (`custom_components/haanim`) and the `haanim` Python package with the
-engine and the test harness. The integration requires the package at its own version.
-
-> **Note:** the `haanim` package is not on PyPI yet. Until it is, install it into Home Assistant's Python
-> environment yourself (`pip install .` from a checkout of this repository), or use the development container
-> below, which does that for you.
-
-1. Install the integration: with HACS (**HACS → ⋮ → Custom repositories**, add
-   `https://github.com/valsr/haanim` as an **Integration**), or by copying `custom_components/haanim` into
-   your configuration's `custom_components` folder.
+1. Install the integration with HACS: **HACS → ⋮ → Custom repositories**, add
+   `https://github.com/valsr/haanim` as an **Integration**, then download HAAnim.
 2. Restart Home Assistant.
 3. **Settings → Devices & services → Add integration → HAAnim**.
+
+That is all: a release of the integration has the HAAnim engine in it, so no Python package has to be
+installed into Home Assistant.
+
+To install by hand, download `haanim.zip` from a
+[release](https://github.com/valsr/haanim/releases) and unpack it into
+`<config>/custom_components/haanim`. Copying `custom_components/haanim` out of a checkout of the repository is
+not enough, because the engine is not in that folder there; build the folder to copy with
+`python scripts/build-integration.py --folder OUT`.
 
 Automations live in `/config/haanim/automations/` by default. The folder, the rescan interval, the limits and
 the import options are set under **Configure** on the integration.
@@ -92,8 +93,11 @@ HAAnim. The same documentation is built for Read the Docs from `docs/` (`mkdocs.
 
 ## Testing an automation
 
+The engine is also a Python package, `haanim`, for your own machine: it gives your editor completion and
+types for `from haanim import ...`, and the test harness. It is not needed in Home Assistant.
+
 ```sh
-pip install haanim pytest pytest-asyncio
+pip install haanim pytest pytest-asyncio    # until haanim is on PyPI: pip install git+https://github.com/valsr/haanim
 ```
 
 ```python
@@ -147,6 +151,13 @@ A Home Assistant with the integration, the package and the examples, in a contai
 ```sh
 ./build-and-run.sh                     # http://localhost:8123, user admin, password admin
 uv run python scripts/e2e-smoke.py     # end-to-end checks against that container
+```
+
+The engine has one source, `src/haanim`. In a checkout the integration imports it as the installed `haanim`
+package (`uv sync` installs it in place). A release carries a copy of it inside the integration:
+
+```sh
+uv run python scripts/build-integration.py    # dist/haanim.zip: what a GitHub release attaches and HACS installs
 ```
 
 The repository:

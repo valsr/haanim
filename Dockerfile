@@ -32,9 +32,10 @@ COPY podman/container-config/demo /config/demo
 # A dashboard with the card of each example automation
 COPY podman/container-config/ui-lovelace.yaml /config/ui-lovelace.yaml
 
-# The integration requires the haanim package (see its manifest). Install it from this repository, so
-# Home Assistant finds the requirement satisfied; start.sh then mounts src/haanim over it with PYTHONPATH,
-# which allows live code changes without rebuilding the container.
+# The integration mounted into this container is the repository's, which has no engine bundled with it
+# (only a release has, see scripts/build-integration.py). So the haanim package is installed here;
+# start.sh then mounts src/haanim over it with PYTHONPATH, which allows live code changes without
+# rebuilding the container.
 COPY pyproject.toml README.md LICENSE /opt/haanim-package/
 COPY src /opt/haanim-package/src
 RUN pip install --no-cache-dir /opt/haanim-package

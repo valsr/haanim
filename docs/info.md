@@ -17,8 +17,7 @@ dashboard card through one object, `haa`.
 2. Restart Home Assistant.
 3. **Settings → Devices & services → Add integration → HAAnim**.
 
-The integration requires the `haanim` Python package at its own version. Until the package is on PyPI it has
-to be installed into Home Assistant's Python environment by hand; see the README.
+The download has the HAAnim engine in it: no Python package has to be installed into Home Assistant.
 
 ## Documentation
 

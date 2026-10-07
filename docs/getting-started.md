@@ -2,19 +2,18 @@
 
 ## Install
 
-HAAnim has two parts: the integration (`custom_components/haanim`) and the `haanim` Python package with the
-engine and the test harness. The integration requires the package at its own version.
-
-!!! note
-    The `haanim` package is not on PyPI yet. Until it is, install it into Home Assistant's Python
-    environment yourself (`pip install .` from a checkout of the repository), or use the development
-    container described in the repository's README, which does that for you.
-
-1. Install the integration: with HACS (**HACS → ⋮ → Custom repositories**, add
-   `https://github.com/valsr/haanim` as an **Integration**), or by copying `custom_components/haanim` into
-   your configuration's `custom_components` folder.
+1. Install the integration with HACS: **HACS → ⋮ → Custom repositories**, add
+   `https://github.com/valsr/haanim` as an **Integration**, then download HAAnim.
 2. Restart Home Assistant.
 3. **Settings → Devices & services → Add integration → HAAnim**.
+
+A release of the integration has the HAAnim engine in it, so no Python package has to be installed into
+Home Assistant.
+
+!!! note "Installing by hand"
+    Download `haanim.zip` from a [release](https://github.com/valsr/haanim/releases) and unpack it into
+    `<config>/custom_components/haanim`. The `custom_components/haanim` folder of the repository itself does
+    not have the engine in it.
 
 Automations live in `/config/haanim/automations/` by default.
 
@@ -60,11 +59,16 @@ automation's state is `error` and the panel says where.
 
 ## Test it
 
-The same package that runs automations in Home Assistant tests them without it:
+The engine is also a Python package, `haanim`, for your own machine. It is not needed in Home Assistant; it
+gives your editor completion and types for `from haanim import ...`, and the test harness:
 
 ```sh
 pip install haanim pytest pytest-asyncio
 ```
+
+!!! note
+    Until `haanim` is on PyPI, install it from the repository:
+    `pip install git+https://github.com/valsr/haanim`.
 
 ```python
 from haanim.testing import AutomationHarness
