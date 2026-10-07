@@ -59,7 +59,7 @@ def takes_event(func: Callable[..., Any]) -> bool:
     """
     try:
         parameters = inspect.signature(func).parameters.values()
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return True
     positional = (
         inspect.Parameter.POSITIONAL_ONLY,
@@ -90,7 +90,7 @@ def signature_problem(func: Callable[..., Any]) -> str | None:
     """
     try:
         parameters = list(inspect.signature(func).parameters.values())
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
     empty = inspect.Parameter.empty

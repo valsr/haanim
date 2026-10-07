@@ -461,7 +461,6 @@ SAME_AS_PYTHON: list[str] = [
     "from collections import defaultdict\nd = defaultdict(lambda: 'x')\nr = d['k']",
     "data = [{'n': 'b', 'v': 2}, {'n': 'a', 'v': 1}]\ndata.sort(key=lambda d: d['n'])\nr = [d['v'] for d in data]",
     "import json\nclass A:\n    def to(self):\n        return {'a': 1}\nr = json.dumps(A().to(), default=lambda o: str(o))",
-    "x: int\ny: str = 'a'\nr = (y, __annotations__)",
     "def f(a: int, b: 'str' = 'x') -> bool:\n    return True\nr = f(1)",
     "r = [(yield_x) for yield_x in range(2)]",
     "r = 5\ndef f():\n    global r\n    r += 1\nf(); f()",
@@ -501,6 +500,17 @@ class TestSupportedPython:
         result = await namespace["main"]() if "main" in namespace else namespace["r"]
 
         assert result == expected
+
+    async def test_module_annotations_are_recorded(self) -> None:
+        """A module's annotations are evaluated as they are met, and are in __annotations__.
+
+        CPython evaluates them only when asked since 3.14 and no longer has the
+        name in the module's own code, so this is not compared with it.
+        """
+        evaluator = AstEvaluator(name="__main__", import_controller=ImportController(allow_all=True))
+        evaluator.parse("x: int\ny: str = 'a'\nr = (y, __annotations__)", filename="main.py")
+        result = (await evaluator.execute()).get("r")
+        assert result == ("a", {"x": int, "y": str})
 
     @pytest.mark.parametrize("source", SAME_AS_PYTHON)
     async def test_same_as_python(self, source: str) -> None:

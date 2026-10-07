@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -63,7 +64,7 @@ def test_wheel_installs_and_runs_without_home_assistant(tmp_path: Path) -> None:
     assert "tests/" not in listing
 
     environment = tmp_path / "venv"
-    run("uv", "venv", str(environment), cwd=tmp_path)
+    run("uv", "venv", "--python", sys.executable, str(environment), cwd=tmp_path)
     python = str(environment / "bin" / "python")
     run("uv", "pip", "install", "--python", python, str(wheel), cwd=tmp_path)
 

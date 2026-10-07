@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -323,14 +324,12 @@ class TestAutomationManagerLoading:
         # Create a valid automation
         automation = tmp_path / "test_automation"
         automation.mkdir()
-        (automation / "main.py").write_text(
-            """
+        (automation / "main.py").write_text("""
 from haanim import action
 @action
 def my_action():
     pass
-"""
-        )
+""")
 
         manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = await manager.async_load_all_automations()
@@ -789,14 +788,12 @@ class TestAutomationManagerReload:
         # Create automation file
         automation = tmp_path / "test"
         automation.mkdir()
-        (automation / "main.py").write_text(
-            """
+        (automation / "main.py").write_text("""
 from haanim import action
 @action
 def test_action():
     pass
-"""
-        )
+""")
 
         manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         result = await manager.async_reload_automation(str(automation))
@@ -820,14 +817,12 @@ def test_action():
 
         automation = tmp_path / "maths"
         automation.mkdir()
-        (automation / "main.py").write_text(
-            """
+        (automation / "main.py").write_text("""
 from haanim import action
 @action(name="Add numbers", aliases=["add"])
 async def add(event):
     return (event.data["a"] + event.data["b"], event.source, event.caller)
-"""
-        )
+""")
 
         manager = AutomationManager(hass=mock_hass, entry=mock_entry, host=make_host(files=LocalFileSystem()))
         await manager.async_load_automation(str(automation))
@@ -1499,7 +1494,9 @@ class TestAutomationManagerHotReload:
         return FakeFileSystem(clock)
 
     @pytest.fixture
-    def manager(self, files: FakeFileSystem, clock: FakeClock, tmp_path: Path) -> AutomationManager:
+    async def manager(
+        self, files: FakeFileSystem, clock: FakeClock, tmp_path: Path
+    ) -> AsyncIterator[AutomationManager]:
         """A manager over the in-memory folder, rescanning every 10 seconds."""
         hass = MagicMock()
         hass.config.path = MagicMock(side_effect=lambda *parts: str(tmp_path.joinpath(*parts)))
@@ -1514,7 +1511,13 @@ class TestAutomationManagerHotReload:
         with patch(
             "custom_components.haanim.automation_manager.get_config_manager", return_value=mock_config
         ):
-            return AutomationManager(hass=hass, entry=MagicMock(), host=make_host(files=files, clock=clock))
+            yield AutomationManager(hass=hass, entry=MagicMock(), host=make_host(files=files, clock=clock))
+        # The rescan keeps waiting for its next turn: end it, and whatever else the test left running
+        current = asyncio.current_task()
+        left = [task for task in asyncio.all_tasks() if task is not current and not task.done()]
+        for task in left:
+            task.cancel()
+        await asyncio.gather(*left, return_exceptions=True)
 
     async def test_changed_automation_is_reloaded_after_settling(
         self, manager: AutomationManager, files: FakeFileSystem, clock: FakeClock

@@ -11,14 +11,14 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "valsr" }]
 keywords = ["home-assistant", "homeassistant", "automation", "hacs"]
-requires-python = ">=3.13.2"
+requires-python = ">=3.14.2"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Topic :: Home Automation",
     "Typing :: Typed",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 # The engine and the harness do not need Home Assistant; the integration in custom_components does.
 dependencies = [
@@ -28,7 +28,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "homeassistant>=2025.11.3",
+    "homeassistant>=2026.9.0,<2026.10",
     "pyright>=1.1.380",
     "black>=24.0.0",
     "pylint>=3.0.0",
@@ -58,7 +58,7 @@ Changelog = "https://github.com/valsr/haanim/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
-    "homeassistant>=2025.11.3",
+    "homeassistant>=2026.9.0,<2026.10",
     "pyright>=1.1.380",
     "black>=24.0.0",
     "pylint>=3.0.0",
@@ -72,7 +72,7 @@ dev = [
 
 [tool.black]
 line-length = 110
-target-version = ["py311", "py312"]
+target-version = ["py314"]
 include = '\.pyi?$'
 exclude = '''
 /(
@@ -89,7 +89,7 @@ exclude = '''
 '''
 
 [tool.pylint.main]
-py-version = "3.13"
+py-version = "3.14"
 ignore = [".venv", "venv", ".pytest_cache"]
 source-roots = [".", "src"]
 max-line-length = 110
@@ -121,7 +121,7 @@ disable=[
 ]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 ignore_missing_imports = true
 warn_return_any = true
 warn_unused_configs = true
@@ -133,7 +133,7 @@ explicit_package_bases = true
 mypy_path = "src"
 
 [tool.pyright]
-pythonVersion = "3.13"
+pythonVersion = "3.14"
 extraPaths = ["src"]
 exclude = [".venv", "venv", ".pytest_cache", "**/__pycache__", "htmlcov", "out"]
 

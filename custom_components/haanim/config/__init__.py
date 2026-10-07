@@ -11,7 +11,6 @@ from custom_components.haanim.config.config_manager import ConfigManager, get_co
 from custom_components.haanim.config.config_option import ConfigOption
 from custom_components.haanim.config.config_type import ConfigType
 
-
 __all__ = [
     "ConfigGroup",
     "ConfigManager",

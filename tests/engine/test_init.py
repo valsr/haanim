@@ -320,14 +320,12 @@ class TestAstEvaluator:
 
     async def test_execute_function_def(self, evaluator: AstEvaluator) -> None:
         """Test defining and calling a function."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 def add(a, b):
     return a + b
 
 result = add(1, 2)
-"""
-        )
+""")
         await evaluator.execute()
         # The add function should be defined
         add_func = evaluator._global_symbols.get("add")
@@ -359,67 +357,57 @@ result = add(1, 2)
 
     async def test_execute_while_loop(self, evaluator: AstEvaluator) -> None:
         """Test while loop execution."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 x = 0
 while x < 5:
     x += 1
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("x") == 5
 
     async def test_execute_while_loop_break(self, evaluator: AstEvaluator) -> None:
         """Test while loop with break."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 x = 0
 while True:
     x += 1
     if x >= 3:
         break
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("x") == 3
 
     async def test_execute_for_loop_continue(self, evaluator: AstEvaluator) -> None:
         """Test for loop with continue."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 result = []
 for x in range(5):
     if x % 2 == 0:
         continue
     result.append(x)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == [1, 3]
 
     async def test_execute_nested_loops(self, evaluator: AstEvaluator) -> None:
         """Test nested loops."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 result = []
 for i in range(2):
     for j in range(2):
         result.append((i, j))
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == [(0, 0), (0, 1), (1, 0), (1, 1)]
 
     async def test_execute_class_definition_simple(self, evaluator: AstEvaluator) -> None:
         """Test simple class definition."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 class MyClass:
     value = 42
     def get_value(self):
         return self.value
-"""
-        )
+""")
         await evaluator.execute()
         cls = evaluator._global_symbols.get("MyClass")
         assert cls is not None
@@ -427,12 +415,10 @@ class MyClass:
 
     async def test_execute_lambda(self, evaluator: AstEvaluator) -> None:
         """Test lambda expression."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 double = lambda x: x * 2
 result = double(5)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == 10
 
@@ -444,12 +430,10 @@ result = double(5)
 
     async def test_execute_formatted_string(self, evaluator: AstEvaluator) -> None:
         """Test formatted string (f-string)."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 x = 42
 result = f"The answer is {x}"
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "The answer is 42"
 
@@ -461,13 +445,11 @@ result = f"The answer is {x}"
 
     async def test_execute_dict_operations(self, evaluator: AstEvaluator) -> None:
         """Test dictionary operations."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 d = {'a': 1, 'b': 2}
 d['c'] = 3
 result = d['b']
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == 2
 
@@ -485,13 +467,11 @@ result = d['b']
 
     async def test_execute_boolean_operators(self, evaluator: AstEvaluator) -> None:
         """Test boolean operators."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 a = True and False
 b = True or False
 c = not True
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("a") is False
         assert evaluator._global_symbols.get("b") is True
@@ -505,54 +485,46 @@ c = not True
 
     async def test_execute_if_statement(self, evaluator: AstEvaluator) -> None:
         """Test if statement."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 x = 10
 if x > 5:
     result = "greater"
 else:
     result = "lesser"
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "greater"
 
     async def test_execute_for_loop(self, evaluator: AstEvaluator) -> None:
         """Test for loop."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 total = 0
 for i in [1, 2, 3]:
     total = total + i
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("total") == 6
 
     async def test_execute_while_basic(self, evaluator: AstEvaluator) -> None:
         """Test while loop basic."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 count = 0
 while count < 3:
     count = count + 1
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("count") == 3
 
     async def test_execute_comparison(self, evaluator: AstEvaluator) -> None:
         """Test comparison operators."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 a = 5 == 5
 b = 5 != 4
 c = 5 > 4
 d = 5 < 6
 e = 5 >= 5
 f = 5 <= 5
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("a") is True
         assert evaluator._global_symbols.get("b") is True
@@ -563,13 +535,11 @@ f = 5 <= 5
 
     async def test_execute_boolean_ops_extra(self, evaluator: AstEvaluator) -> None:
         """Test additional boolean operators."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 a = True and False
 b = True or False
 c = not True
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("a") is False
         assert evaluator._global_symbols.get("b") is True
@@ -577,13 +547,11 @@ c = not True
 
     async def test_execute_string_operations(self, evaluator: AstEvaluator) -> None:
         """Test string operations."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 s = "hello" + " world"
 upper = s.upper()
 length = len(s)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("s") == "hello world"
         assert evaluator._global_symbols.get("upper") == "HELLO WORLD"
@@ -591,15 +559,13 @@ length = len(s)
 
     async def test_execute_list_operations(self, evaluator: AstEvaluator) -> None:
         """Test list operations."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 lst = [1, 2, 3]
 lst.append(4)
 first = lst[0]
 last = lst[-1]
 slice_result = lst[1:3]
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("lst") == [1, 2, 3, 4]
         assert evaluator._global_symbols.get("first") == 1
@@ -608,19 +574,16 @@ slice_result = lst[1:3]
 
     async def test_execute_fstring(self, evaluator: AstEvaluator) -> None:
         """Test f-string formatting."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 name = "World"
 result = f"Hello, {name}!"
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "Hello, World!"
 
     async def test_execute_try_except(self, evaluator: AstEvaluator) -> None:
         """Test try/except handling."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 def catch_error():
     try:
         x = 1 / 0
@@ -628,32 +591,27 @@ def catch_error():
         return "caught"
     return "not caught"
 result = catch_error()
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "caught"
 
     async def test_execute_tuple_unpacking(self, evaluator: AstEvaluator) -> None:
         """Test tuple unpacking."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 a, b = 1, 2
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("a") == 1
         assert evaluator._global_symbols.get("b") == 2
 
     async def test_execute_augmented_assign(self, evaluator: AstEvaluator) -> None:
         """Test augmented assignment."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 x = 5
 x += 3
 x -= 1
 x *= 2
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("x") == 14
 
@@ -669,23 +627,19 @@ class TestAstEvaluatorImport:
 
     async def test_import_allowed_module(self, evaluator: AstEvaluator) -> None:
         """Test importing an allowed module."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 import math
 result = math.sqrt(16)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == 4.0
 
     async def test_import_from_allowed(self, evaluator: AstEvaluator) -> None:
         """Test from import of allowed module."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 from math import pi
 result = pi > 3
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") is True
 
@@ -700,28 +654,24 @@ class TestAstEvaluatorAsync:
 
     async def test_async_function_def(self, evaluator: AstEvaluator) -> None:
         """Test defining an async function."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 async def async_func():
     return 42
 
 result = None
-"""
-        )
+""")
         await evaluator.execute()
         func = evaluator._global_symbols.get("async_func")
         assert func is not None
 
     async def test_await_expression(self, evaluator: AstEvaluator) -> None:
         """Test await expression in async function."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 import asyncio
 
 async def get_value():
     return 42
-"""
-        )
+""")
         await evaluator.execute()
         get_value = evaluator._global_symbols.get("get_value")
         assert get_value is not None
@@ -748,23 +698,19 @@ class TestAstEvaluatorAdvanced:
 
     async def test_execute_delete_name(self, evaluator: AstEvaluator) -> None:
         """Test delete statement for a name."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 x = 42
 del x
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("x") is None
 
     async def test_execute_delete_subscript(self, evaluator: AstEvaluator) -> None:
         """Test delete statement for a subscript."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 d = {'a': 1, 'b': 2}
 del d['a']
-"""
-        )
+""")
         await evaluator.execute()
         d = evaluator._global_symbols.get("d")
         assert "a" not in d
@@ -778,62 +724,53 @@ del d['a']
 
     async def test_execute_global_statement(self, evaluator: AstEvaluator) -> None:
         """Test global statement."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 x = 10
 def modify():
     global x
     x = 20
 modify()
-"""
-        )
+""")
         await evaluator.execute()
         # Note: global handling varies - just check function exists
         assert evaluator._global_symbols.get("modify") is not None
 
     async def test_execute_pass_statement(self, evaluator: AstEvaluator) -> None:
         """Test pass statement."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 def empty_func():
     pass
 empty_func()
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("empty_func") is not None
 
     async def test_execute_is_operator(self, evaluator: AstEvaluator) -> None:
         """Test 'is' and 'is not' operators."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 a = None
 b = None
 c = []
 is_same = a is b
 is_different = a is not c
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("is_same") is True
         assert evaluator._global_symbols.get("is_different") is True
 
     async def test_execute_walrus_operator(self, evaluator: AstEvaluator) -> None:
         """Test walrus operator (:=)."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 if (n := 10) > 5:
     result = n
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("n") == 10
         assert evaluator._global_symbols.get("result") == 10
 
     async def test_execute_try_finally(self, evaluator: AstEvaluator) -> None:
         """Test try/finally."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 cleanup_called = False
 def test_finally():
     global cleanup_called
@@ -842,15 +779,13 @@ def test_finally():
     finally:
         cleanup_called = True
 test_finally()
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("test_finally") is not None
 
     async def test_execute_try_else(self, evaluator: AstEvaluator) -> None:
         """Test try/except/else."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 def test_else():
     try:
         x = 1
@@ -859,23 +794,20 @@ def test_else():
     else:
         return "success"
 result = test_else()
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "success"
 
     async def test_execute_bitwise_operators(self, evaluator: AstEvaluator) -> None:
         """Test bitwise operators."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 a = 5 & 3   # AND: 101 & 011 = 001
 b = 5 | 3   # OR: 101 | 011 = 111
 c = 5 ^ 3   # XOR: 101 ^ 011 = 110
 d = ~5      # NOT
 e = 2 << 3  # Left shift
 f = 16 >> 2 # Right shift
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("a") == 1
         assert evaluator._global_symbols.get("b") == 7
@@ -886,13 +818,11 @@ f = 16 >> 2 # Right shift
 
     async def test_execute_floor_division(self, evaluator: AstEvaluator) -> None:
         """Test floor division and modulo."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 a = 7 // 2
 b = 7 % 2
 c = divmod(7, 2)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("a") == 3
         assert evaluator._global_symbols.get("b") == 1
@@ -906,13 +836,11 @@ c = divmod(7, 2)
 
     async def test_execute_unary_not(self, evaluator: AstEvaluator) -> None:
         """Test unary not operator."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 a = not True
 b = not False
 c = not []
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("a") is False
         assert evaluator._global_symbols.get("b") is True
@@ -927,11 +855,9 @@ c = not []
     async def test_execute_starred_assignment(self, evaluator: AstEvaluator) -> None:
         """Test starred tuple unpacking."""
         # Simple tuple unpacking (starred may not be fully supported)
-        evaluator.parse(
-            """
+        evaluator.parse("""
 a, b, c = [1, 2, 3]
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("a") == 1
         assert evaluator._global_symbols.get("b") == 2
@@ -940,15 +866,13 @@ a, b, c = [1, 2, 3]
     async def test_execute_class_with_method(self, evaluator: AstEvaluator) -> None:
         """Test simple class with attribute access."""
         # Test that classes can be defined and class attributes accessed
-        evaluator.parse(
-            """
+        evaluator.parse("""
 class Config:
     value = 100
     name = "test"
 
 result = Config.value + 5
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == 105
 
@@ -967,13 +891,11 @@ result = Config.value + 5
 
     async def test_execute_empty_list_dict_set(self, evaluator: AstEvaluator) -> None:
         """Test empty collection literals."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 empty_list = []
 empty_dict = {}
 empty_set = set()
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("empty_list") == []
         assert evaluator._global_symbols.get("empty_dict") == {}
@@ -981,11 +903,9 @@ empty_set = set()
 
     async def test_execute_attribute_chain(self, evaluator: AstEvaluator) -> None:
         """Test attribute chain access."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 result = "hello".upper().lower()
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "hello"
 
@@ -999,35 +919,29 @@ result = "hello".upper().lower()
 
     async def test_execute_dict_unpacking(self, evaluator: AstEvaluator) -> None:
         """Test dict unpacking with **."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 d1 = {"a": 1}
 d2 = {"b": 2}
 result = {**d1, **d2}
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == {"a": 1, "b": 2}
 
     async def test_execute_formatted_string(self, evaluator: AstEvaluator) -> None:
         """Test formatted string literals."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 name = "world"
 result = f"hello {name}"
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "hello world"
 
     async def test_execute_joined_str_conversion(self, evaluator: AstEvaluator) -> None:
         """Test f-string with conversion specifier."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 value = 42
 result = f"{value}"
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "42"
 
@@ -1045,36 +959,30 @@ result = f"{value}"
 
     async def test_execute_named_expr(self, evaluator: AstEvaluator) -> None:
         """Test walrus operator :=."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 if (n := 10) > 5:
     result = n
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == 10
 
     async def test_execute_lambda_with_args(self, evaluator: AstEvaluator) -> None:
         """Test lambda with arguments."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 add = lambda x, y: x + y
 result = add(3, 4)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == 7
 
     async def test_execute_list_slicing(self, evaluator: AstEvaluator) -> None:
         """Test list slicing."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 data = [1, 2, 3, 4, 5]
 first_two = data[:2]
 last_two = data[-2:]
 every_other = data[::2]
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("first_two") == [1, 2]
         assert evaluator._global_symbols.get("last_two") == [4, 5]
@@ -1082,56 +990,48 @@ every_other = data[::2]
 
     async def test_execute_continue_in_loop(self, evaluator: AstEvaluator) -> None:
         """Test continue statement in loop."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 result = []
 for i in range(5):
     if i == 2:
         continue
     result.append(i)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == [0, 1, 3, 4]
 
     async def test_execute_break_in_loop(self, evaluator: AstEvaluator) -> None:
         """Test break statement in loop."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 result = []
 for i in range(10):
     if i == 3:
         break
     result.append(i)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == [0, 1, 2]
 
     async def test_execute_nested_function(self, evaluator: AstEvaluator) -> None:
         """Test nested function definition."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 def outer(x):
     def inner(y):
         return x + y
     return inner(10)
 
 result = outer(5)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == 15
 
     async def test_execute_tuple_unpacking_in_for(self, evaluator: AstEvaluator) -> None:
         """Test tuple unpacking in for loop."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 result = []
 for a, b in [(1, 2), (3, 4)]:
     result.append(a + b)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == [3, 7]
 
@@ -1149,51 +1049,44 @@ for a, b in [(1, 2), (3, 4)]:
 
     async def test_execute_kwargs_in_call(self, evaluator: AstEvaluator) -> None:
         """Test **kwargs unpacking in function call."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 def show(a, b):
     return a + b
 
 args = {'a': 5, 'b': 10}
 result = show(**args)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == 15
 
     async def test_execute_default_args(self, evaluator: AstEvaluator) -> None:
         """Test function with default arguments."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 def greet(name, greeting="Hello"):
     return f"{greeting}, {name}!"
 
 result1 = greet("World")
 result2 = greet("User", "Hi")
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result1") == "Hello, World!"
         assert evaluator._global_symbols.get("result2") == "Hi, User!"
 
     async def test_execute_while_loop(self, evaluator: AstEvaluator) -> None:
         """Test while loop."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 i = 0
 result = []
 while i < 3:
     result.append(i)
     i += 1
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == [0, 1, 2]
 
     async def test_execute_while_with_break(self, evaluator: AstEvaluator) -> None:
         """Test while loop with break."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 i = 0
 result = []
 while True:
@@ -1201,8 +1094,7 @@ while True:
         break
     result.append(i)
     i += 1
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == [0, 1, 2]
 
@@ -1214,24 +1106,20 @@ while True:
 
     async def test_execute_ternary_expression(self, evaluator: AstEvaluator) -> None:
         """Test ternary expression."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 x = 5
 result1 = "big" if x > 3 else "small"
 result2 = "big" if x < 3 else "small"
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result1") == "big"
         assert evaluator._global_symbols.get("result2") == "small"
 
     async def test_execute_multiple_assignment(self, evaluator: AstEvaluator) -> None:
         """Test multiple assignment with tuple."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 a, b, c = 1, 2, 3
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("a") == 1
         assert evaluator._global_symbols.get("b") == 2
@@ -1239,8 +1127,7 @@ a, b, c = 1, 2, 3
 
     async def test_execute_class_with_instance_method(self, evaluator: AstEvaluator) -> None:
         """Test class with instance method."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 class Counter:
     count = 0
 
@@ -1251,15 +1138,13 @@ c = Counter()
 c.increment()
 c.increment()
 result = Counter.count
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == 2
 
     async def test_execute_for_else(self, evaluator: AstEvaluator) -> None:
         """Test for loop with else clause."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 result = "not found"
 for i in range(5):
     if i == 10:
@@ -1267,15 +1152,13 @@ for i in range(5):
         break
 else:
     result = "completed"
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "completed"
 
     async def test_execute_for_break_else(self, evaluator: AstEvaluator) -> None:
         """Test for loop with break skips else."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 result = "not found"
 for i in range(5):
     if i == 3:
@@ -1283,79 +1166,68 @@ for i in range(5):
         break
 else:
     result = "completed"
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "found"
 
     async def test_execute_while_else(self, evaluator: AstEvaluator) -> None:
         """Test while loop with else clause."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 i = 0
 result = ""
 while i < 3:
     i += 1
 else:
     result = "completed"
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "completed"
 
     async def test_execute_return_value(self, evaluator: AstEvaluator) -> None:
         """Test function returning a value."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 def double(x):
     return x * 2
 
 result = double(21)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == 42
 
     async def test_execute_early_return(self, evaluator: AstEvaluator) -> None:
         """Test early return from function."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 def check(x):
     if x > 10:
         return "big"
     return "small"
 
 result = check(5)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "small"
 
     async def test_execute_recursive_function(self, evaluator: AstEvaluator) -> None:
         """Test recursive function."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 def factorial(n):
     if n <= 1:
         return 1
     return n * factorial(n - 1)
 
 result = factorial(5)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == 120
 
     async def test_execute_string_methods(self, evaluator: AstEvaluator) -> None:
         """Test string methods."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 s = "  hello world  "
 result1 = s.strip()
 result2 = s.split()
 result3 = "-".join(["a", "b", "c"])
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result1") == "hello world"
         assert evaluator._global_symbols.get("result2") == ["hello", "world"]
@@ -1363,29 +1235,25 @@ result3 = "-".join(["a", "b", "c"])
 
     async def test_execute_list_methods(self, evaluator: AstEvaluator) -> None:
         """Test list methods."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 data = [3, 1, 2]
 data.sort()
 data.reverse()
 length = len(data)
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("data") == [3, 2, 1]
         assert evaluator._global_symbols.get("length") == 3
 
     async def test_execute_dict_methods(self, evaluator: AstEvaluator) -> None:
         """Test dict methods."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 d = {"a": 1, "b": 2}
 keys = list(d.keys())
 values = list(d.values())
 items = list(d.items())
 get_default = d.get("c", 0)
-"""
-        )
+""")
         await evaluator.execute()
         assert set(evaluator._global_symbols.get("keys")) == {"a", "b"}
         assert set(evaluator._global_symbols.get("values")) == {1, 2}
@@ -1393,13 +1261,11 @@ get_default = d.get("c", 0)
 
     async def test_execute_in_operator(self, evaluator: AstEvaluator) -> None:
         """Test 'in' operator."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 result1 = "a" in ["a", "b", "c"]
 result2 = "x" in ["a", "b", "c"]
 result3 = "key" in {"key": "value"}
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result1") is True
         assert evaluator._global_symbols.get("result2") is False
@@ -1407,44 +1273,37 @@ result3 = "key" in {"key": "value"}
 
     async def test_execute_not_in_operator(self, evaluator: AstEvaluator) -> None:
         """Test 'not in' operator."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 result1 = "x" not in ["a", "b", "c"]
 result2 = "a" not in ["a", "b", "c"]
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result1") is True
         assert evaluator._global_symbols.get("result2") is False
 
     async def test_execute_augmented_assign_str(self, evaluator: AstEvaluator) -> None:
         """Test augmented string assignment."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 s = "hello"
 s += " world"
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("s") == "hello world"
 
     async def test_execute_empty_return(self, evaluator: AstEvaluator) -> None:
         """Test empty return statement."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 def nothing():
     return
 
 result = nothing()
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") is None
 
     async def test_execute_exception_handler_value_error(self, evaluator: AstEvaluator) -> None:
         """Test exception handler catches ValueError."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 def test_handler():
     try:
         raise ValueError("test")
@@ -1452,54 +1311,46 @@ def test_handler():
         return "caught"
     return "not caught"
 result = test_handler()
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "caught"
 
     async def test_execute_starred_unpack_head_tail(self, evaluator: AstEvaluator) -> None:
         """Test simple head/rest starred assignment."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 first, second = [1, 2]
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("first") == 1
         assert evaluator._global_symbols.get("second") == 2
 
     async def test_execute_while_with_else(self, evaluator: AstEvaluator) -> None:
         """Test while loop with else clause (no break)."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 x = 0
 while x < 3:
     x += 1
 else:
     result = "completed"
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "completed"
 
     async def test_execute_for_with_else(self, evaluator: AstEvaluator) -> None:
         """Test for loop with else clause (no break)."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 result = "not set"
 for i in [1, 2, 3]:
     pass
 else:
     result = "loop completed"
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "loop completed"
 
     async def test_execute_for_break_skips_else(self, evaluator: AstEvaluator) -> None:
         """Test for loop else is skipped when break is called."""
-        evaluator.parse(
-            """
+        evaluator.parse("""
 result = "not set"
 for i in [1, 2, 3]:
     if i == 2:
@@ -1507,7 +1358,6 @@ for i in [1, 2, 3]:
         break
 else:
     result = "completed"
-"""
-        )
+""")
         await evaluator.execute()
         assert evaluator._global_symbols.get("result") == "broke"

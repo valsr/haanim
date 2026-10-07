@@ -207,8 +207,9 @@ async def test_options_flow_init(hass: HomeAssistant) -> None:
         )
         mock_get.return_value = mock_manager
 
-        handler = OptionsFlowHandler(entry)
+        handler = OptionsFlowHandler()
         handler.hass = hass
+        handler.handler = entry.entry_id
 
         result = await handler.async_step_init(user_input=None)
 
@@ -237,8 +238,9 @@ async def test_options_flow_submit_valid(hass: HomeAssistant) -> None:
         mock_manager.get = MagicMock(return_value=[])
         mock_get.return_value = mock_manager
 
-        handler = OptionsFlowHandler(entry)
+        handler = OptionsFlowHandler()
         handler.hass = hass
+        handler.handler = entry.entry_id
 
         result = await handler.async_step_init(
             user_input={
@@ -281,8 +283,9 @@ async def test_options_flow_invalid_path(hass: HomeAssistant) -> None:
         mock_manager.get_defaults = MagicMock(return_value={"import_allowlist": []})
         mock_get.return_value = mock_manager
 
-        handler = OptionsFlowHandler(entry)
+        handler = OptionsFlowHandler()
         handler.hass = hass
+        handler.handler = entry.entry_id
 
         result = await handler.async_step_init(
             user_input={

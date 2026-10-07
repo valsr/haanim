@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2026-10-06
 
 The first published release: the integration is installable with HACS and the `haanim` package is on PyPI.
+It needs Home Assistant 2026.9 or newer; the package needs Python 3.14.
 
 ### Added
 

@@ -258,14 +258,12 @@ class TestAutomationContextLoad:
     async def test_load_simple_automation(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading a simple valid automation."""
         automation_path = automation_file(tmp_path, "test_automation")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 from haanim import action
 @action
 def my_action():
     pass
-"""
-        )
+""")
 
         context = make_context(
             automation_path=str(automation_path),
@@ -306,8 +304,7 @@ def my_action():
     async def test_load_automation_with_triggers(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading an automation with triggers."""
         automation_path = automation_file(tmp_path, "trigger_automation")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 from haanim import on_state, on_time
 @on_state("sensor.test > 50")
 def on_temp_high():
@@ -316,8 +313,7 @@ def on_temp_high():
 @on_time("09:00")
 def on_hour():
     pass
-"""
-        )
+""")
 
         context = make_context(
             automation_path=str(automation_path),
@@ -333,8 +329,7 @@ def on_hour():
     async def test_load_automation_with_startup_shutdown(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading an automation with startup and shutdown."""
         automation_path = automation_file(tmp_path, "lifecycle_automation")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 from haanim import startup, shutdown
 @startup
 def on_startup():
@@ -343,8 +338,7 @@ def on_startup():
 @shutdown
 def on_shutdown():
     pass
-"""
-        )
+""")
 
         context = make_context(
             automation_path=str(automation_path),
@@ -362,12 +356,10 @@ def on_shutdown():
         from haanim.engine.errors import HAAnimError
 
         automation_path = automation_file(tmp_path, "bad_automation")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 def broken(:
     pass
-"""
-        )
+""")
 
         context = make_context(
             automation_path=str(automation_path),
@@ -392,8 +384,7 @@ class TestAutomationContextGetters:
     async def test_get_actions(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test get_actions returns action definitions."""
         automation_path = automation_file(tmp_path, "action_automation")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 from haanim import action
 @action(name="First Action")
 def first():
@@ -402,8 +393,7 @@ def first():
 @action(name="Second Action")
 def second():
     pass
-"""
-        )
+""")
 
         context = make_context(str(automation_path))
         await load_and_run(context)
@@ -414,14 +404,12 @@ def second():
     async def test_get_triggers(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test get_triggers returns trigger definitions."""
         automation_path = automation_file(tmp_path, "trigger_automation")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 from haanim import on_state
 @on_state("sensor.test > 50")
 def on_high():
     pass
-"""
-        )
+""")
 
         context = make_context(str(automation_path))
         await load_and_run(context)
@@ -432,14 +420,12 @@ def on_high():
     async def test_get_metadata(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test get_metadata returns automation metadata."""
         automation_path = automation_file(tmp_path, "meta_automation")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 from haanim import action
 @action(name="Test")
 def test():
     pass
-"""
-        )
+""")
 
         context = make_context(str(automation_path))
         await load_and_run(context)
@@ -498,14 +484,12 @@ class TestAutomationContextEdgeCases:
     async def test_load_automation_with_action_name(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test loading an automation with @action decorator sets display name."""
         automation_path = automation_file(tmp_path, "my_automation")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 from haanim import action
 @action(name="My Custom Action")
 def do_something():
     pass
-"""
-        )
+""")
 
         context = make_context(str(automation_path))
         metadata = await load_and_run(context)
@@ -559,14 +543,12 @@ class TestTriggersAsActions:
     async def test_triggered_function_is_action(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test that a function with triggers is automatically an action."""
         automation_path = automation_file(tmp_path, "trigger_automation")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 from haanim import on_state
 @on_state("sensor.test > 50")
 def on_high():
     pass
-"""
-        )
+""")
 
         context = make_context(str(automation_path))
         metadata = await load_and_run(context)
@@ -579,16 +561,14 @@ def on_high():
     async def test_multiple_triggers_single_action(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test that multiple triggers on one function still creates one action."""
         automation_path = automation_file(tmp_path, "multi_trigger")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 from haanim import on_state, on_time
 @on_state("sensor.a > 10")
 @on_state("sensor.b < 5")
 @on_time("08:00")
 def multi_trigger():
     pass
-"""
-        )
+""")
 
         context = make_context(str(automation_path))
         metadata = await load_and_run(context)
@@ -601,15 +581,13 @@ def multi_trigger():
     async def test_triggered_action_with_metadata(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test that triggered function with @action decorator gets metadata."""
         automation_path = automation_file(tmp_path, "trigger_with_action")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 from haanim import action, on_state
 @action(name="Custom Name", description="Custom description")
 @on_state("sensor.test > 50")
 def custom_action():
     pass
-"""
-        )
+""")
 
         context = make_context(str(automation_path))
         metadata = await load_and_run(context)
@@ -624,14 +602,12 @@ def custom_action():
     async def test_triggered_action_default_settings(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test that triggered function without @action gets default settings."""
         automation_path = automation_file(tmp_path, "trigger_only")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 from haanim import on_time
 @on_time("sunset")
 def evening_lights():
     pass
-"""
-        )
+""")
 
         context = make_context(str(automation_path))
         metadata = await load_and_run(context)
@@ -645,14 +621,12 @@ def evening_lights():
     async def test_action_without_trigger(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test that @action without triggers still works."""
         automation_path = automation_file(tmp_path, "action_only")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 from haanim import action
 @action(name="Manual Action")
 def manual_only():
     pass
-"""
-        )
+""")
 
         context = make_context(str(automation_path))
         metadata = await load_and_run(context)
@@ -665,8 +639,7 @@ def manual_only():
     async def test_mixed_actions_and_triggers(self, mock_hass: MagicMock, tmp_path: Any) -> None:
         """Test automation with mix of actions, triggers, and combined."""
         automation_path = automation_file(tmp_path, "mixed")
-        automation_path.write_text(
-            """
+        automation_path.write_text("""
 from haanim import action, on_state, on_time
 @action(name="Manual Only")
 def manual():
@@ -680,8 +653,7 @@ def auto_only():
 @on_time("sunset")
 def both():
     pass
-"""
-        )
+""")
 
         context = make_context(str(automation_path))
         metadata = await load_and_run(context)

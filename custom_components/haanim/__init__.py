@@ -12,7 +12,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.components import frontend
-from homeassistant.components.http import StaticPathConfig
+
+# The documented place to import it from, although the module does not list it as exported
+from homeassistant.components.http import StaticPathConfig  # pyright: ignore[reportPrivateImportUsage]
 
 # First of the integration's own modules: it decides where the haanim package comes from, and the
 # modules below import that package
@@ -35,7 +37,8 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]  # One enum sensor per automation
 
-# Nothing is set in configuration.yaml. Home Assistant looks for this name; pylint takes a callable for a function.
+# Nothing is set in configuration.yaml. Home Assistant looks for this name; pylint takes a callable for a
+# function.
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)  # pylint: disable=invalid-name
 
 UI_URL = f"/{DOMAIN}/ui"

@@ -132,7 +132,7 @@ class TestPanelRegistration:
         with patch.object(integration, "frontend") as frontend:
             await integration._async_register_panel(hass)  # pylint: disable=protected-access
 
-            ((paths,), _) = http.async_register_static_paths.call_args
+            (paths,), _ = http.async_register_static_paths.call_args
             assert paths[0].url_path == "/haanim/ui"
             assert paths[0].path.endswith("custom_components/haanim/ui")
             # The frontend is given an address that has the fingerprint of the files in it

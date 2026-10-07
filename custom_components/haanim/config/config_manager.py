@@ -22,7 +22,6 @@ from custom_components.haanim.config.config_group import ConfigGroup
 from custom_components.haanim.config.config_option import ConfigOption
 from custom_components.haanim.config.config_type import ConfigType
 
-
 _LOGGER = logging.getLogger(__name__)
 
 

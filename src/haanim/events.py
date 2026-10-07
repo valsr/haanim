@@ -12,7 +12,6 @@ from typing import Any
 
 from haanim.types import StateVal
 
-
 SOURCE_TRIGGER = "trigger"
 SOURCE_MANUAL = "manual"
 SOURCE_AUTOMATION = "automation"

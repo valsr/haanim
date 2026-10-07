@@ -45,6 +45,8 @@ can. Only install automations you trust.
 
 ## Installation
 
+HAAnim needs Home Assistant 2026.9 or newer.
+
 1. Install the integration with HACS: **HACS → ⋮ → Custom repositories**, add
    `https://github.com/valsr/haanim` as an **Integration**, then download HAAnim.
 2. Restart Home Assistant.
@@ -101,6 +103,8 @@ types for `from haanim import ...`, and the test harness. It is not needed in Ho
 ```sh
 pip install haanim pytest pytest-asyncio
 ```
+
+The package needs Python 3.14, the Python that Home Assistant 2026.9 runs on.
 
 ```python
 from haanim.testing import AutomationHarness

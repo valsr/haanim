@@ -213,7 +213,7 @@ class StateVal:
         """
         try:
             return int(float(self.state or default))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return default
 
     def as_float(self, default: float = 0.0) -> float:
@@ -227,7 +227,7 @@ class StateVal:
         """
         try:
             return float(self.state or default)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return default
 
     def as_bool(self) -> bool:
@@ -248,7 +248,7 @@ class StateVal:
         """
         try:
             return datetime.fromisoformat(self.state or "")
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
 
     def is_available(self) -> bool:
