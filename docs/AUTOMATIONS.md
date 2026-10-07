@@ -1,7 +1,7 @@
 # Writing HAAnim automations
 
-This guide covers what an automation can do. For three complete automations with tests, see
-[`examples/`](../examples/README.md).
+This guide covers what an automation can do. For complete automations with tests, and a demo for each part
+of HAAnim, see [Examples and demos](examples.md).
 
 ## An automation is a folder
 

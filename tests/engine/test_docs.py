@@ -19,7 +19,12 @@ import haanim
 from haanim.testing import AutomationHarness
 
 REPO_ROOT = Path(__file__).parents[2]
-DOCUMENTS = [REPO_ROOT / "docs" / "AUTOMATIONS.md", REPO_ROOT / "README.md"]
+DOCUMENTS = [
+    REPO_ROOT / "docs" / "AUTOMATIONS.md",
+    REPO_ROOT / "README.md",
+    REPO_ROOT / "docs" / "index.md",
+    REPO_ROOT / "docs" / "getting-started.md",
+]
 
 # Everything an automation can import from haanim, so that fragments need not repeat their imports
 HEADER = (
@@ -83,9 +88,9 @@ BLOCKS = blocks()
 
 
 def test_the_documents_have_code() -> None:
-    """Test the guide and the README are found and have automation code in them."""
+    """Test the guide, the README and the pages around the guide are found and have automation code in them."""
     assert len(BLOCKS) >= 12
-    assert {where.split(":")[0] for where, _ in BLOCKS} == {"AUTOMATIONS.md", "README.md"}
+    assert {where.split(":")[0] for where, _ in BLOCKS} == {document.name for document in DOCUMENTS}
 
 
 @pytest.mark.parametrize(("where", "code"), BLOCKS, ids=[where for where, _ in BLOCKS])
@@ -115,3 +120,18 @@ async def test_code_block_runs(tmp_path: Path, where: str, code: str) -> None:
                 await automation.advance_time(seconds=60)
             assert call.done(), f"{where} did not finish"
             call.result()
+
+
+def test_published_documentation_is_complete() -> None:
+    """Test every page of the Read the Docs site exists, and every file in docs/ is published or left out on purpose."""
+    yaml = pytest.importorskip("yaml")
+    config = yaml.safe_load((REPO_ROOT / "mkdocs.yml").read_text(encoding="utf-8"))
+    pages = [next(iter(entry.values())) for entry in config["nav"]]
+    excluded = config["exclude_docs"].split()
+    present = sorted(path.name for path in (REPO_ROOT / "docs").iterdir() if path.is_file())
+
+    assert pages[0] == "index.md"
+    assert all(page in present for page in pages), pages
+    assert sorted(pages + excluded) == present
+    assert (REPO_ROOT / ".readthedocs.yaml").is_file()
+    assert "mkdocs" in (REPO_ROOT / "docs" / "requirements.txt").read_text(encoding="utf-8")

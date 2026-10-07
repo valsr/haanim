@@ -87,7 +87,8 @@ automation_id: hello
 ```
 
 The [automation guide](docs/AUTOMATIONS.md) covers everything an automation can do, and
-[`examples/`](examples/README.md) has three complete automations with tests.
+[`examples/`](examples/README.md) has complete automations with tests, among them a demo for each part of
+HAAnim. The same documentation is built for Read the Docs from `docs/` (`mkdocs.yml`).
 
 ## Testing an automation
 
@@ -157,7 +158,7 @@ The repository:
 | `custom_components/haanim/` | The integration: entity, services, options, websocket commands, frontend   |
 | `examples/`                 | Example automations and their harness tests                                |
 | `tests/`                    | `engine/` (no Home Assistant), `integration/`, `frontend/`                 |
-| `docs/`                     | The automation guide and notes on the development environment              |
+| `docs/`                     | The documentation (built with MkDocs) and notes on the development environment |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before sending a pull request.
 
