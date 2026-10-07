@@ -7,13 +7,16 @@ name = "haanim"
 dynamic = ["version"]
 description = "Python automations for Home Assistant: the HAAnim engine and its test harness"
 readme = "README.md"
-license = { text = "MIT" }
-authors = [{ name = "Your Name", email = "your.email@example.com" }]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "valsr" }]
+keywords = ["home-assistant", "homeassistant", "automation", "hacs"]
 requires-python = ">=3.13.2"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "Topic :: Home Automation",
+    "Typing :: Typed",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
 ]
@@ -44,13 +47,14 @@ path = "src/haanim/__init__.py"
 packages = ["src/haanim"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/haanim", "README.md", "LICENSE"]
+include = ["/src/haanim", "/README.md", "/LICENSE"]
 
 [project.urls]
 Homepage = "https://github.com/valsr/haanim"
-Documentation = "https://github.com/valsr/haanim"
+Documentation = "https://haanim.readthedocs.io/"
 Repository = "https://github.com/valsr/haanim"
 Issues = "https://github.com/valsr/haanim/issues"
+Changelog = "https://github.com/valsr/haanim/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [

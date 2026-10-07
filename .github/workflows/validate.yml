@@ -1,0 +1,36 @@
+name: Validate
+
+# What Home Assistant and HACS ask of a custom integration: hassfest checks the integration's files, and the
+# HACS action checks what the HACS store needs of the repository.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hassfest:
+    name: Hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Run hassfest
+        uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run the HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration

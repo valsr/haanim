@@ -7,15 +7,18 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import sys
 import tomllib
 import zipfile
+from importlib.metadata import requires
 from pathlib import Path
 from typing import Any
 
 import pytest
+from packaging.requirements import Requirement
 
 import haanim
 from custom_components.haanim import engine_path
@@ -47,7 +50,7 @@ class TestOneVersion:
 
 
 class TestRequirement:
-    """The integration does not require the package: a release carries the engine, and needs what the engine needs."""
+    """The integration does not require the package: a release carries the engine, and Home Assistant has the rest."""
 
     def test_manifest_does_not_require_the_package(self) -> None:
         """Test installing the integration installs no haanim package."""
@@ -61,9 +64,17 @@ class TestRequirement:
         ]
         assert names == ["cronsim", "python-slugify"]
 
-    def test_manifest_requires_what_the_engine_needs(self) -> None:
-        """Test the manifest lists the package's own requirements, so a bundled engine finds them."""
-        assert MANIFEST["requirements"] == PROJECT["project"]["dependencies"]
+    def test_home_assistant_has_what_the_engine_needs(self) -> None:
+        """Test the manifest requires nothing: Home Assistant itself requires what the engine needs."""
+        assert MANIFEST["requirements"] == []
+        home_assistant = {
+            Requirement(requirement).name: Requirement(requirement).specifier
+            for requirement in requires("homeassistant") or []
+        }
+        for dependency in PROJECT["project"]["dependencies"]:
+            needed = Requirement(dependency)
+            pinned = next(iter(home_assistant[needed.name])).version
+            assert needed.specifier.contains(pinned)
 
     def test_wheel_is_the_engine_package(self) -> None:
         """Test the wheel is built from src/haanim, which has py.typed."""
@@ -220,3 +231,41 @@ class TestRelease:
         integration, engine = result.stdout.strip().splitlines()[-2:]
         assert integration.startswith(str(config))
         assert engine == str(config / "custom_components" / "haanim" / "bundled" / "haanim" / "__init__.py")
+
+
+class TestPublishing:
+    """What HACS, Home Assistant and PyPI ask of the repository."""
+
+    def test_hacs_json_has_only_what_hacs_knows(self) -> None:
+        """Test hacs.json has no key the HACS validation refuses."""
+        hacs = json.loads((REPO_ROOT / "hacs.json").read_text(encoding="utf-8"))
+        assert set(hacs) == {"name", "content_in_root", "homeassistant", "zip_release", "filename"}
+
+    def test_manifest_is_what_hassfest_accepts(self) -> None:
+        """Test the manifest has what a custom integration must state, with its keys in hassfest's order."""
+        for key in ("codeowners", "documentation", "integration_type", "issue_tracker", "version"):
+            assert MANIFEST[key]
+        assert list(MANIFEST) == ["domain", "name", *sorted(set(MANIFEST) - {"domain", "name"})]
+
+    @pytest.mark.parametrize(("name", "size"), [("icon.png", 256), ("icon@2x.png", 512)])
+    def test_brand_icon(self, name: str, size: int) -> None:
+        """Test the integration brings its icon, a square PNG of the size Home Assistant asks for."""
+        data = (REPO_ROOT / "custom_components" / "haanim" / "brand" / name).read_bytes()
+        assert data[:8] == b"\x89PNG\r\n\x1a\n"
+        assert (int.from_bytes(data[16:20]), int.from_bytes(data[20:24])) == (size, size)
+
+    def test_package_metadata(self) -> None:
+        """Test the package names its author and its pages, and puts only itself in the source archive."""
+        project = PROJECT["project"]
+        assert project["authors"] == [{"name": "valsr"}]
+        assert project["urls"]["Documentation"] == MANIFEST["documentation"]
+        assert PROJECT["tool"]["hatch"]["build"]["targets"]["sdist"]["include"] == [
+            "/src/haanim",
+            "/README.md",
+            "/LICENSE",
+        ]
+
+    def test_readme_links_work_outside_the_repository(self) -> None:
+        """Test the README, which PyPI shows too, links by full addresses only."""
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        assert re.findall(r"\]\((?!https://|#)[^)]*\)", readme) == []

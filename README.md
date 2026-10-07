@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/valsr/haanim/actions/workflows/ci.yml/badge.svg)](https://github.com/valsr/haanim/actions/workflows/ci.yml)
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
-[![License](https://img.shields.io/github/license/valsr/haanim.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/haanim.svg)](https://pypi.org/project/haanim/)
+[![Documentation](https://readthedocs.org/projects/haanim/badge/?version=latest)](https://haanim.readthedocs.io/)
+[![License](https://img.shields.io/github/license/valsr/haanim.svg)](https://github.com/valsr/haanim/blob/main/LICENSE)
 
 Write Home Assistant automations in Python. An automation is a folder with a `main.py`; decorators say when
 its functions run, and the `haa` object reaches entities, services, storage and the automation's own
@@ -87,8 +89,8 @@ type: custom:haanim-card
 automation_id: hello
 ```
 
-The [automation guide](docs/AUTOMATIONS.md) covers everything an automation can do, and
-[`examples/`](examples/README.md) has complete automations with tests, among them a demo for each part of
+The [automation guide](https://haanim.readthedocs.io/en/latest/AUTOMATIONS/) covers everything an automation can do, and
+[`examples/`](https://github.com/valsr/haanim/tree/main/examples) has complete automations with tests, among them a demo for each part of
 HAAnim. The same documentation is built for Read the Docs from `docs/` (`mkdocs.yml`).
 
 ## Testing an automation
@@ -97,7 +99,7 @@ The engine is also a Python package, `haanim`, for your own machine: it gives yo
 types for `from haanim import ...`, and the test harness. It is not needed in Home Assistant.
 
 ```sh
-pip install haanim pytest pytest-asyncio    # until haanim is on PyPI: pip install git+https://github.com/valsr/haanim
+pip install haanim pytest pytest-asyncio
 ```
 
 ```python
@@ -171,9 +173,9 @@ The repository:
 | `tests/`                    | `engine/` (no Home Assistant), `integration/`, `frontend/`                 |
 | `docs/`                     | The documentation (built with MkDocs) and notes on the development environment |
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) before sending a pull request.
+See [CONTRIBUTING.md](https://github.com/valsr/haanim/blob/main/CONTRIBUTING.md) before sending a pull request.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). HAAnim is a custom integration and is not supported by the Home Assistant
+MIT, see [LICENSE](https://github.com/valsr/haanim/blob/main/LICENSE). HAAnim is a custom integration and is not supported by the Home Assistant
 project.

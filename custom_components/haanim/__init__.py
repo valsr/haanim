@@ -9,6 +9,7 @@ import os
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
@@ -33,6 +34,9 @@ from haanim.engine.triggers import TriggerManager
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]  # One enum sensor per automation
+
+# Nothing is set in configuration.yaml. Home Assistant looks for this name; pylint takes a callable for a function.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)  # pylint: disable=invalid-name
 
 UI_URL = f"/{DOMAIN}/ui"
 """Where the files of the frontend are served. Browsers load them from ``ui_url()`` instead."""

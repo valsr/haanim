@@ -66,10 +66,6 @@ gives your editor completion and types for `from haanim import ...`, and the tes
 pip install haanim pytest pytest-asyncio
 ```
 
-!!! note
-    Until `haanim` is on PyPI, install it from the repository:
-    `pip install git+https://github.com/valsr/haanim`.
-
 ```python
 from haanim.testing import AutomationHarness
 

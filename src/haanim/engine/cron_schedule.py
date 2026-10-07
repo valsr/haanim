@@ -2,9 +2,10 @@
 
 See "Cron Trigger" in the design. The dialect is the standard five fields
 ``minute hour day-of-month month day-of-week`` as ``cronsim`` implements
-them (the library Home Assistant itself uses). Time zone and daylight saving follow the scheduling rules of the time
-trigger: a skipped time fires at the first instant after the gap, and a time
-that occurs twice fires once, at the first occurrence.
+them (the library Home Assistant itself uses). Time zone and daylight saving
+follow the scheduling rules of the time trigger: a skipped time fires at the
+first instant after the gap, and a time that occurs twice fires once, at the
+first occurrence.
 """
 
 from __future__ import annotations

@@ -166,6 +166,26 @@ uv run pytest examples/tests --no-cov
 3. Ensure your code follows the style guidelines
 4. Your pull request will be reviewed by maintainers
 
+## Releasing
+
+One version number serves the integration and the package. A release is made from `main`:
+
+1. Set the version in `src/haanim/__init__.py` and in `custom_components/haanim/manifest.json` (a test
+   fails when they differ), and move the entries under "Unreleased" in `CHANGELOG.md` to the new version.
+2. Publish a GitHub release whose tag is the version, with or without a leading `v` (`v0.2.0`).
+
+Publishing the release runs `.github/workflows/release.yml`, which
+
+- builds `haanim.zip`, the integration with the engine in it, and attaches it to the release: this is what
+  HACS installs;
+- builds the `haanim` package and publishes it on [PyPI](https://pypi.org/project/haanim/). PyPI trusts the
+  workflow itself (a trusted publisher for the repository `valsr/haanim`, the workflow `release.yml` and
+  the environment `pypi`), so there is no token to keep.
+
+Read the Docs builds the documentation from `main` (`latest`) and from every release tag (`stable`), as
+`.readthedocs.yaml` says. `.github/workflows/validate.yml` runs hassfest and the HACS validation on every
+pull request.
+
 ## Questions?
 
 If you have questions, feel free to:
