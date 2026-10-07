@@ -65,8 +65,12 @@ class TestEachExample:
         assert source.count("async def test_") >= 5
         assert list((EXAMPLES / name).rglob("test_*.py")) == []
 
-    def test_mypy(self, name: str) -> None:
-        """Test the example type-checks with mypy's default settings."""
+    def test_mypy(self, name: str, tmp_path: Path) -> None:
+        """Test the example type-checks with mypy's default settings.
+
+        These tests run side by side, and mypy writes to its cache folder even
+        when it is told not to use it: each run gets a folder of its own.
+        """
         result = subprocess.run(
             [
                 sys.executable,
@@ -74,6 +78,7 @@ class TestEachExample:
                 "mypy",
                 "--config-file=",
                 "--no-incremental",
+                f"--cache-dir={tmp_path}",
                 str(EXAMPLES / name / "main.py"),
             ],
             cwd=REPO_ROOT,
@@ -82,7 +87,7 @@ class TestEachExample:
             check=False,
             timeout=300,
         )
-        assert result.returncode == 0, result.stdout[-3000:]
+        assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-3000:]
 
 
 def test_pyright() -> None:
