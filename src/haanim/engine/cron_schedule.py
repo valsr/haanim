@@ -1,8 +1,8 @@
 """Cron expressions: validation and when one is due.
 
 See "Cron Trigger" in the design. The dialect is the standard five fields
-``minute hour day-of-month month day-of-week`` as ``croniter`` implements
-them. Time zone and daylight saving follow the scheduling rules of the time
+``minute hour day-of-month month day-of-week`` as ``cronsim`` implements
+them (the library Home Assistant itself uses). Time zone and daylight saving follow the scheduling rules of the time
 trigger: a skipped time fires at the first instant after the gap, and a time
 that occurs twice fires once, at the first occurrence.
 """
@@ -11,13 +11,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from croniter import croniter
+from cronsim import CronSim, CronSimError
 
 from haanim.engine.time_schedule import local_instant
 
 # How many matching wall-clock times are looked at for one that is later than the
 # instant asked about. Around a clock change a few of them map to the same instant.
 _MAX_STEPS = 1000
+
+# A time to parse an expression against: which one does not matter
+_ANY_TIME = datetime(2000, 1, 1)
 
 
 def validate_cron(expression: object) -> str:
@@ -48,12 +51,11 @@ def validate_cron(expression: object) -> str:
             "minute hour day-of-month month day-of-week"
         )
     normalized = " ".join(fields)
-    if not croniter.is_valid(normalized):
-        try:
-            croniter(normalized)
-        except (ValueError, KeyError) as err:
-            raise ValueError(f"'{expression}' is not a cron expression: {err}") from None
-        raise ValueError(f"'{expression}' is not a cron expression")
+    try:
+        # The start only has to be a time: parsing is all that is wanted here
+        CronSim(normalized, _ANY_TIME)
+    except CronSimError as err:
+        raise ValueError(f"'{expression}' is not a cron expression: {err}") from None
     return normalized
 
 
@@ -69,8 +71,9 @@ def next_cron_fire(expression: str, after: datetime) -> datetime | None:
             this instant is not returned.
 
     Returns:
-        The next fire in the time zone of ``after``; None if the expression
-        never matches again (an impossible date such as 30 February).
+        The next fire in the time zone of ``after``; None if no further match is
+        found. A date that does not exist, such as 30 February, is not a valid
+        expression in the first place.
 
     Raises:
         ValueError: If ``after`` has no time zone or the expression is not valid.
@@ -80,12 +83,13 @@ def next_cron_fire(expression: str, after: datetime) -> datetime | None:
         raise ValueError("next_cron_fire needs a timezone-aware datetime")
     after_utc = after.astimezone(timezone.utc)
 
-    # croniter walks the wall clock; each match is then placed on the time line
-    walker = croniter(validate_cron(expression), after.replace(tzinfo=None, second=0, microsecond=0))
+    # cronsim walks the wall clock (it is given a time without a zone); each match is then placed on
+    # the time line. It gives up on an expression that does not match for fifty years.
+    walker = CronSim(validate_cron(expression), after.replace(tzinfo=None, second=0, microsecond=0))
     for _ in range(_MAX_STEPS):
         try:
-            wall: datetime = walker.get_next(datetime)
-        except (ValueError, KeyError):
+            wall: datetime = next(walker)
+        except StopIteration:
             return None
         fire = local_instant(wall.date(), wall.hour, wall.minute, 0, zone)
         if fire.astimezone(timezone.utc) > after_utc:

@@ -59,7 +59,7 @@ class TestRequirement:
             requirement.split(">")[0].split("=")[0].strip().lower()
             for requirement in PROJECT["project"]["dependencies"]
         ]
-        assert names == ["croniter", "python-slugify"]
+        assert names == ["cronsim", "python-slugify"]
 
     def test_manifest_requires_what_the_engine_needs(self) -> None:
         """Test the manifest lists the package's own requirements, so a bundled engine finds them."""

@@ -78,7 +78,7 @@ def cron_fires(expression: str, start: datetime, count: int) -> list[str]:
 
 
 class TestDialect:
-    """Five fields as croniter implements them; no seconds field and no aliases."""
+    """Five fields as cronsim implements them; no seconds field and no aliases."""
 
     @pytest.mark.parametrize("expression", ACCEPTED)
     def test_accepted(self, expression: str) -> None:
@@ -224,9 +224,22 @@ class TestTimeZoneAndDaylightSaving:
         fire = next_cron_fire("*/5 * * * *", at("2025-01-06 12:04:59"))
         assert fire is not None and (fire.minute, fire.second, fire.microsecond) == (5, 0, 0)
 
-    def test_expression_that_never_matches(self) -> None:
-        """30 February has no next fire."""
-        assert next_cron_fire("0 0 30 2 *", at("2025-01-06 12:00")) is None
+    @pytest.mark.parametrize("expression", ["0 0 30 2 *", "0 0 31 4 *", "0 0 31 feb,apr *"])
+    def test_a_date_that_does_not_exist_is_not_an_expression(self, expression: str) -> None:
+        """30 February would never fire: it is refused when the automation is loaded, not waited for."""
+        with pytest.raises(ValueError, match="is not a cron expression"):
+            validate_cron(expression)
+        with pytest.raises(ValueError, match="is not a cron expression"):
+            next_cron_fire(expression, at("2025-01-06 12:00"))
+
+    def test_29_february_fires_in_leap_years(self) -> None:
+        """A date that exists only in some years is waited for."""
+        assert cron_fires("0 0 29 2 *", at("2025-01-06 12:00"), 2) == ["2028-02-29 00:00", "2032-02-29 00:00"]
+
+    def test_no_further_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An expression the library finds no further match for has no next fire."""
+        monkeypatch.setattr(cron_schedule, "CronSim", lambda expression, start: iter(()))
+        assert next_cron_fire("0 9 * * *", at("2025-01-06 12:00")) is None
 
     def test_needs_a_time_zone(self) -> None:
         """A naive datetime is rejected."""
@@ -250,19 +263,18 @@ class TestNeverReadsTheSystemClock:
         ]
         assert set(now_calls) <= {"self.host.clock.now()"}
 
-    def test_croniter_is_always_given_its_start(self) -> None:
-        """croniter falls back to the system clock when it gets no start time; it always gets one."""
+    def test_cronsim_is_always_given_its_start(self) -> None:
+        """The cron library walks on from the time it is given; it is always given one, never the system's."""
         tree = ast.parse(Path(cron_schedule.__file__).read_text(encoding="utf-8"))
         calls = [
             node
             for node in ast.walk(tree)
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "croniter"
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "CronSim"
         ]
-        walking = [call for call in calls if len(call.args) == 2]
-        validating = [call for call in calls if len(call.args) == 1]
-        assert len(walking) == 1
-        # The one-argument call only parses the expression, to get croniter's own error text
-        assert len(validating) == 1
+        assert len(calls) == 2, "one to check an expression, one to walk it"
+        assert all(len(call.args) == 2 for call in calls)
+        starts = sorted(ast.unparse(call.args[1]) for call in calls)
+        assert starts == ["_ANY_TIME", "after.replace(tzinfo=None, second=0, microsecond=0)"]
 
     def test_same_answer_whenever_it_is_asked(self) -> None:
         """The result depends only on the arguments."""
