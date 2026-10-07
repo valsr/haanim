@@ -198,4 +198,7 @@ class TestEngineTestsWithoutHomeAssistant:
         )
         assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-3000:]
         assert " passed" in result.stdout
-        assert "skipped" not in result.stdout.splitlines()[-1]
+        # Nothing is skipped for want of Home Assistant. One test compares an example with the design
+        # document, which is not in every checkout, and is skipped without it.
+        skipped = "skipped" in result.stdout.splitlines()[-1]
+        assert skipped == (not (repo_root / "_design.md").is_file()), result.stdout[-500:]
