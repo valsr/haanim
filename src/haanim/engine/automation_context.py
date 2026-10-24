@@ -180,7 +180,9 @@ class AutomationContext:
             status_manager: Where this automation's status is recorded.
             registry: The loaded automations, used by ``haa`` to reach other automations.
             additional_imports: Modules automations may import in addition to the default allowlist.
-            allow_all_imports: If True, allow all imports.
+                The automation's ``metadata.json`` can add more.
+            allow_all_imports: If True, allow all imports. The automation's
+                ``metadata.json`` can also turn this on.
         """
         self.host = host
         self._status_manager = status_manager
@@ -197,10 +199,12 @@ class AutomationContext:
         # Create logger for this automation
         self._logger = automation_logger(self.automation_id)
 
-        # Initialize components
+        # Initialize components. The import rules widen at load time with what metadata.json allows.
+        self._additional_imports = tuple(additional_imports or ())
+        self._allow_all_imports = allow_all_imports
         self._import_controller = ImportController(
-            additional=additional_imports,
-            allow_all=allow_all_imports,
+            additional=self._additional_imports,
+            allow_all=self._allow_all_imports,
         )
         # print writes to the automation's logger at INFO level
         self._safe_builtins = SafeBuiltins(
@@ -313,6 +317,10 @@ class AutomationContext:
             raise HAAnimError(f"Automation has no {MAIN_FILENAME}: {self.automation_path}")
 
         info = await load_metadata(files, self.folder)
+        self._import_controller = ImportController(
+            additional=(*self._additional_imports, *info.additional_imports),
+            allow_all=self._allow_all_imports or info.allow_all_imports,
+        )
 
         try:
             sources = await source_files(files, self.folder)

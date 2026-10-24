@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-23
+
+### Added
+
+- An automation's `metadata.json` can allow imports for that automation alone: `additional_imports` lists
+  modules allowed in addition to the allowlist and the integration's options, and `allow_all_imports: true`
+  turns the allowlist off for it. Both add to the integration's options and never narrow them.
+
 ## [0.2.0] - 2026-10-06
 
 The first published release: the integration is installable with HACS and the `haanim` package is on PyPI.
