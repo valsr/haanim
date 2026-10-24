@@ -82,3 +82,6 @@ Under **Settings → Devices & services → HAAnim → Configure**. Changing an 
 | Stop grace period          | 0.5 seconds                   | Time running actions get to finish before cancellation |
 | Additional allowed imports | (empty)                       | Module names added to the import allowlist             |
 | Allow all imports          | Off                           | Turns the import allowlist off                         |
+
+The two import options apply to every automation. An automation can allow more for itself in its
+`metadata.json` with `additional_imports` and `allow_all_imports`; see the automation guide.

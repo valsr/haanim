@@ -15,8 +15,11 @@ from haanim.interfaces import FileSystem
 METADATA_FILENAME = "metadata.json"
 DEFAULT_VERSION = "1.0.0"
 
-# The fields of the file. All are strings.
+# The text fields of the file.
 FIELDS = ("name", "description", "author", "version")
+# The fields that widen the import allowlist for this automation.
+ALLOW_ALL_IMPORTS = "allow_all_imports"
+ADDITIONAL_IMPORTS = "additional_imports"
 
 
 @dataclass(frozen=True)
@@ -28,12 +31,17 @@ class AutomationInfo:
         description: Short description.
         author: Author shown in the GUI.
         version: Version string shown in the GUI.
+        allow_all_imports: Whether the automation may import any module.
+        additional_imports: Modules the automation may import in addition to
+            the allowlist.
     """
 
     name: str
     description: str = ""
     author: str = ""
     version: str = DEFAULT_VERSION
+    allow_all_imports: bool = False
+    additional_imports: tuple[str, ...] = ()
 
 
 def parse_metadata(text: str | None, folder_name: str) -> AutomationInfo:
@@ -51,7 +59,7 @@ def parse_metadata(text: str | None, folder_name: str) -> AutomationInfo:
 
     Raises:
         AutomationMetadataError: If the text is not valid JSON, is not a JSON
-            object, or a field is not a string.
+            object, or a field has the wrong type.
     """
     if text is None:
         return AutomationInfo(name=folder_name)
@@ -79,11 +87,32 @@ def parse_metadata(text: str | None, folder_name: str) -> AutomationInfo:
             )
         values[name] = value
 
+    allow_all = data.get(ALLOW_ALL_IMPORTS, False)
+    if not isinstance(allow_all, bool):
+        raise AutomationMetadataError(
+            f"{METADATA_FILENAME}: field '{ALLOW_ALL_IMPORTS}' must be a boolean, not {_json_type(allow_all)}"
+        )
+
+    additional = data.get(ADDITIONAL_IMPORTS, [])
+    if not isinstance(additional, list):
+        raise AutomationMetadataError(
+            f"{METADATA_FILENAME}: field '{ADDITIONAL_IMPORTS}' must be an array of strings, "
+            f"not {_json_type(additional)}"
+        )
+    for index, module in enumerate(additional):
+        if not isinstance(module, str):
+            raise AutomationMetadataError(
+                f"{METADATA_FILENAME}: item {index} of field '{ADDITIONAL_IMPORTS}' must be a string, "
+                f"not {_json_type(module)}"
+            )
+
     return AutomationInfo(
         name=values.get("name", folder_name),
         description=values.get("description", ""),
         author=values.get("author", ""),
         version=values.get("version", DEFAULT_VERSION),
+        allow_all_imports=allow_all,
+        additional_imports=tuple(additional),
     )
 
 

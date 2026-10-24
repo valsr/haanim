@@ -20,7 +20,8 @@ of HAAnim, see [Examples and demos](examples.md).
   is loaded and the other is reported as a repair issue.
 - Every `.py` file in the folder is part of the automation, except in `assets/` and in folders whose name
   starts with a dot or two underscores. Keep tests outside the folder.
-- `metadata.json` holds `name`, `description`, `author` and `version`, all optional strings.
+- `metadata.json` holds `name`, `description`, `author` and `version`, all optional strings, and the optional
+  import settings `additional_imports` and `allow_all_imports` (see [Imports and Python](#imports-and-python)).
 - Files are watched: a change reloads the automation, a new folder is loaded, a removed one is unloaded.
 
 ## The lifecycle
@@ -57,7 +58,19 @@ Everything comes from the `haanim` module: `haa`, the decorators, the event clas
 classes, and `logging`. Besides it and relative imports within the folder, these modules can be imported:
 `asyncio`, `datetime`, `json`, `logging`, `math`, `random`, `re`, `time`, `typing`, `collections`,
 `functools`, `itertools`, `operator`, `statistics`, `decimal`, `fractions`, `enum`, `dataclasses`, `html` and
-`hass` (the running Home Assistant instance). More can be allowed in the integration's options.
+`hass` (the running Home Assistant instance). More can be allowed in the integration's options, for all
+automations, or in an automation's `metadata.json`, for that automation only:
+
+```json
+{
+  "name": "Weather report",
+  "additional_imports": ["textwrap", "xml"],
+  "allow_all_imports": false
+}
+```
+
+`additional_imports` is a list of module names; allowing a package allows its submodules. `allow_all_imports`
+turns the allowlist off for the automation. Both add to the integration's options and never narrow them.
 
 Automation code is run by HAAnim's interpreter, on Home Assistant's event loop. Blocking calls
 (`time.sleep`, file and network I/O, threads, subprocesses) are not available; use `await haa.sleep()` and

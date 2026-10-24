@@ -8,8 +8,10 @@ from typing import Any
 
 import pytest
 
-from haanim.engine.errors import AutomationMetadataError, HAAnimError
+from haanim.engine.errors import AutomationMetadataError, AutomationSecurityError, HAAnimError
 from haanim.engine.metadata import (
+    ADDITIONAL_IMPORTS,
+    ALLOW_ALL_IMPORTS,
     DEFAULT_VERSION,
     FIELDS,
     METADATA_FILENAME,
@@ -173,6 +175,60 @@ class TestParseMetadata:
             info.name = "M"  # type: ignore[misc]
 
 
+class TestParseImportFields:
+    """Parsing the fields that widen the import allowlist."""
+
+    def test_defaults(self) -> None:
+        """Without the fields the automation gets no more than the allowlist."""
+        info = parse_metadata("{}", "lights")
+
+        assert info.allow_all_imports is False
+        assert info.additional_imports == ()
+
+    def test_values(self) -> None:
+        """Both fields are read."""
+        info = parse_metadata(
+            '{"allow_all_imports": true, "additional_imports": ["textwrap", "xml.etree"]}', "lights"
+        )
+
+        assert info.allow_all_imports is True
+        assert info.additional_imports == ("textwrap", "xml.etree")
+
+    @pytest.mark.parametrize(
+        ("value", "kind"),
+        [("true", "a string"), (1, "a number"), (None, "null"), ([True], "an array"), ({}, "an object")],
+    )
+    def test_allow_all_must_be_a_boolean(self, value: Any, kind: str) -> None:
+        """'allow_all_imports' that is not a boolean is a load error."""
+        with pytest.raises(AutomationMetadataError) as raised:
+            parse_metadata(json.dumps({ALLOW_ALL_IMPORTS: value}), "lights")
+
+        assert str(raised.value) == f"metadata.json: field 'allow_all_imports' must be a boolean, not {kind}"
+
+    @pytest.mark.parametrize(
+        ("value", "kind"),
+        [("textwrap", "a string"), (1, "a number"), (None, "null"), (True, "a boolean"), ({}, "an object")],
+    )
+    def test_additional_must_be_an_array(self, value: Any, kind: str) -> None:
+        """'additional_imports' that is not an array is a load error."""
+        with pytest.raises(AutomationMetadataError) as raised:
+            parse_metadata(json.dumps({ADDITIONAL_IMPORTS: value}), "lights")
+
+        assert str(raised.value) == (
+            f"metadata.json: field 'additional_imports' must be an array of strings, not {kind}"
+        )
+
+    def test_additional_items_must_be_strings(self) -> None:
+        """An item of 'additional_imports' that is not a string is a load error naming the item."""
+        with pytest.raises(AutomationMetadataError) as raised:
+            parse_metadata(json.dumps({ADDITIONAL_IMPORTS: ["textwrap", 5]}), "lights")
+
+        assert (
+            str(raised.value)
+            == "metadata.json: item 1 of field 'additional_imports' must be a string, not a number"
+        )
+
+
 class TestLoadMetadata:
     """Reading the file from an automation's folder."""
 
@@ -260,3 +316,87 @@ class TestMetadataAtLoad:
 
         assert context.get_symbol("ran") is None
         assert not context.is_loaded
+
+
+class TestImportsAtLoad:
+    """The import fields widen the allowlist of their own automation."""
+
+    @staticmethod
+    def _write(root: Path, name: str, source: str, metadata: dict[str, Any] | None = None) -> Path:
+        path = automation_file(root, name)
+        path.write_text(source, encoding="utf-8")
+        if metadata is not None:
+            (path.parent / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+        return path
+
+    async def test_import_outside_the_allowlist_is_refused(self, tmp_path: Path) -> None:
+        """Without the fields a module outside the allowlist is refused."""
+        path = self._write(tmp_path, "lights", "import textwrap\n")
+
+        with pytest.raises(AutomationSecurityError, match="textwrap"):
+            await load_and_run(make_context(str(path)))
+
+    async def test_additional_imports(self, tmp_path: Path) -> None:
+        """A module named in 'additional_imports' can be imported, and its submodules too."""
+        path = self._write(
+            tmp_path,
+            "lights",
+            "import textwrap\nimport xml.etree.ElementTree\nwidth = len(textwrap.wrap('a b', 1))\n",
+            {"additional_imports": ["textwrap", "xml"]},
+        )
+        context = make_context(str(path))
+
+        await load_and_run(context)
+
+        assert context.get_symbol("width") == 2
+
+    async def test_additional_imports_add_to_the_configured_ones(self, tmp_path: Path) -> None:
+        """The automation's modules are allowed together with those of the configuration."""
+        path = self._write(
+            tmp_path, "lights", "import textwrap\nimport string\n", {"additional_imports": ["textwrap"]}
+        )
+        context = make_context(str(path), additional_imports=["string"])
+
+        await load_and_run(context)
+
+        assert context.get_symbol("string") is not None
+
+    async def test_allow_all_imports(self, tmp_path: Path) -> None:
+        """'allow_all_imports' lets the automation import any module."""
+        path = self._write(tmp_path, "lights", "import textwrap\n", {"allow_all_imports": True})
+        context = make_context(str(path))
+
+        await load_and_run(context)
+
+        assert context.get_symbol("textwrap") is not None
+
+    async def test_false_does_not_override_the_configuration(self, tmp_path: Path) -> None:
+        """'allow_all_imports': false leaves the configured allow all in place."""
+        path = self._write(tmp_path, "lights", "import textwrap\n", {"allow_all_imports": False})
+
+        await load_and_run(make_context(str(path), allow_all_imports=True))
+
+    async def test_other_automations_are_not_affected(self, tmp_path: Path) -> None:
+        """One automation's fields do not widen the allowlist of another."""
+        self._write(
+            tmp_path,
+            "wide",
+            "import textwrap\n",
+            {"allow_all_imports": True, "additional_imports": ["textwrap"]},
+        )
+        narrow = self._write(tmp_path, "narrow", "import textwrap\n")
+        await load_and_run(make_context(str(tmp_path / "wide")))
+
+        with pytest.raises(AutomationSecurityError):
+            await load_and_run(make_context(str(narrow)))
+
+    async def test_reload_reads_the_fields_again(self, tmp_path: Path) -> None:
+        """Removing the fields and loading again refuses the module."""
+        path = self._write(tmp_path, "lights", "import textwrap\n", {"additional_imports": ["textwrap"]})
+        context = make_context(str(path))
+        await load_and_run(context)
+
+        (path.parent / "metadata.json").write_text("{}", encoding="utf-8")
+
+        with pytest.raises(AutomationSecurityError):
+            await load_and_run(context)
