@@ -1,0 +1,6 @@
+{
+  "name": "Demo: entities",
+  "description": "The automation's own device: a sensor it updates, and a switch, a number, a select and a button users operate.",
+  "author": "HAAnim",
+  "version": "1.0.0"
+}

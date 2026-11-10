@@ -274,6 +274,86 @@ url = haa.asset_url("chime.mp3", expires=300)                 # works without lo
 
 Names are relative to the automation's `assets/` folder. An automation reaches only its own assets.
 
+## Device entities
+
+Each automation is a device in Home Assistant, named after the automation. Its status sensor
+`sensor.haanim_<id>` is on the device, and so is every entity the automation declares with a class:
+
+```python
+from haanim import DeviceEntity, EntityCommandEvent, haa, on_state, sensor_entity, switch_entity
+
+
+@sensor_entity(unit="°C", device_class="temperature", state_class="measurement")
+class average_temp:
+    """Written by the automation: no hooks."""
+
+
+@switch_entity(name="Boost", icon="mdi:fire", initial=False)
+class boost:
+    def turn_on(self, entity: DeviceEntity, event: EntityCommandEvent) -> None:
+        haa.set_message("Boosting")
+        entity.set_state(True)
+
+    def turn_off(self, entity: DeviceEntity, event: EntityCommandEvent) -> None:
+        entity.set_state(False)
+
+
+@on_state("sensor.temperature")
+def update(event):
+    haa.device.entity(average_temp).set_state(float(event.new_state))
+```
+
+The entity ID is `<platform>.haanim_<automation id>_<object id>`, where the object ID is the class name, made
+safe like an automation ID (`id=` gives another one). Above, in the automation `climate`, that is
+`sensor.haanim_climate_average_temp` and `switch.haanim_climate_boost`.
+
+| Decorator               | Options besides the common ones                          | Hooks                  |
+| ----------------------- | -------------------------------------------------------- | ---------------------- |
+| `@sensor_entity`        | `device_class`, `unit`, `state_class`, `precision`       | none                   |
+| `@binary_sensor_entity` | `device_class`                                           | none                   |
+| `@switch_entity`        | `device_class`                                           | `turn_on`, `turn_off`  |
+| `@number_entity`        | `min`, `max`, `step`, `unit`, `mode`, `device_class`     | `set_value`            |
+| `@select_entity`        | `options` (required)                                     | `select_option`        |
+| `@button_entity`        | `device_class`                                           | `press`                |
+| `@text_entity`          | `min_length`, `max_length`, `pattern`, `mode`            | `set_value`            |
+
+Every decorator takes `name=`, `icon=`, `id=`, `attributes=` (the attributes the entity starts with),
+`initial=` (the state it starts with) and `action_mode=` (how the hooks run when commands overlap; `DROP` by
+default, as for actions). The options are fixed by the decorator: change them in the code.
+
+**State.** HAAnim keeps each entity's state and attributes, and Home Assistant shows them. They survive
+restarts and reloads, and stay while the automation is stopped. Read and write them through the proxy:
+
+```python
+@sensor_entity(unit="°C")
+class average_temp:
+    pass
+
+
+@action
+def record(event):
+    entity = haa.device.entity("average_temp")   # the object ID, or the class
+    entity.set_state(21.5)                      # checked against the declaration: a number with a unit
+    entity.set_attributes(source="lounge")      # merged; None removes an attribute
+    print(entity.state, entity.attributes, entity.entity_id, entity.declared)
+```
+
+A value the declaration does not allow raises `ValueError`: a number outside `min` and `max`, an option that
+is not listed, text that does not match the pattern, anything but `True` or `False` for a switch or binary
+sensor. `haa.device.entities` lists every entity of the device.
+
+**Hooks.** When a user turns the switch on in Home Assistant, HAAnim runs `turn_on` as an action, with the
+entity's proxy and an `EntityCommandEvent` (`command`, `value`, `entity_id`, `context`). The hook decides the
+new state with `set_state()`; without that the state stays as it was. A class without the hook, and an
+automation that is not running, log a warning and ignore the command. A hook that raises is recorded in
+`last_error` like any action.
+
+**Leftovers.** An entity whose class is deleted or renamed stays in Home Assistant as unavailable, with its
+history. The automation page in the HAAnim panel lists the device's entities in its **Entities** tab:
+**Remove** deletes a leftover, and **Purge data** resets a declared entity to its initial state and
+attributes, for instance after changing its options during development. Deleting the automation's folder
+removes its device and all its entities.
+
 ## The card
 
 Each automation has a card for dashboards, `custom:haanim-card` with `automation_id: <id>`. The card shows
@@ -571,6 +651,7 @@ async def test_morning_routine_only_when_home():
 | Check the card and press its buttons        | `card.title`, `card.blocks`, `card.block(id)`, `card.layout`, `await press(id)` |
 | Drive the lifecycle                         | `start=False`, then `load()`, `start()`, `stop()`, `reload()`   |
 | Provide assets and stored variables         | `assets={"logo.png": b"..."}`, `variables={"count": 3}`         |
+| Operate the device's entities               | `entity("boost").state`, `entities`, `await command("boost", "turn_on")`, `entities={"boost": True}` |
 
 Time stands still in the harness until the test advances it, so a test of "five minutes later" takes
 milliseconds.

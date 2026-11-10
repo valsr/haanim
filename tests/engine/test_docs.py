@@ -67,13 +67,13 @@ def blocks() -> list[tuple[str, str]]:
 
 def as_automation(code: str) -> tuple[str, bool]:
     """Turn a block into the source of a main.py; the flag says whether it became the body of an action."""
-    is_fragment = not re.search(r"^(@|def |async def )", code, re.MULTILINE)
+    is_fragment = not re.search(r"^(@|def |async def |class )", code, re.MULTILINE)
     if is_fragment:
         body = "\n".join(line for line in code.splitlines() if not line.startswith("from haanim import"))
         return HEADER + "\n@action\nasync def fragment(event):\n" + textwrap.indent(body, "    ") + "\n", True
     # Decorator lines that stand alone in the guide ("@on_state(...)" as an illustration) get a function
     code = re.sub(
-        r"^(@\w+\(.*\))\n(?!@|def |async def )",
+        r"^(@\w+\(.*\))\n(?!@|def |async def |class )",
         r"\1\ndef illustration(event): ...\n",
         code,
         flags=re.MULTILINE,

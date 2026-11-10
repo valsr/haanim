@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-09
+
+### Added
+
+- Each automation is a device in Home Assistant, with its status sensor on it.
+- Automations declare entities of their device with class decorators: `@sensor_entity`,
+  `@binary_sensor_entity`, `@switch_entity`, `@number_entity`, `@select_entity`, `@button_entity` and
+  `@text_entity`. HAAnim keeps their state, which survives restarts; `haa.device.entity()` reads and writes it.
+- Commands from Home Assistant (turning a switch on, setting a number, pressing a button) run the class's hooks
+  as actions, with an `EntityCommandEvent`.
+- The automation page in the panel has an **Entities** tab: remove leftover entities and purge stored data.
+- The test harness drives entities: `entity()`, `entities`, `command()` and `entities=`.
+- The `demo_entities` example.
+
 ## [0.3.1] - 2026-11-09
 
 ### Fixed
