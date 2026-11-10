@@ -335,3 +335,96 @@ def go(event):
         return str(err)
 """
     assert await run(tmp_path, body) == "generator raised StopIteration"
+
+
+# --- Draining in consume-all calls --------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "expression, expected",
+    [
+        ("list(count_up(3))", [0, 1, 2]),
+        ("tuple(count_up(3))", [0, 1, 2]),
+        ("sorted(set(count_up(3)))", [0, 1, 2]),
+        ("sorted(frozenset(count_up(3)))", [0, 1, 2]),
+        ("dict((x, x * x) for x in count_up(3))", {"0": 0, "1": 1, "2": 4}),
+        ("sorted(count_up(4), key=lambda x: -x)", [3, 2, 1, 0]),
+        ("sum(count_up(4), 10)", 16),
+        ("min(count_up(4), key=lambda x: (x - 2) ** 2)", 2),
+        ("max(count_up(4))", 3),
+        ("'-'.join(str(x) for x in count_up(3))", "0-1-2"),
+    ],
+)
+async def test_drained_calls_give_python_results(tmp_path: Path, expression: str, expected: Any) -> None:
+    body = f"@action\ndef go(event):\n    result = {expression}\n    return {{str(k): v for k, v in result.items()}} if isinstance(result, dict) else list(result) if isinstance(result, tuple) else result\n"
+    assert await run(tmp_path, body) == expected
+
+
+INFINITE = """
+from haanim import ActionMode
+log = []
+
+def endless():
+    try:
+        i = 0
+        while True:
+            yield i
+            i += 1
+    finally:
+        log.append("closed")
+
+@action(timeout=2)
+def all_of_it(event):
+    return list(endless())
+
+@action
+def other(event):
+    return "other ran"
+
+@action
+def closed(event):
+    return log
+"""
+
+
+@pytest.mark.timeout(20)
+async def test_list_of_infinite_generator_is_cancelled_by_the_timeout(tmp_path: Path) -> None:
+    import asyncio  # pylint: disable=import-outside-toplevel
+
+    from haanim.engine.errors import ActionTimeOutError  # pylint: disable=import-outside-toplevel
+
+    async with AutomationHarness(write(tmp_path, INFINITE)) as automation:
+        task = asyncio.ensure_future(automation.call("all_of_it"))
+        await automation.clock.settle()
+        assert await automation.call("other") == "other ran"
+        await automation.advance_time(seconds=3)
+        with pytest.raises(ActionTimeOutError):
+            await task
+        assert await automation.call("closed") == ["closed"]
+
+
+async def test_generator_raising_midway_in_a_drained_call(tmp_path: Path) -> None:
+    body = """
+def broken():
+    yield 1
+    raise ValueError("midway")
+
+@action
+def go(event):
+    result = None
+    try:
+        result = list(broken())
+    except ValueError as err:
+        return [result, str(err)]
+"""
+    assert await run(tmp_path, body) == [None, "midway"]
+
+
+async def test_min_with_two_arguments_is_not_drained(tmp_path: Path) -> None:
+    body = "@action\ndef go(event):\n    try:\n        min(count_up(1), count_up(2))\n    except TypeError:\n        return 'compared the generators'\n"
+    assert await run(tmp_path, body) == "compared the generators"
+
+
+async def test_any_on_infinite_generator_stops_early(tmp_path: Path) -> None:
+    body = "@action\ndef go(event):\n    return any(x == 3 for x in forever())\n"
+    assert await run(tmp_path, body) is True

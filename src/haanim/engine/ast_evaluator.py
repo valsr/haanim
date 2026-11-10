@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import builtins
 import inspect
 import logging
 import sys
@@ -16,6 +17,7 @@ from haanim.engine.eval_function import (
     CHECKPOINT,
     CarriedStopIteration,
     YieldPoint,
+    is_automation_generator,
     drive_generator,
     ControlFlow,
     EvalFunction,
@@ -49,6 +51,22 @@ class BreakLoop(ControlFlow):
 
 class ContinueLoop(ControlFlow):
     """Used to continue to next iteration."""
+
+
+# The calls that consume every item of an iterable: an automation generator given to them is drained first
+DRAINED_FIRST_ARGUMENT = frozenset(
+    {
+        builtins.list,
+        builtins.tuple,
+        builtins.set,
+        builtins.frozenset,
+        builtins.dict,
+        builtins.sorted,
+        builtins.sum,
+    }
+)
+# ... and those that do so only when the iterable is their only positional argument
+DRAINED_ONLY_ARGUMENT = frozenset({builtins.min, builtins.max})
 
 
 class AstEvaluator:
@@ -427,10 +445,43 @@ class AstEvaluator:
             if eval_function.is_generator:
                 return eval_function.make_generator(*prefix, *args, **kwargs)
             return await eval_function.invoke(*prefix, *args, **kwargs)
+        args = await self._drain_arguments(func, args)
         try:
             return func(*args, **kwargs)
         except StopIteration as stop:
             raise CarriedStopIteration(stop) from None
+
+    async def _drain_arguments(self, func: Any, args: tuple[Any, ...]) -> tuple[Any, ...]:
+        """Pull an automation generator given to a consume-all call into a list, pausing between items.
+
+        ``list(forever())`` then runs with the event loop free, so timeouts and
+        stopping the automation work; the call's result is the same.
+        """
+        if not args or not is_automation_generator(args[0]):
+            return args
+        drained = (
+            func in DRAINED_FIRST_ARGUMENT
+            or (func in DRAINED_ONLY_ARGUMENT and len(args) == 1)
+            or (isinstance(getattr(func, "__self__", None), str) and getattr(func, "__name__", "") == "join")
+        )
+        if not drained:
+            return args
+        return (await self._drain(args[0]), *args[1:])
+
+    async def _drain(self, generator: Any) -> list[Any]:
+        """Return every item of an automation generator, with checkpoints between them; close it if stopped."""
+        items: list[Any] = []
+        try:
+            while True:
+                try:
+                    items.append(next(generator))
+                except StopIteration:
+                    return items
+                if self.checkpoint_due():
+                    await CHECKPOINT
+        except BaseException:
+            generator.close()
+            raise
 
     async def _eval_yield(self, node: ast.Yield, scope: SymbolTable) -> Any:
         """Evaluate a yield: hand the value to the generator's consumer, and be what it sends back."""
