@@ -9,6 +9,7 @@ import logging
 import sys
 import types
 import typing
+from types import SimpleNamespace
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -16,6 +17,8 @@ from typing import TYPE_CHECKING, Any
 from haanim.engine.eval_function import (
     CHECKPOINT,
     CarriedStopIteration,
+    NativeCallWatch,
+    NativeSection,
     YieldPoint,
     is_automation_generator,
     drive_generator,
@@ -446,10 +449,14 @@ class AstEvaluator:
                 return eval_function.make_generator(*prefix, *args, **kwargs)
             return await eval_function.invoke(*prefix, *args, **kwargs)
         args = await self._drain_arguments(func, args)
+        # Until it returns, native code has control: what it runs of the automation counts as one run
+        run = NativeSection.enter()
         try:
             return func(*args, **kwargs)
         except StopIteration as stop:
             raise CarriedStopIteration(stop) from None
+        finally:
+            NativeSection.leave(run)
 
     async def _drain_arguments(self, func: Any, args: tuple[Any, ...]) -> tuple[Any, ...]:
         """Pull an automation generator given to a consume-all call into a list, pausing between items.
@@ -513,6 +520,9 @@ class AstEvaluator:
             gen = node.generators[idx]
             iterable = first if idx == 0 else await self.aeval(gen.iter, local_scope)
             for item in iterable:
+                # As in a list comprehension: each item is a checkpoint, which the watch counts
+                if self.checkpoint_due():
+                    await CHECKPOINT
                 inner_scope = local_scope.create_child(SCOPE_COMPREHENSION)
                 await self._assign_target(gen.target, item, inner_scope)
                 passed = True
@@ -523,7 +533,8 @@ class AstEvaluator:
                 if passed:
                     await process(idx + 1, inner_scope)
 
-        return drive_generator(lambda: process(0, scope), "<genexpr>")
+        watch = NativeCallWatch(SimpleNamespace(name="<genexpr>", lineno=node.lineno, engine=self))
+        return drive_generator(lambda: process(0, scope), "<genexpr>", watch)
 
     async def _make_function(
         self,

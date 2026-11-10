@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -428,3 +431,110 @@ async def test_min_with_two_arguments_is_not_drained(tmp_path: Path) -> None:
 async def test_any_on_infinite_generator_stops_early(tmp_path: Path) -> None:
     body = "@action\ndef go(event):\n    return any(x == 3 for x in forever())\n"
     assert await run(tmp_path, body) is True
+
+
+# --- Hard limit on synchronous runs -------------------------------------------------
+
+LIMIT_MESSAGE = (
+    r"function '(forever|<genexpr>|spin)' ran for more than 10 seconds without returning to the interpreter, "
+    r"and was stopped: it blocks Home Assistant while it runs"
+)
+
+
+@pytest.fixture
+def small_step_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from haanim.engine import eval_function  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(eval_function, "NATIVE_CALL_STEP_LIMIT", 10_000)
+
+
+@pytest.mark.timeout(30)
+@pytest.mark.usefixtures("small_step_limit")
+async def test_infinite_generator_pulled_by_any_hits_the_limit(tmp_path: Path) -> None:
+    body = "@action\ndef go(event):\n    try:\n        any(x < 0 for x in forever())\n    except TimeoutError as err:\n        return str(err)\n"
+    assert re.fullmatch(LIMIT_MESSAGE, await run(tmp_path, body))
+
+
+@pytest.mark.timeout(30)
+@pytest.mark.usefixtures("small_step_limit")
+async def test_endless_sorted_key_function_hits_the_limit(tmp_path: Path) -> None:
+    body = """
+log = []
+
+def spin(x):
+    try:
+        while True:
+            pass
+    finally:
+        log.append("finally")
+
+@action
+def go(event):
+    try:
+        sorted([1, 2], key=spin)
+    except TimeoutError as err:
+        return [str(err), log]
+"""
+    message, log = await run(tmp_path, body)
+    assert re.fullmatch(LIMIT_MESSAGE, message)
+    assert log == ["finally"]
+
+
+@pytest.mark.usefixtures("small_step_limit")
+async def test_long_iteration_returning_to_the_interpreter_is_not_limited(tmp_path: Path) -> None:
+    body = "@action\ndef go(event):\n    total = 0\n    for x in count_up(30000):\n        total += 1\n    return [total, sum(count_up(30000))]\n"
+    assert await run(tmp_path, body) == [30000, sum(range(30000))]
+
+
+class Clock:
+    """A clock that moves on by a step each time it is read."""
+
+    def __init__(self, step: float) -> None:
+        self.now_value = datetime(2026, 1, 1, tzinfo=UTC)
+        self.step = timedelta(seconds=step)
+
+    def now(self) -> datetime:
+        self.now_value += self.step
+        return self.now_value
+
+
+class Engine:
+    def __init__(self, step: float) -> None:
+        self.clock = Clock(step)
+        self.warned: list[str] = []
+
+    def warn_blocking(self, function: Any) -> None:
+        self.warned.append(function.name)
+
+
+def watch(step: float) -> Any:
+    from haanim.engine.eval_function import NativeCallWatch  # pylint: disable=import-outside-toplevel
+
+    function = SimpleNamespace(name="slow", engine=Engine(step), lineno=1)
+    return NativeCallWatch(function)
+
+
+def test_time_limit() -> None:
+    w = watch(11)
+    assert w() is None  # the first checkpoint starts the watch
+    error = w()
+    assert isinstance(error, TimeoutError)
+    assert "function 'slow' ran for more than 10 seconds" in str(error)
+
+
+def test_warning_still_logged_after_one_second() -> None:
+    w = watch(1.5)
+    assert w() is None
+    assert w() is None
+    assert w._function.engine.warned == ["slow"]  # pylint: disable=protected-access
+
+
+def test_restart_starts_the_count_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    from haanim.engine import eval_function  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(eval_function, "NATIVE_CALL_STEP_LIMIT", 3)
+    w = watch(0)
+    assert [w(), w(), w()] == [None, None, None]
+    w.restart()
+    assert [w(), w(), w()] == [None, None, None]
+    assert isinstance(w(), TimeoutError)

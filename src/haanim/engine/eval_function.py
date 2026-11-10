@@ -19,6 +19,11 @@ if TYPE_CHECKING:
 # How long a function called from outside the interpreter may run before a warning is logged.
 NATIVE_CALL_WARNING_SECONDS = 1.0
 
+# A synchronous run of automation code that goes on longer than this is stopped: it blocks the host.
+# The step limit also stops it when the clock does not move (in tests).
+NATIVE_CALL_LIMIT_SECONDS = 10.0
+NATIVE_CALL_STEP_LIMIT = 5_000_000
+
 # Attribute of the Python function that holds the EvalFunction it belongs to.
 FUNCTION_ATTRIBUTE = "__haanim_function__"
 
@@ -117,7 +122,7 @@ def is_automation_generator(obj: Any) -> bool:
 
 
 def drive_generator(
-    body: Callable[[], Coroutine[Any, Any, Any]], name: str, on_checkpoint: Callable[[], None] | None = None
+    body: Callable[[], Coroutine[Any, Any, Any]], name: str, watch: NativeCallWatch | None = None
 ) -> Generator[Any, Any, Any]:
     """Return a Python generator that runs the coroutine of a generator body.
 
@@ -125,13 +130,13 @@ def drive_generator(
     hands its value to whoever called ``next()`` or ``send()``; ``send``,
     ``throw`` and ``close`` go back into the body at that ``yield``.
     """
-    generator = _drive(body, name, on_checkpoint)
+    generator = _drive(body, name, watch)
     AUTOMATION_GENERATORS.add(generator)
     return generator
 
 
 def _drive(
-    body: Callable[[], Coroutine[Any, Any, Any]], name: str, on_checkpoint: Callable[[], None] | None
+    body: Callable[[], Coroutine[Any, Any, Any]], name: str, watch: NativeCallWatch | None
 ) -> Generator[Any, Any, Any]:
     """The generator ``drive_generator`` returns.
 
@@ -151,12 +156,15 @@ def _drive(
             raise RuntimeError("generator raised StopIteration") from carried.stop
         value_in, error_in = None, None
         if message is None:
-            if on_checkpoint is not None:
-                on_checkpoint()
+            if watch is not None:
+                error_in = watch()
             continue
         if isinstance(message, _Yielded):
             try:
                 value_in = yield message.value
+                if watch is not None:
+                    # Resumed: the limit is on each run between returns to the interpreter
+                    watch.restart()
             except GeneratorExit:
                 coro.close()
                 raise
@@ -170,7 +178,7 @@ def _drive(
 def run_to_completion(
     coro: Coroutine[Any, Any, Any],
     name: str,
-    on_checkpoint: Callable[[], None] | None = None,
+    on_checkpoint: Callable[[], BaseException | None] | None = None,
 ) -> Any:
     """Run a coroutine of a ``def`` function to its end without an event loop.
 
@@ -181,7 +189,7 @@ def run_to_completion(
     Args:
         coro: The coroutine to run.
         name: Function name for the error message.
-        on_checkpoint: Called at every skipped checkpoint.
+        on_checkpoint: Called at every skipped checkpoint; an error it returns is raised in the code.
 
     Returns:
         The coroutine's result.
@@ -189,51 +197,111 @@ def run_to_completion(
     Raises:
         RuntimeError: If the coroutine waits for something.
     """
+    error: BaseException | None = None
     while True:
         try:
-            message = coro.send(None)
+            # The watch's error is raised inside the code, so its finally blocks run
+            message = coro.throw(error) if error is not None else coro.send(None)
         except StopIteration as done:
             return done.value
         except CarriedStopIteration as carried:
             # Leaving an ordinary function, it reaches the native caller as itself
             raise carried.stop from None
+        error = None
         if message is not None:
             coro.close()
             raise RuntimeError(
                 f"Function '{name}' cannot wait for anything: it was called from outside the interpreter"
             )
         if on_checkpoint is not None:
-            on_checkpoint()
+            error = on_checkpoint()
+
+
+class SynchronousRun:
+    """Steps and start time of automation code running synchronously, which blocks the event loop."""
+
+    def __init__(self) -> None:
+        """Start counting."""
+        self.steps = 0
+        self.started: datetime | None = None
+
+    def tick(self, clock: Any) -> tuple[int, float]:
+        """Count a checkpoint; return the steps and the seconds since the first one (0 without a clock)."""
+        self.steps += 1
+        if clock is None:
+            return self.steps, 0.0
+        now = clock.now()
+        if self.started is None:
+            self.started = now
+        return self.steps, (now - self.started).total_seconds()
+
+
+class NativeSection:
+    """The run native code has while the interpreter waits for it to return.
+
+    While native code the interpreter called (``any``, ``sorted``, ...) runs,
+    nothing returns to the event loop, however often it pulls a generator or
+    calls back into automation code: the watches inside count against this run.
+    """
+
+    current: SynchronousRun | None = None
+    """The run of the native code running now; None while the interpreter has control."""
+
+    @classmethod
+    def enter(cls) -> SynchronousRun | None:
+        """Start a run unless one is going on; return the run started, for leave()."""
+        if cls.current is not None:
+            return None
+        cls.current = SynchronousRun()
+        return cls.current
+
+    @classmethod
+    def leave(cls, run: SynchronousRun | None) -> None:
+        """End the run enter() started."""
+        if run is not None:
+            cls.current = None
 
 
 class NativeCallWatch:
-    """Warns when a function called from outside the interpreter runs long.
+    """Watches automation code run synchronously, outside the interpreter's control: a call or a generator.
 
-    Such a call runs without yielding to the event loop, so it blocks the host
-    for as long as it takes. The time is read at the skipped checkpoints only.
+    Such a run does not yield to the event loop, so it blocks the host for as
+    long as it takes. It is warned about after ``NATIVE_CALL_WARNING_SECONDS``
+    and stopped after ``NATIVE_CALL_LIMIT_SECONDS`` or ``NATIVE_CALL_STEP_LIMIT``
+    checkpoints. The time is read at the skipped checkpoints only.
+
+    Inside a native section the run is the section's, whatever the generators
+    in it yield; outside one, it is this watch's since it started or restarted.
     """
 
-    def __init__(self, function: EvalFunction) -> None:
-        """Initialize the watch for one call.
+    def __init__(self, function: Any) -> None:
+        """Initialize the watch for one run.
 
         Args:
-            function: The function being called.
+            function: What runs: anything with ``name``, ``lineno`` and ``engine``.
         """
         self._function = function
-        self._started: datetime | None = None
+        self._run = SynchronousRun()
         self._warned = False
 
-    def __call__(self) -> None:
-        """Check the elapsed time at a skipped checkpoint."""
-        clock = self._function.engine.clock
-        if clock is None or self._warned:
-            return
-        now = clock.now()
-        if self._started is None:
-            self._started = now
-        elif (now - self._started).total_seconds() > NATIVE_CALL_WARNING_SECONDS:
+    def restart(self) -> None:
+        """Start counting again: the code returned to the interpreter (a generator yielded)."""
+        self._run = SynchronousRun()
+        self._warned = False
+
+    def __call__(self) -> BaseException | None:
+        """Check at a skipped checkpoint; return the error that stops the run, or None."""
+        run = NativeSection.current or self._run
+        steps, elapsed = run.tick(self._function.engine.clock)
+        if elapsed > NATIVE_CALL_WARNING_SECONDS and not self._warned:
             self._warned = True
             self._function.engine.warn_blocking(self._function)
+        if elapsed > NATIVE_CALL_LIMIT_SECONDS or steps > NATIVE_CALL_STEP_LIMIT:
+            return TimeoutError(
+                f"function '{self._function.name}' ran for more than {NATIVE_CALL_LIMIT_SECONDS:g} seconds "
+                "without returning to the interpreter, and was stopped: it blocks Home Assistant while it runs"
+            )
+        return None
 
 
 class EvalFunction:
