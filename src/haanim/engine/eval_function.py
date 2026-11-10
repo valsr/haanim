@@ -65,6 +65,20 @@ class Checkpoint:
 CHECKPOINT = Checkpoint()
 
 
+class CarriedStopIteration(Exception):
+    """A ``StopIteration`` on its way through the interpreter's frames.
+
+    Python turns a ``StopIteration`` that leaves a coroutine into
+    ``RuntimeError`` (PEP 479), and the interpreter's frames are coroutines.
+    It travels wrapped in this, and automation code only ever sees ``stop``.
+    """
+
+    def __init__(self, stop: StopIteration) -> None:
+        """Carry a StopIteration."""
+        super().__init__(stop)
+        self.stop = stop
+
+
 class _Yielded:
     """What a generator body hands up through its coroutine at a ``yield``: the value."""
 
@@ -132,6 +146,9 @@ def _drive(
             message = coro.throw(error_in) if error_in is not None else coro.send(value_in)
         except StopIteration as stop:
             return stop.value
+        except CarriedStopIteration as carried:
+            # As in Python, a StopIteration leaving a generator body is an error
+            raise RuntimeError("generator raised StopIteration") from carried.stop
         value_in, error_in = None, None
         if message is None:
             if on_checkpoint is not None:
@@ -172,17 +189,21 @@ def run_to_completion(
     Raises:
         RuntimeError: If the coroutine waits for something.
     """
-    try:
-        while True:
-            if coro.send(None) is not None:
-                coro.close()
-                raise RuntimeError(
-                    f"Function '{name}' cannot wait for anything: it was called from outside the interpreter"
-                )
-            if on_checkpoint is not None:
-                on_checkpoint()
-    except StopIteration as stop:
-        return stop.value
+    while True:
+        try:
+            message = coro.send(None)
+        except StopIteration as done:
+            return done.value
+        except CarriedStopIteration as carried:
+            # Leaving an ordinary function, it reaches the native caller as itself
+            raise carried.stop from None
+        if message is not None:
+            coro.close()
+            raise RuntimeError(
+                f"Function '{name}' cannot wait for anything: it was called from outside the interpreter"
+            )
+        if on_checkpoint is not None:
+            on_checkpoint()
 
 
 class NativeCallWatch:

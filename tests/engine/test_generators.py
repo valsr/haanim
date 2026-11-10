@@ -272,3 +272,66 @@ async def test_yield_in_lambda_rejected(tmp_path: Path) -> None:
 async def test_async_generator_rejected(tmp_path: Path) -> None:
     error = await load_error(tmp_path, "async def agen():\n    yield 1\n")
     assert "async generators are not supported" in (error or "")
+
+
+# --- StopIteration ------------------------------------------------------------------
+
+
+async def test_stop_iteration_is_caught(tmp_path: Path) -> None:
+    body = "@action\ndef go(event):\n    try:\n        next(iter([]))\n    except StopIteration:\n        return 'caught'\n"
+    assert await run(tmp_path, body) == "caught"
+
+
+async def test_stop_iteration_value(tmp_path: Path) -> None:
+    body = """
+def seven():
+    return 7
+    yield
+
+@action
+def go(event):
+    g = seven()
+    try:
+        next(g)
+    except StopIteration as stop:
+        return stop.value
+"""
+    assert await run(tmp_path, body) == 7
+
+
+async def test_except_exception_catches_it(tmp_path: Path) -> None:
+    body = "@action\ndef go(event):\n    try:\n        next(count_up(0))\n    except Exception as err:\n        return type(err).__name__\n"
+    assert await run(tmp_path, body) == "StopIteration"
+
+
+async def test_raise_stop_iteration_statement_is_caught(tmp_path: Path) -> None:
+    body = "@action\ndef go(event):\n    try:\n        raise StopIteration(5)\n    except StopIteration as stop:\n        return stop.value\n"
+    assert await run(tmp_path, body) == 5
+
+
+async def test_stop_iteration_reaches_a_native_caller(tmp_path: Path) -> None:
+    body = """
+def f(x):
+    raise StopIteration
+
+@action
+def go(event):
+    return list(map(f, [1, 2]))
+"""
+    assert await run(tmp_path, body) == []
+
+
+async def test_stop_iteration_leaving_a_generator_body_is_runtime_error(tmp_path: Path) -> None:
+    body = """
+def leaky():
+    yield 1
+    next(iter([]))
+
+@action
+def go(event):
+    try:
+        list(leaky())
+    except RuntimeError as err:
+        return str(err)
+"""
+    assert await run(tmp_path, body) == "generator raised StopIteration"

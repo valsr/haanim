@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from haanim.engine.eval_function import (
     CHECKPOINT,
+    CarriedStopIteration,
     YieldPoint,
     drive_generator,
     ControlFlow,
@@ -426,7 +427,10 @@ class AstEvaluator:
             if eval_function.is_generator:
                 return eval_function.make_generator(*prefix, *args, **kwargs)
             return await eval_function.invoke(*prefix, *args, **kwargs)
-        return func(*args, **kwargs)
+        try:
+            return func(*args, **kwargs)
+        except StopIteration as stop:
+            raise CarriedStopIteration(stop) from None
 
     async def _eval_yield(self, node: ast.Yield, scope: SymbolTable) -> Any:
         """Evaluate a yield: hand the value to the generator's consumer, and be what it sends back."""
@@ -868,8 +872,14 @@ class AstEvaluator:
                 raise exc_info[1].with_traceback(exc_info[2])
             raise AutomationRuntimeError("No active exception to re-raise")
         exc = await self.aeval(node.exc, scope)
+        if isinstance(exc, type) and issubclass(exc, StopIteration):
+            exc = exc()
+        cause = await self.aeval(node.cause, scope) if node.cause else None
+        if isinstance(exc, StopIteration):
+            # Carried across the interpreter's frames: see CarriedStopIteration
+            exc.__cause__ = cause
+            raise CarriedStopIteration(exc) from None
         if node.cause:
-            cause = await self.aeval(node.cause, scope)
             raise exc from cause
         raise exc
 
@@ -903,12 +913,14 @@ class AstEvaluator:
         Returns:
             Whether a clause matched.
         """
+        # Automation code sees a carried StopIteration as itself
+        seen = err.stop if isinstance(err, CarriedStopIteration) else err
         for handler in handlers:
-            if handler.type is not None and not isinstance(err, await self.aeval(handler.type, scope)):
+            if handler.type is not None and not isinstance(seen, await self.aeval(handler.type, scope)):
                 continue
 
             if handler.name:
-                scope.set(handler.name, err)
+                scope.set(handler.name, seen)
             try:
                 for stmt in handler.body:
                     await self.aeval(stmt, scope)
