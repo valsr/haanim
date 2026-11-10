@@ -384,6 +384,49 @@ function renderImage(block, context, id) {
  * `context` has `states` (entity states by ID), `images` (loaded asset URLs), `history` (fetched entity
  * history by graph block ID) and `now`.
  */
+/** A cell of a table as text: booleans are a check and a cross, an empty cell nothing. */
+function tableCell(value) {
+    if (value === null || value === undefined) return '';
+    if (value === true) return '✓';
+    if (value === false) return '✗';
+    return escapeHtml(value);
+}
+
+/**
+ * Render a table: the title as its caption, the column names as its header, then the rows. A column whose
+ * cells are all numbers (or empty) is right-aligned. The table scrolls sideways on its own when it is too wide.
+ */
+function renderTable(block, open) {
+    const columns = block.columns || [];
+    const units = block.units || [];
+    const rows = block.rows || [];
+    const numeric = columns.map((_, index) =>
+        rows.every((row) => row[index] === null || row[index] === undefined || typeof row[index] === 'number')
+    );
+    const cls = (index) => (numeric[index] ? ' class="number"' : '');
+    const caption = block.title ? `<caption>${escapeHtml(block.title)}</caption>` : '';
+    const head = columns.map((name, index) => `<th${cls(index)}>${escapeHtml(name)}</th>`).join('');
+    const body = rows.length
+        ? rows
+              .map((row) => {
+                  const cells = columns.map((_, index) => {
+                      const value = row[index];
+                      const unit =
+                          units[index] && value !== null && value !== undefined
+                              ? ` <span class="unit">${escapeHtml(units[index])}</span>`
+                              : '';
+                      return `<td${cls(index)}>${tableCell(value)}${unit}</td>`;
+                  });
+                  return `<tr>${cells.join('')}</tr>`;
+              })
+              .join('')
+        : `<tr><td class="empty" colspan="${columns.length}">No rows</td></tr>`;
+    return (
+        `${open}<div class="table-scroll"><table>${caption}<thead><tr>${head}</tr></thead>` +
+        `<tbody>${body}</tbody></table></div></div>`
+    );
+}
+
 export function renderBlock(block, context = {}) {
     const id = escapeHtml(block.id);
     const open = `<div class="block block-${escapeHtml(block.type)}" data-block="${id}">`;
@@ -396,6 +439,8 @@ export function renderBlock(block, context = {}) {
             return `${open.slice(0, -1)} data-html="${id}"></div>`;
         case 'image':
             return renderImage(block, context, id);
+        case 'table':
+            return renderTable(block, open);
         case 'value': {
             const unit = block.unit ? ` <span class="unit">${escapeHtml(block.unit)}</span>` : '';
             return (

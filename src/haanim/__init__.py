@@ -59,6 +59,7 @@ from haanim.engine.card_elements import (
     HtmlElement,
     IconElement,
     ImageElement,
+    TableElement,
     TextElement,
     ValueElement,
 )
@@ -153,6 +154,7 @@ __all__ = [
     "BadgeElement",
     "GraphElement",
     "ButtonElement",
+    "TableElement",
     "HAAnimEntity",
     "HAAnimServiceCall",
     "HAAnimServiceProxy",

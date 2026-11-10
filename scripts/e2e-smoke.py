@@ -345,6 +345,15 @@ async def run(base: str) -> None:
         result = await smoke.service("haanim", "run_action", True, automation_id="demo_layout", action="move")
         check(result == {"result": "second"}, "the layout demo moves an element to another row")
         await smoke.service("haanim", "run_action", automation_id="demo_layout", action="rebuild")
+        layout_card, _ = await smoke.command("haanim/card/subscribe", automation_id="demo_layout")
+        layout = await smoke.event(
+            layout_card, lambda event: "blocks" in event, "the card of the layout demo"
+        )
+        tables = [block for block in layout["blocks"] if block["type"] == "table"]
+        check(
+            len(tables) == 1 and tables[0]["columns"] == ["Room", "Temperature", "State"],
+            "the layout demo's card has a table element",
+        )
         html = await smoke.service(
             "haanim", "run_action", True, automation_id="demo_html", action="set_note", data={}
         )

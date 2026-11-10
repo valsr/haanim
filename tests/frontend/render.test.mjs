@@ -989,3 +989,56 @@ describe('panel pages', () => {
         assert.match(renderConfig({ version: '1' }), /<tbody><\/tbody>/);
     });
 });
+
+describe('table block', () => {
+    const block = (extra = {}) => ({
+        id: 'rooms',
+        type: 'table',
+        title: null,
+        columns: ['Room', 'Temperature', 'Open'],
+        units: ['', '°C', ''],
+        rows: [
+            ['Kitchen', 21.5, true],
+            ['<b>Hall</b>', 19, false],
+        ],
+        ...extra,
+    });
+    test('a real table: header row, then the rows', () => {
+        const html = renderBlock(block());
+        assert.match(html, /^<div class="block block-table" data-block="rooms"><div class="table-scroll"><table>/);
+        assert.match(html, /<thead><tr><th>Room<\/th><th class="number">Temperature<\/th><th>Open<\/th><\/tr><\/thead>/);
+        assert.match(html, /<tbody><tr><td>Kitchen<\/td><td class="number">21.5 <span class="unit">°C<\/span><\/td><td>✓<\/td><\/tr>/);
+        assert.doesNotMatch(html, /<caption>/);
+    });
+    test('text is escaped', () => {
+        assert.match(renderBlock(block()), /<td>&lt;b&gt;Hall&lt;\/b&gt;<\/td>/);
+        assert.match(renderBlock(block({ columns: ['<i>', 'T', 'O'] })), /<th>&lt;i&gt;<\/th>/);
+    });
+    test('booleans are a check and a cross', () => {
+        const html = renderBlock(block());
+        assert.match(html, /<td>✓<\/td>/);
+        assert.match(html, /<td>✗<\/td>/);
+    });
+    test('an empty cell has no unit', () => {
+        const html = renderBlock(block({ rows: [['Kitchen', null, true]] }));
+        assert.match(html, /<td class="number"><\/td>/);
+    });
+    test('a column with text in it is not numeric', () => {
+        const html = renderBlock(block({ rows: [['Kitchen', 'n/a', true], ['Hall', 19, false]] }));
+        assert.match(html, /<th>Temperature<\/th>/);
+        assert.match(html, /<td>n\/a <span class="unit">°C<\/span><\/td>/);
+    });
+    test('a title is the caption', () => {
+        assert.match(renderBlock(block({ title: 'Climate <now>' })), /<table><caption>Climate &lt;now&gt;<\/caption>/);
+    });
+    test('a table without rows says so', () => {
+        const html = renderBlock(block({ rows: [] }));
+        assert.match(html, /<thead>/);
+        assert.match(html, /<tbody><tr><td class="empty" colspan="3">No rows<\/td><\/tr><\/tbody>/);
+    });
+    test('missing parts do not break it', () => {
+        assert.match(renderBlock({ id: 't', type: 'table' }), /<table>/);
+        assert.match(renderBlock({ id: 't', type: 'table', columns: ['A'], rows: [[1]] }), /<td class="number">1<\/td>/);
+    });
+});
+

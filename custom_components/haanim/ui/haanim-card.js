@@ -50,6 +50,13 @@ const STYLES = `
     .block-value, .block-entity { display: flex; justify-content: space-between; gap: 12px; }
     .block .label { color: var(--secondary-text-color); }
     .block .value { font-weight: 500; }
+    .table-scroll { overflow-x: auto; }
+    .block-table table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
+    .block-table caption { text-align: left; font-weight: 500; padding-bottom: 4px; }
+    .block-table th { text-align: left; font-weight: 500; color: var(--secondary-text-color); }
+    .block-table th, .block-table td { padding: 4px 8px; border-bottom: 1px solid var(--divider-color, #e0e0e0); white-space: nowrap; }
+    .block-table .number { text-align: right; font-variant-numeric: tabular-nums; }
+    .block-table td.empty { color: var(--secondary-text-color); text-align: center; }
     .block img { max-width: 100%; border-radius: 4px; object-fit: contain; vertical-align: top; }
     .block-image[data-more-info] img { cursor: pointer; }
     .block-image.align-center { text-align: center; }

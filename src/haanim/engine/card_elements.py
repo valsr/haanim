@@ -68,8 +68,11 @@ __all__ = [
     "MAX_HTML_LENGTH",
     "MAX_IMAGE_SIZE",
     "MAX_ROW_CELLS",
+    "MAX_TABLE_COLUMNS",
+    "MAX_TABLE_ROWS",
     "MAX_TEXT_LENGTH",
     "MAX_TITLE_LENGTH",
+    "TableElement",
     "TextElement",
     "ValueElement",
 ]
@@ -91,6 +94,12 @@ GAUGE_KINDS = ("bar", "dial")
 
 MAX_BADGE_LENGTH = 40
 """The most characters the text of a badge can have."""
+
+MAX_TABLE_COLUMNS = 12
+"""The most columns a table can have."""
+
+MAX_TABLE_ROWS = 200
+"""The most rows a table can have."""
 
 
 def _optional(value: Any) -> str | None:
@@ -308,6 +317,132 @@ class ValueElement(CardElement):
     def set_unit(self, unit: str) -> None:
         """Change the unit."""
         self._apply(unit=unit)
+
+
+TableCell = str | int | float | bool | None
+"""What a cell of a table holds: a string, a number, a boolean, or nothing (an empty cell)."""
+
+
+def _table_cell(value: Any, row: int) -> TableCell:
+    """Check one cell of a table."""
+    if value is None or isinstance(value, (bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"row {row}: a cell must be a finite number, not {value!r}")
+        return value
+    if isinstance(value, str):
+        if len(value) > MAX_TEXT_LENGTH:
+            raise ValueError(f"row {row}: a cell has more than {MAX_TEXT_LENGTH} characters")
+        return value
+    raise TypeError(
+        f"row {row}: a cell must be a string, number, boolean or None, not {type(value).__name__}"
+    )
+
+
+def _table_rows(rows: Any, width: int) -> list[list[TableCell]]:
+    """Check the rows of a table: each a sequence of exactly ``width`` cells."""
+    if isinstance(rows, (str, bytes)) or not isinstance(rows, Sequence):
+        raise TypeError(f"rows must be a list of rows, not {type(rows).__name__}")
+    if len(rows) > MAX_TABLE_ROWS:
+        raise ValueError(f"a table can have at most {MAX_TABLE_ROWS} rows, not {len(rows)}")
+    checked = []
+    for index, row in enumerate(rows):
+        if isinstance(row, (str, bytes)) or not isinstance(row, Sequence):
+            raise TypeError(f"row {index} must be a list of cells, not {type(row).__name__}")
+        if len(row) != width:
+            raise ValueError(f"row {index} has {len(row)} cells; the table has {width} columns")
+        checked.append([_table_cell(value, index) for value in row])
+    return checked
+
+
+class TableElement(CardElement):
+    """A table of values: a header row of column names, then rows of strings, numbers and booleans."""
+
+    TYPE = "table"
+
+    def _build(self, **arguments: Any) -> dict[str, Any]:
+        columns = arguments["columns"]
+        if isinstance(columns, (str, bytes)) or not isinstance(columns, Sequence):
+            raise TypeError(f"columns must be a list of column names, not {type(columns).__name__}")
+        if not 1 <= len(columns) <= MAX_TABLE_COLUMNS:
+            raise ValueError(f"a table has 1 to {MAX_TABLE_COLUMNS} columns, not {len(columns)}")
+        names = []
+        for name in columns:
+            if not isinstance(name, str):
+                raise TypeError(f"a column name must be a string, not {type(name).__name__}")
+            names.append(_check_str(name, "column name"))
+        units = arguments["units"]
+        units = [""] * len(names) if units is None else [_check_str(unit, "unit") for unit in units]
+        if len(units) != len(names):
+            raise ValueError(f"units has {len(units)} entries; the table has {len(names)} columns")
+        title = arguments["title"]
+        return {
+            "title": None if title is None else _check_str(title, "title"),
+            "columns": names,
+            "units": units,
+            "rows": _table_rows(arguments["rows"], len(names)),
+        }
+
+    @property
+    def title(self) -> str | None:
+        """The caption above the table; None for none."""
+        title: str | None = self._content["title"]
+        return title
+
+    @property
+    def columns(self) -> list[str]:
+        """The column names."""
+        return list(self._content["columns"])
+
+    @property
+    def units(self) -> list[str]:
+        """The unit shown after the values of each column; empty for none."""
+        return list(self._content["units"])
+
+    @property
+    def rows(self) -> list[list[TableCell]]:
+        """A copy of the rows."""
+        return copy.deepcopy(self._content["rows"])
+
+    def set_rows(self, rows: Sequence[Sequence[TableCell]]) -> None:
+        """Replace every row."""
+        self._apply(rows=copy.deepcopy(rows))
+
+    def add_row(self, row: Sequence[TableCell], limit: int | None = None) -> None:
+        """Add a row at the bottom; with a limit, drop the oldest rows so that at most ``limit`` remain."""
+        rows = [*copy.deepcopy(self._content["rows"]), copy.deepcopy(row)]
+        if limit is not None:
+            if limit < 1:
+                raise ValueError(f"limit must be at least 1, not {limit}")
+            rows = rows[-limit:]
+        self._apply(rows=rows)
+
+    def set_cell(self, row: int, column: int, value: TableCell) -> None:
+        """Change one cell, by row and column index.
+
+        Raises:
+            IndexError: If there is no such row or column.
+        """
+        rows = copy.deepcopy(self._content["rows"])
+        if not 0 <= row < len(rows):
+            raise IndexError(f"the table has no row {row}")
+        if not 0 <= column < len(self._content["columns"]):
+            raise IndexError(f"the table has no column {column}")
+        rows[row][column] = value
+        self._apply(rows=rows)
+
+    def clear(self) -> None:
+        """Remove every row; the columns stay."""
+        self._apply(rows=[])
+
+    def set_columns(self, columns: Sequence[str], units: Sequence[str] | None = None) -> None:
+        """Change the columns, and their units; every row must then have one cell for each."""
+        self._apply(columns=copy.deepcopy(columns), units=copy.deepcopy(units))
+
+    def set_title(self, title: str | None) -> None:
+        """Change the caption above the table; None for none."""
+        self._apply(title=title)
 
 
 class EntityElement(CardElement):

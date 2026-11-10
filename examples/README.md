@@ -20,7 +20,7 @@ Put the card of a demo on a dashboard (`type: custom:haanim-card`, `automation_i
 | `demo_basics/`   | Where to start: text, a value and buttons on a card; actions with data, a result and a confirmation; the title and the status message; hiding the card's fixed parts; an event and a cron trigger |
 | `demo_controls/` | The elements that show a state: values, entities, icons, gauges (bar and dial) and badges, driven by the automation or following an entity |
 | `demo_entities/` | The automation's own device: a sensor it updates, and a switch, a number, a select and a button users operate in Home Assistant |
-| `demo_layout/`   | Rows and cells: `split_row()`, rows that are not full, a table made of rows, and moving, removing and rebuilding |
+| `demo_layout/`   | Rows and cells: `split_row()`, rows that are not full, a table made of rows and a table element, and moving, removing and rebuilding |
 | `demo_graphs/`   | Graphs of plain numbers, of pairs, over time, of states as a timeline, and of the history of entities; changing a graph in place |
 | `demo_images/`   | Images from `assets/` and from an address; width, height, alignment and caption; the live picture of a camera |
 | `demo_html/`     | Raw HTML: a table, styled boxes, links and swatches that run actions, and escaping text from outside |

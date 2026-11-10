@@ -451,6 +451,7 @@ actions, which exist only once the file has run: create buttons in `@startup`.
 | `create_html(id, html)`                                     | Raw HTML, shown as it is                   | `set_html`                                      |
 | `create_image(id, asset=None, url=None, alt="", ...)`       | An image from `assets/`, from a URL, or a camera's live picture | `set_asset`, `set_url`, `set_entity`, `set_refresh`, `set_alt`, `set_size`, `set_align`, `set_caption` |
 | `create_value(id, label, value, unit="")`                   | A labelled value                           | `set_value`, `set_label`, `set_unit`            |
+| `create_table(id, columns, rows=(), units=None, title=None)` | Rows of values under column names          | `set_rows`, `add_row`, `set_cell`, `clear`, `set_columns`, `set_title` |
 | `create_entity(id, entity_id)`                              | The live state of an entity                | `set_entity`                                    |
 | `create_icon(id, entity_id=None, icon=None, ...)`           | An icon, driven by an entity by default    | `set_icon`, `set_color`, `set_spin`, `set_label`, `set_entity`, `set_follow_entity` |
 | `create_gauge(id, value=None, entity_id=None, ...)`         | A progress bar or a dial                   | `set_value`, `set_entity`, `set_range`, `set_label`, `set_unit`, `set_kind`, `set_color` |
@@ -460,6 +461,28 @@ actions, which exist only once the file has run: create buttons in `@startup`.
 
 A setter that is given something invalid raises and leaves the element as it was. Markdown is sanitised:
 raw HTML is removed. A button calls its action with its extra keyword arguments as `event.data`.
+
+### Tables
+
+A table shows rows of values under column names. Cells are strings, numbers, booleans (shown as ✓ and ✗) or
+`None` for an empty cell; a column of numbers is right-aligned, and a unit is shown after each value of its
+column. Every row has one cell per column.
+
+```python
+rooms = haa.card.create_table(
+    "rooms",
+    columns=["Room", "Temperature", "Open"],
+    units=["", UnitOfTemperature.CELSIUS, ""],
+    rows=[["Kitchen", 21.5, False], ["Bedroom", 19.0, True]],
+    title="Climate",
+)
+haa.card.add_element(rooms)
+rooms.set_cell(0, 1, 21.8)                       # row 0, column 1
+rooms.add_row(["Office", 22.1, False])
+rooms.add_row(["Hall", 18.4, False], limit=20)   # keeps the last 20 rows: a rolling log
+```
+
+A table has at most 12 columns and 200 rows; it scrolls sideways when it is wider than its cell.
 
 ### Layout
 
