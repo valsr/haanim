@@ -36,25 +36,10 @@ UNSUPPORTED: dict[str, tuple[str, int, str]] = {
         2,
         "'async for' outside async function",
     ),
-    "async list comprehension": (
-        "async def f(items):\n    return [x async for x in items]\n",
+    "async comprehension outside an async def": (
+        "items = []\nr = [x async for x in items]\n",
         2,
-        "async comprehensions",
-    ),
-    "async set comprehension": (
-        "async def f(items):\n    return {x async for x in items}\n",
-        2,
-        "async comprehensions",
-    ),
-    "async dict comprehension": (
-        "async def f(items):\n    return {x: 1 async for x in items}\n",
-        2,
-        "async comprehensions",
-    ),
-    "async inner comprehension clause": (
-        "async def f(rows):\n    return [x for row in rows async for x in row]\n",
-        2,
-        "async comprehensions",
+        "asynchronous comprehension outside of an asynchronous function",
     ),
     "match": ("value = 1\nmatch value:\n    case 1:\n        pass\n", 2, "'match' statements"),
     "except*": ("try:\n    pass\nexcept* ValueError:\n    pass\n", 1, "'except*'"),

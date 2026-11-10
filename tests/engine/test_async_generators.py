@@ -392,3 +392,86 @@ async def go(event):
         # The event loop's finalizer closes the collected generator on its next turns
         await automation.clock.settle()
         assert await automation.call("logged") == ["finalized"]
+
+
+# --- Async comprehensions and async generator expressions ---------------------------
+
+
+async def test_async_list_set_dict_comprehensions(tmp_path: Path) -> None:
+    body = """
+@action
+async def go(event):
+    return [
+        [x async for x in count_up_async(3)],
+        sorted({x % 2 async for x in count_up_async(4)}),
+        {str(x): x * x async for x in count_up_async(3)},
+    ]
+"""
+    assert await run(tmp_path, body) == [[0, 1, 2], [0, 1], {"0": 0, "1": 1, "2": 4}]
+
+
+async def test_await_in_element_and_condition(tmp_path: Path) -> None:
+    body = """
+async def double(x):
+    return x * 2
+
+async def keep(x):
+    return x != 1
+
+@action
+async def go(event):
+    return [await double(x) async for x in count_up_async(3) if await keep(x)]
+"""
+    assert await run(tmp_path, body) == [0, 4]
+
+
+async def test_async_generator_expression_is_lazy_and_async(tmp_path: Path) -> None:
+    body = """
+import inspect
+
+async def tracked():
+    for i in range(5):
+        note(i)
+        yield i
+
+@action
+async def go(event):
+    ag = (x * 10 async for x in tracked())
+    first = await anext(ag)
+    return [inspect.isasyncgen(ag), first, list(log)]
+"""
+    assert await run(tmp_path, body, additional_imports=["inspect"]) == [True, 0, [0]]
+
+
+async def test_generator_expression_with_await_is_async(tmp_path: Path) -> None:
+    body = """
+async def double(x):
+    return x * 2
+
+@action
+async def go(event):
+    ag = (await double(x) for x in range(3))
+    out = []
+    async for x in ag:
+        out.append(x)
+    return out
+"""
+    assert await run(tmp_path, body) == [0, 2, 4]
+
+
+async def test_async_comprehension_outside_async_def_rejected(tmp_path: Path) -> None:
+    assert "asynchronous comprehension outside of an asynchronous function" in (
+        await load_error(tmp_path, "r = [x async for x in count_up_async(2)]\n") or ""
+    )
+
+
+async def test_sync_comprehension_with_await_inside_async_def(tmp_path: Path) -> None:
+    body = """
+async def double(x):
+    return x * 2
+
+@action
+async def go(event):
+    return [await double(x) for x in range(3)]
+"""
+    assert await run(tmp_path, body) == [0, 2, 4]

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import ast
 import builtins
-from collections.abc import Awaitable, Callable, Generator, Iterable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Generator, Iterable
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +20,7 @@ from haanim.engine.eval_function import (
     CarriedGeneratorExit,
     NativeCallWatch,
     YieldPoint,
+    drive_async_generator,
     drive_generator,
     is_automation_generator,
 )
@@ -144,24 +145,34 @@ async def walk_comprehension(
     was evaluated already (a generator expression evaluates it when it is made).
     """
 
+    async def handle(clause: ast.comprehension, index: int, item: Any, local_scope: SymbolTable) -> None:
+        if engine.checkpoint_due():
+            await CHECKPOINT
+        inner_scope = local_scope.create_child(SCOPE_COMPREHENSION)
+        await engine.assign_target(clause.target, item, inner_scope)
+        for condition in clause.ifs:
+            if not await engine.aeval(condition, inner_scope):
+                return
+        await process(index + 1, inner_scope)
+
     async def process(index: int, local_scope: SymbolTable) -> None:
         if index >= len(clauses):
             await on_item(local_scope)
             return
         clause = clauses[index]
         iterable = first if index == 0 and first is not None else await engine.aeval(clause.iter, local_scope)
-        for item in iterable:
-            if engine.checkpoint_due():
-                await CHECKPOINT
-            inner_scope = local_scope.create_child(SCOPE_COMPREHENSION)
-            await engine.assign_target(clause.target, item, inner_scope)
-            passed = True
-            for condition in clause.ifs:
-                if not await engine.aeval(condition, inner_scope):
-                    passed = False
-                    break
-            if passed:
-                await process(index + 1, inner_scope)
+        if not clause.is_async:
+            for item in iterable:
+                await handle(clause, index, item, local_scope)
+            return
+        # async for: the items are awaited from an async iterator
+        iterator = aiter(iterable)
+        while True:
+            try:
+                item = await anext(iterator)
+            except StopAsyncIteration:
+                return
+            await handle(clause, index, item, local_scope)
 
     await process(0, scope)
 
@@ -193,17 +204,35 @@ async def dict_comprehension(engine: AstEvaluator, node: ast.DictComp, scope: Sy
 
 async def generator_expression(
     engine: AstEvaluator, node: ast.GeneratorExp, scope: SymbolTable
-) -> Generator[Any, Any, Any]:
+) -> Generator[Any, Any, Any] | AsyncGenerator[Any, Any]:
     """Return the lazy generator of a generator expression.
 
     As in Python, the first ``for``'s iterable is evaluated now; the rest as items are pulled.
     """
-    first = iter(await engine.aeval(node.generators[0].iter, scope))
+    is_async = any(clause.is_async for clause in node.generators) or _awaits(node)
+    evaluated = await engine.aeval(node.generators[0].iter, scope)
+    first = aiter(evaluated) if node.generators[0].is_async else iter(evaluated)
 
     async def hand_out(local_scope: SymbolTable) -> None:
         await YieldPoint(await engine.aeval(node.elt, local_scope))
 
+    def body() -> Coroutine[Any, Any, None]:
+        return walk_comprehension(engine, node.generators, scope, hand_out, first)
+
+    if is_async:
+        # An async generator expression, as in Python: it has async for or await
+        return drive_async_generator(body, "<genexpr>")
     watch = NativeCallWatch(SimpleNamespace(name="<genexpr>", lineno=node.lineno, engine=engine))
-    return drive_generator(
-        lambda: walk_comprehension(engine, node.generators, scope, hand_out, first), "<genexpr>", watch
-    )
+    return drive_generator(body, "<genexpr>", watch)
+
+
+def _awaits(node: ast.GeneratorExp) -> bool:
+    """Return whether a generator expression awaits, not counting functions and lambdas inside it."""
+    stack: list[ast.AST] = list(ast.iter_child_nodes(node))
+    while stack:
+        child = stack.pop()
+        if isinstance(child, ast.Await):
+            return True
+        if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+            stack.extend(ast.iter_child_nodes(child))
+    return False

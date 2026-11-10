@@ -46,8 +46,6 @@ _UNSUPPORTED_NODES: dict[type[ast.AST], str] = {
     ast.TryStar: "'except*' is not supported",
 }
 
-_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp)
-
 
 @dataclass(frozen=True)
 class Problem:
@@ -111,9 +109,6 @@ def find_unsupported(tree: ast.AST, filename: str) -> list[Problem]:
                     )
                 )
         message = _UNSUPPORTED_NODES.get(type(node))
-        if message is None and isinstance(node, _COMPREHENSIONS):
-            if any(generator.is_async for generator in node.generators):
-                message = "async comprehensions are not supported"
         if message is not None:
             problems.append(
                 Problem(
