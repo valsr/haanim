@@ -475,3 +475,72 @@ async def go(event):
     return [await double(x) for x in range(3)]
 """
     assert await run(tmp_path, body) == [0, 2, 4]
+
+
+# --- Final review fixes -------------------------------------------------------------
+
+
+async def test_nested_generator_expression_that_awaits_keeps_the_outer_one_sync(tmp_path: Path) -> None:
+    body = """
+async def ident(x):
+    return x
+
+@action
+async def go(event):
+    g = ((await ident(z) for z in [x]) for x in [1, 2])
+    out = []
+    for inner in g:
+        async for v in inner:
+            out.append(v)
+    return out
+"""
+    assert await run(tmp_path, body) == [1, 2]
+
+
+async def test_async_listcomp_inside_a_generator_expression_makes_it_async(tmp_path: Path) -> None:
+    body = """
+@action
+async def go(event):
+    g = ([z async for z in count_up_async(x)] for x in [1, 2])
+    out = []
+    async for v in g:
+        out.append(v)
+    return out
+"""
+    assert await run(tmp_path, body) == [[0], [0, 1]]
+
+
+CYCLE = """
+import gc
+
+class Holder:
+    async def agen(self):
+        try:
+            yield 1
+            yield 2
+        finally:
+            note("finally")
+
+@action
+async def go(event):
+    holder = Holder()
+    holder.g = holder.agen()
+    await anext(holder.g)
+    del holder
+    gc.collect()
+    return "dropped"
+"""
+
+
+# Python itself closes the body's coroutine in the same collection and reports that it could not; HAAnim cannot
+# intercept that one
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning")
+async def test_async_generator_collected_in_a_cycle_warns_clearly(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    async with AutomationHarness(write(tmp_path, CYCLE), additional_imports=["gc"]) as automation:
+        assert await automation.call("go") == "dropped"
+        await automation.clock.settle()
+        await automation.clock.settle()
+    assert "cannot reuse already awaited coroutine" not in caplog.text
+    assert "garbage-collected in a reference cycle" in caplog.text

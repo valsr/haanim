@@ -109,6 +109,11 @@ async comprehensions (`[x async for x in ...]`, inside an `async def`). They run
 automation code, so they can wait between items without blocking anything; `asend()`, `athrow()` and
 `aclose()` work, and their `finally` blocks may `await`.
 
+When a generator's cleanup matters, close it when you are done with it (`close()`, `await aclose()`, or
+`async with contextlib.aclosing(agen)`): one left behind, for instance after `break`, is closed later by
+the garbage collector, and one caught in a reference cycle (kept in an attribute of an object it refers to)
+may not run its `finally` at all; HAAnim logs a warning when that happens.
+
 ```python
 from haanim import action, haa
 

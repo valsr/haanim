@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import ast
 import builtins
+import functools
+import inspect
+import types
 from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Generator
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -209,7 +212,7 @@ async def generator_expression(
 
     As in Python, the first ``for``'s iterable is evaluated now; the rest as items are pulled.
     """
-    is_async = any(clause.is_async for clause in node.generators) or _awaits(node)
+    is_async = _is_async_generator_expression(node)
     evaluated = await engine.aeval(node.generators[0].iter, scope)
     first = aiter(evaluated) if node.generators[0].is_async else iter(evaluated)
 
@@ -226,16 +229,23 @@ async def generator_expression(
     return drive_generator(body, "<genexpr>", watch)
 
 
-def _awaits(node: ast.GeneratorExp) -> bool:
-    """Return whether a generator expression awaits, not counting functions and lambdas inside it."""
-    stack: list[ast.AST] = list(ast.iter_child_nodes(node))
-    while stack:
-        child = stack.pop()
-        if isinstance(child, ast.Await):
-            return True
-        if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
-            stack.extend(ast.iter_child_nodes(child))
-    return False
+def _is_async_generator_expression(node: ast.GeneratorExp) -> bool:
+    """Return whether Python makes a generator expression an async generator.
+
+    Python's own rules decide: its compiler compiles the expression inside an
+    ``async def`` and the generator's code object says. (It is async with an
+    ``async for`` or ``await`` of its own, including in list, set and dict
+    comprehensions inlined into it, but not one of a nested generator expression.)
+    """
+    return _compiled_async(ast.unparse(node))
+
+
+@functools.lru_cache(maxsize=1024)
+def _compiled_async(source: str) -> bool:
+    code = compile(f"async def _f():\n    return ({source})\n", "<genexpr>", "exec")
+    function = next(const for const in code.co_consts if isinstance(const, types.CodeType))
+    genexpr = next(const for const in function.co_consts if isinstance(const, types.CodeType))
+    return bool(genexpr.co_flags & inspect.CO_ASYNC_GENERATOR)  # pylint: disable=no-member
 
 
 async def async_for(

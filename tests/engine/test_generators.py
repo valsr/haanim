@@ -691,3 +691,25 @@ def go(event):
     return log
 """
     assert await run(tmp_path, body) == ["exit"]
+
+
+def test_a_broken_await_chain_is_detected() -> None:
+    """A generator body whose inner coroutines are gone cannot be cleaned up; it is detected, not resumed."""
+    from haanim.engine.eval_function import await_chain_is_broken  # pylint: disable=import-outside-toplevel
+
+    class Once:
+        def __await__(self):  # type: ignore[no-untyped-def]
+            yield
+
+    async def inner() -> None:
+        await Once()
+
+    async def outer() -> None:
+        await inner()
+
+    coro = outer()
+    coro.send(None)
+    assert not await_chain_is_broken(coro)
+    coro.cr_await.close()  # type: ignore[union-attr]
+    assert await_chain_is_broken(coro)
+    coro.close()

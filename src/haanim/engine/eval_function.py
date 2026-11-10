@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import logging
 import types
 import weakref
 from collections.abc import AsyncGenerator, Callable, Coroutine, Generator
@@ -68,6 +69,8 @@ class Checkpoint:
 
 
 CHECKPOINT = Checkpoint()
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CarriedStopIteration(Exception):
@@ -182,13 +185,47 @@ def _drive(
                     # Resumed: the limit is on each run between returns to the interpreter
                     watch.restart()
             except GeneratorExit:
-                _close_body(coro, watch)
+                if await_chain_is_broken(coro):
+                    _warn_collected(name)
+                else:
+                    _close_body(coro, watch)
                 raise
             except BaseException as err:  # pylint: disable=broad-exception-caught
                 error_in = err
             continue
         coro.close()
         raise RuntimeError(f"Generator '{name}' cannot wait for anything")
+
+
+def await_chain_is_broken(coro: Coroutine[Any, Any, Any]) -> bool:
+    """Return whether something a suspended coroutine awaits, down its chain, has already finished.
+
+    That happens when the garbage collector finalizes a generator caught in a
+    reference cycle after the coroutines of its body: the body can no longer
+    be resumed, so its cleanup cannot run.
+    """
+    awaiting: Any = coro
+    while awaiting is not None:
+        if inspect.iscoroutine(awaiting):
+            if awaiting.cr_frame is None:
+                return True
+            awaiting = awaiting.cr_await
+        elif inspect.isgenerator(awaiting):
+            if awaiting.gi_frame is None:
+                return True
+            awaiting = awaiting.gi_yieldfrom
+        else:
+            return False
+    return False
+
+
+def _warn_collected(name: str) -> None:
+    """Log that a generator's cleanup could not run because it was collected in a reference cycle."""
+    _LOGGER.warning(
+        "Generator '%s' was garbage-collected in a reference cycle, so its finally did not run;"
+        " close it when done with it (close(), aclose() or contextlib.aclosing)",
+        name,
+    )
 
 
 def _close_body(coro: Coroutine[Any, Any, Any], watch: NativeCallWatch | None) -> None:
@@ -278,7 +315,10 @@ async def _adrive(body: Callable[[], Coroutine[Any, Any, Any]], name: str) -> As
             try:
                 value_in = yield message.value
             except GeneratorExit:
-                await _aclose_body(coro)
+                if await_chain_is_broken(coro):
+                    _warn_collected(name)
+                else:
+                    await _aclose_body(coro)
                 raise
             except BaseException as err:  # pylint: disable=broad-exception-caught
                 error_in = err
