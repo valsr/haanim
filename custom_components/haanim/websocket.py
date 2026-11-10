@@ -5,6 +5,10 @@
 - ``haanim/card/subscribe``: the card content of one automation, now and whenever it changes.
 - ``haanim/logs/subscribe``: the recent log records of one automation, then each new one.
 - ``haanim/config/get``: the integration's version and options.
+- ``haanim/entities/list``: the entities of one automation's device.
+- ``haanim/entities/subscribe``: the same, now and whenever an entity changes.
+- ``haanim/entities/remove``: remove a leftover entity.
+- ``haanim/entities/purge``: reset a declared entity's stored state and attributes.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from homeassistant.components.websocket_api.connection import ActiveConnection
 from homeassistant.components.websocket_api.decorators import async_response, websocket_command
 from homeassistant.components.websocket_api.messages import event_message
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 
 from custom_components.haanim.automation_manager import AutomationManager, async_get_manager
 from custom_components.haanim.const import DOMAIN, VERSION
@@ -27,6 +32,29 @@ from custom_components.haanim.options import option_values
 
 ERR_NOT_FOUND = "not_found"
 ERR_NOT_READY = "not_ready"
+ERR_DECLARED = "declared"
+ERR_LEFTOVER = "leftover"
+
+
+def _entities(hass: HomeAssistant, manager: AutomationManager, automation_id: str) -> dict[str, Any]:
+    """Return what the entities tab shows of an automation's device."""
+    registry = er.async_get(hass)
+    sink = manager.entity_sink
+    items = []
+    for stored in manager.devices.store(automation_id).entities():
+        entity_id = registry.async_get_entity_id(stored.platform, DOMAIN, stored.unique_id(automation_id))
+        items.append(
+            {
+                "key": stored.key,
+                "object_id": stored.object_id,
+                "entity_id": entity_id or stored.entity_id(automation_id),
+                "platform": stored.platform,
+                "name": stored.options.get("name") or stored.object_id,
+                "state": stored.state,
+                "declared": stored.declared,
+            }
+        )
+    return {"device_id": sink.device_id(automation_id) if sink else None, "entities": items}
 
 
 def _summary(manager: AutomationManager, automation_id: str) -> dict[str, Any]:
@@ -74,6 +102,7 @@ def _detail(
             {"name": action.name, "aliases": list(action.aliases), "description": action.description or ""}
             for action in manager.automation_actions(automation_id)
         ],
+        "entity_count": len(manager.devices.store(automation_id).entities()),
     }
 
 
@@ -167,6 +196,77 @@ async def ws_get_config(hass: HomeAssistant, connection: ActiveConnection, msg: 
         connection.send_result(msg["id"], {"version": VERSION, "options": option_values(manager.entry)})
 
 
+@websocket_command({vol.Required("type"): f"{DOMAIN}/entities/list", vol.Required("automation_id"): str})
+@async_response
+async def ws_list_entities(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
+    """Answer with the entities of an automation's device, leftovers included."""
+    manager = await _manager_for(hass, connection, msg)
+    if manager is not None:
+        connection.send_result(msg["id"], _entities(hass, manager, msg["automation_id"]))
+
+
+@websocket_command({vol.Required("type"): f"{DOMAIN}/entities/subscribe", vol.Required("automation_id"): str})
+@async_response
+async def ws_subscribe_entities(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
+    """Send the entities of an automation's device now and whenever one changes or goes away."""
+    manager = await _manager_for(hass, connection, msg)
+    if manager is None:
+        return
+    sink = manager.entity_sink
+    if sink is None:
+        connection.send_error(msg["id"], ERR_NOT_READY, "Entities are not available")
+        return
+    automation_id = msg["automation_id"]
+
+    @callback
+    def forward() -> None:
+        connection.send_message(event_message(msg["id"], _entities(hass, manager, automation_id)))
+
+    connection.subscriptions[msg["id"]] = sink.subscribe(automation_id, forward)
+    connection.send_result(msg["id"])
+    forward()
+
+
+@websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/entities/remove", vol.Required("automation_id"): str, vol.Required("key"): str}
+)
+@async_response
+async def ws_remove_entity(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
+    """Remove a leftover entity from Home Assistant and from storage."""
+    manager = await _manager_for(hass, connection, msg)
+    if manager is None:
+        return
+    store = manager.devices.store(msg["automation_id"])
+    stored = store.get(msg["key"])
+    if stored is None:
+        connection.send_error(msg["id"], ERR_NOT_FOUND, f"No entity '{msg['key']}'")
+    elif stored.declared:
+        connection.send_error(msg["id"], ERR_DECLARED, "delete the class first")
+    else:
+        store.remove(msg["key"])
+        connection.send_result(msg["id"])
+
+
+@websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/entities/purge", vol.Required("automation_id"): str, vol.Required("key"): str}
+)
+@async_response
+async def ws_purge_entity(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
+    """Reset a declared entity's stored state and attributes to its declaration's initial ones."""
+    manager = await _manager_for(hass, connection, msg)
+    if manager is None:
+        return
+    store = manager.devices.store(msg["automation_id"])
+    stored = store.get(msg["key"])
+    if stored is None:
+        connection.send_error(msg["id"], ERR_NOT_FOUND, f"No entity '{msg['key']}'")
+    elif not stored.declared:
+        connection.send_error(msg["id"], ERR_LEFTOVER, "A leftover cannot be purged; remove it instead")
+    else:
+        store.purge(msg["key"])
+        connection.send_result(msg["id"])
+
+
 @callback
 def async_register_websocket(hass: HomeAssistant) -> None:
     """Register the websocket commands."""
@@ -175,3 +275,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     async_register_command(hass, ws_subscribe_card)
     async_register_command(hass, ws_subscribe_logs)
     async_register_command(hass, ws_get_config)
+    async_register_command(hass, ws_list_entities)
+    async_register_command(hass, ws_subscribe_entities)
+    async_register_command(hass, ws_remove_entity)
+    async_register_command(hass, ws_purge_entity)
