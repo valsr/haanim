@@ -26,6 +26,7 @@ EXAMPLES = (
     "demo_basics",
     "demo_calls",
     "demo_controls",
+    "demo_entities",
     "demo_errors",
     "demo_graphs",
     "demo_html",
@@ -188,6 +189,30 @@ async def run(base: str) -> None:
         check(
             attributes["device_class"] == "enum" and attributes["enabled"] is True,
             "the entity has its attributes",
+        )
+
+        # --- The device and the entities an automation declares ---------------------------------
+        for entity_id in (
+            "sensor.haanim_demo_entities_ticks",
+            "switch.haanim_demo_entities_boost",
+            "number.haanim_demo_entities_target",
+            "select.haanim_demo_entities_mode",
+            "button.haanim_demo_entities_reset",
+        ):
+            check(entity_id in by_id, f"declared entity {entity_id} exists")
+        check(
+            by_id["sensor.haanim_demo_entities_ticks"]["attributes"].get("unit_of_measurement") == "min",
+            "the declared sensor has its unit",
+        )
+        await smoke.service("switch", "turn_on", entity_id="switch.haanim_demo_entities_boost")
+        _, states = await smoke.command("get_states")
+        boost = {state["entity_id"]: state for state in states}["switch.haanim_demo_entities_boost"]
+        check(boost["state"] == "on", f"turning the switch on runs its hook: {boost['state']}")
+        await smoke.service("switch", "turn_off", entity_id="switch.haanim_demo_entities_boost")
+        _, listed_entities = await smoke.command("haanim/entities/list", automation_id="demo_entities")
+        check(
+            len(listed_entities["entities"]) == 5 and listed_entities["device_id"],
+            "haanim/entities/list lists the device's entities",
         )
 
         # --- Services ------------------------------------------------------------------------
