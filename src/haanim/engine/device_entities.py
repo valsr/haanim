@@ -16,6 +16,7 @@ from typing import Any
 from haanim.const import ActionMode
 from haanim.engine.automation_ids import automation_id as slug
 from haanim.engine.errors import AutomationDefinitionError
+from haanim.engine.variables import _check_json
 
 ENTITY_ATTRIBUTE = "_haanim_entity"
 
@@ -81,6 +82,10 @@ PLATFORMS: dict[str, PlatformSpec] = {
     "button": PlatformSpec(frozenset({"device_class"}), ("press",), stateful=False),
     "text": PlatformSpec(frozenset({"min_length", "max_length", "pattern", "mode"}), ("set_value",)),
 }
+
+# Home Assistant's defaults for options a declaration leaves out
+NUMBER_MIN, NUMBER_MAX = 0.0, 100.0
+TEXT_MIN_LENGTH, TEXT_MAX_LENGTH = 0, 255
 
 _MODES = {"number": frozenset({"auto", "box", "slider"}), "text": frozenset({"text", "password"})}
 
@@ -164,6 +169,81 @@ def _check_options(platform: str, where: str, options: Mapping[str, Any]) -> Non
             raise AutomationDefinitionError(f"{where}: pattern is not a valid regular expression: {err}") from None
 
 
+def _number(value: Any, what: str) -> float:
+    """Return a value as a float; raise ValueError for a bool or anything that is not a number."""
+    if isinstance(value, bool):
+        raise ValueError(f"{what} must be a number, not a bool")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} must be a number, not {value!r}") from None
+
+
+def is_numeric_sensor(options: Mapping[str, Any]) -> bool:
+    """Return whether a sensor's state is a number: it has a unit or a state class."""
+    return options.get("unit") is not None or options.get("state_class") is not None
+
+
+def validate_state(platform: str, options: Mapping[str, Any], value: Any) -> Any:
+    """Check a state against an entity's declaration and return it as it is stored.
+
+    None (unknown) is always allowed, except for a button, which has no state.
+
+    Args:
+        platform: The entity's platform.
+        options: The entity's platform options (extra keys are ignored).
+        value: The new state.
+
+    Returns:
+        The state as stored: a float for numeric sensors and numbers, a bool for
+        binary sensors and switches, else the value itself.
+
+    Raises:
+        ValueError: If the declaration does not allow the value.
+    """
+    if not PLATFORMS[platform].stateful:
+        raise ValueError(f"a {platform} has no state")
+    if value is None:
+        return None
+
+    if platform in ("binary_sensor", "switch"):
+        if isinstance(value, bool):
+            return value
+        if value in ("on", "off"):
+            return value == "on"
+        raise ValueError(f"the state of a {platform} must be True or False, not {value!r}")
+
+    if platform == "number" or (platform == "sensor" and is_numeric_sensor(options)):
+        number = _number(value, f"the state of this {platform}")
+        if platform == "number":
+            low, high = options.get("min", NUMBER_MIN), options.get("max", NUMBER_MAX)
+            if not low <= number <= high:
+                raise ValueError(f"{number:g} is outside {low:g} to {high:g}")
+        return number
+
+    if platform == "select":
+        if value not in options.get("options", ()):
+            raise ValueError(f"{value!r} is not one of the options {list(options.get('options', ()))}")
+        return value
+
+    if platform == "text":
+        if not isinstance(value, str):
+            raise ValueError(f"the state of a text must be a string, not {type(value).__name__}")
+        low, high = options.get("min_length", TEXT_MIN_LENGTH), options.get("max_length", TEXT_MAX_LENGTH)
+        if not low <= len(value) <= high:
+            raise ValueError(f"the text must be {low} to {high} characters long, not {len(value)}")
+        pattern = options.get("pattern")
+        if pattern is not None and re.fullmatch(pattern, value) is None:
+            raise ValueError(f"{value!r} does not match the pattern {pattern!r}")
+        return value
+
+    try:
+        _check_json(value, "the state")
+    except TypeError as err:
+        raise ValueError(str(err)) from None
+    return value
+
+
 def _entity_decorator(platform: str) -> Callable[..., Any]:
     """Build the decorator of one platform."""
 
@@ -176,6 +256,13 @@ def _entity_decorator(platform: str) -> Callable[..., Any]:
         _check_options(platform, where, options)
         if not PLATFORMS[platform].stateful and common.get("initial") is not None:
             raise AutomationDefinitionError(f"{where}: a {platform} has no state, so no initial")
+
+        initial = common.get("initial")
+        if initial is not None:
+            try:
+                common["initial"] = validate_state(platform, options, initial)
+            except ValueError as err:
+                raise AutomationDefinitionError(f"{where}: initial: {err}") from None
 
         object_id = slug(str(common.get("id") or cls.__name__))
         if not object_id:

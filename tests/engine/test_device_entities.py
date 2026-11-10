@@ -17,6 +17,7 @@ from haanim.engine.device_entities import (
     sensor_entity,
     switch_entity,
     text_entity,
+    validate_state,
 )
 from haanim.engine.errors import AutomationDefinitionError
 
@@ -128,3 +129,69 @@ def test_bad_declarations(decorate: Any, message: str) -> None:
 def test_decorating_a_function_fails() -> None:
     with pytest.raises(AutomationDefinitionError, match="class"):
         sensor_entity()(lambda: None)
+
+
+# --- State validation -------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "platform, options, value, expected",
+    [
+        ("sensor", {"unit": "°C"}, 21, 21.0),
+        ("sensor", {"state_class": "measurement"}, "3.5", 3.5),
+        ("sensor", {}, "hello", "hello"),
+        ("sensor", {}, {"a": [1, 2]}, {"a": [1, 2]}),
+        ("binary_sensor", {}, "on", True),
+        ("binary_sensor", {}, "off", False),
+        ("switch", {}, False, False),
+        ("number", {"min": 0, "max": 10}, "5", 5.0),
+        ("number", {}, 100, 100.0),
+        ("select", {"options": ["a", "b"]}, "b", "b"),
+        ("text", {"pattern": "[a-z]+"}, "abc", "abc"),
+        ("text", {}, "", ""),
+        ("sensor", {"unit": "°C"}, None, None),
+        ("switch", {}, None, None),
+    ],
+)
+def test_valid_states(platform: str, options: dict[str, Any], value: Any, expected: Any) -> None:
+    assert validate_state(platform, options, value) == expected
+
+
+@pytest.mark.parametrize(
+    "platform, options, value",
+    [
+        ("sensor", {"unit": "°C"}, "warm"),
+        ("sensor", {"unit": "°C"}, True),
+        ("number", {"min": 0, "max": 10}, 11),
+        ("number", {}, -1),
+        ("number", {}, True),
+        ("switch", {}, "yes"),
+        ("switch", {}, 1),
+        ("select", {"options": ["a"]}, "z"),
+        ("text", {"max_length": 2}, "abc"),
+        ("text", {"min_length": 2}, "a"),
+        ("text", {}, "x" * 256),
+        ("text", {"pattern": "[a-z]+"}, "abc1"),
+        ("text", {}, 5),
+        ("button", {}, 1),
+        ("sensor", {}, object()),
+    ],
+)
+def test_invalid_states(platform: str, options: dict[str, Any], value: Any) -> None:
+    with pytest.raises(ValueError):
+        validate_state(platform, options, value)
+
+
+def test_initial_is_validated() -> None:
+    with pytest.raises(AutomationDefinitionError, match="initial"):
+        number_entity(min=0, max=10, initial=11)(type("thing", (), {}))
+
+
+def test_valid_initial_is_normalized() -> None:
+    @switch_entity(initial="on")
+    class boost:  # pylint: disable=invalid-name
+        pass
+
+    declaration = get_declaration(boost)
+    assert declaration is not None
+    assert declaration.initial is True
