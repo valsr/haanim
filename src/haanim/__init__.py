@@ -81,6 +81,7 @@ from haanim.events import (
     ActionEvent,
     AutomationEvent,
     CronEvent,
+    EntityCommandEvent,
     EventTriggerEvent,
     IntervalEvent,
     ManualEvent,
@@ -164,6 +165,7 @@ __all__ = [
     "EventTriggerEvent",
     "ManualEvent",
     "AutomationEvent",
+    "EntityCommandEvent",
     # Errors
     "PUBLIC_ERRORS",
     "HAAnimError",

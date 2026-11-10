@@ -466,6 +466,19 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         """
         return HAAnimDevice(self._context.device_store, self._context.device_name).entity(key)
 
+    async def command(self, object_id: str, command: str, value: Any = None) -> None:
+        """Send a command to an entity, as Home Assistant does when its user operates it.
+
+        Args:
+            object_id: The entity's object ID.
+            command: ``turn_on``, ``turn_off``, ``set_value``, ``select_option`` or ``press``.
+            value: The value of ``set_value`` and ``select_option``.
+
+        Raises:
+            KeyError: If the automation declares no such entity, or its platform has no such command.
+        """
+        await self._automation.entity_command(object_id, command, value)
+
     @property
     def entities(self) -> list[DeviceEntity]:
         """Every entity of the automation's device, leftovers included."""

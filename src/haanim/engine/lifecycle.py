@@ -30,7 +30,9 @@ from haanim.engine.errors import (
     AutomationNotLoadedError,
     AutomationNotRunningError,
 )
-from haanim.events import SOURCE_TRIGGER, ActionEvent
+from haanim.engine.device_api import DeviceEntity
+from haanim.engine.device_entities import PLATFORMS
+from haanim.events import SOURCE_TRIGGER, ActionEvent, EntityCommandEvent
 from haanim.interfaces import AutomationTimes
 
 if TYPE_CHECKING:
@@ -540,6 +542,65 @@ class Automation:
             mode=action.execution_mode,
             timeout=action.timeout,
         )
+
+
+    async def entity_command(
+        self, object_id: str, command: str, value: Any = None, context: Any = None
+    ) -> None:
+        """Run the hook of a declared entity for a command sent from Home Assistant.
+
+        The hook runs as an action under the declaration's action mode. Nothing
+        the automation does raises to the sender: if the automation is not
+        running or the class has no hook for the command, a warning is logged
+        and the command does nothing; a failing hook is recorded like a failing
+        action.
+
+        Args:
+            object_id: The entity's object ID.
+            command: The hook's name: one of the entity's platform's hooks.
+            value: The value sent with the command, if any.
+            context: Home Assistant's context of the command.
+
+        Raises:
+            KeyError: If the automation declares no such entity, or its platform has no such command.
+        """
+        logger = self.context.logger
+        entity = self.context.device_store.get(object_id)
+        if entity is None or not entity.declared or command not in PLATFORMS[entity.platform].hooks:
+            raise KeyError(f"'{self.automation_id}' has no entity '{object_id}' that takes {command}")
+
+        declared = self.context.entity_classes.get(object_id)
+        if not self.accepts_calls() or declared is None:
+            logger.warning('"%s" ignored %s: automation is not running', object_id, command)
+            return
+
+        declaration, instance = declared
+        hook = getattr(instance, command, None)
+        if hook is None or not callable(hook):
+            logger.warning('"%s" has no %s hook; command ignored', object_id, command)
+            return
+
+        event = EntityCommandEvent(
+            call_time=self._clock.now(),
+            automation_id=self.automation_id,
+            entity_id=entity.entity_id(self.automation_id),
+            command=command,
+            value=value,
+            context=context,
+        )
+        action_name = f"{object_id}.{command}"
+        try:
+            await self._dispatcher.dispatch(
+                self.automation_id,
+                action_name,
+                hook,
+                DeviceEntity(self.context.device_store, object_id),
+                event,
+                mode=declaration.action_mode,
+                triggered=True,
+            )
+        except Exception as err:  # pylint: disable=broad-exception-caught
+            self.record_action_failure(action_name, err)
 
 
 class _StartupFailure(Exception):

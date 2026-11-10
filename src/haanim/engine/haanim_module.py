@@ -45,6 +45,7 @@ EVENT_CLASSES = (
     events.EventTriggerEvent,
     events.ManualEvent,
     events.AutomationEvent,
+    events.EntityCommandEvent,
 )
 
 

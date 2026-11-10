@@ -15,6 +15,7 @@ from haanim.types import StateVal
 SOURCE_TRIGGER = "trigger"
 SOURCE_MANUAL = "manual"
 SOURCE_AUTOMATION = "automation"
+SOURCE_ENTITY = "entity"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -134,3 +135,22 @@ class AutomationEvent(ActionEvent):
     """
 
     source: str = SOURCE_AUTOMATION
+
+
+@dataclass(frozen=True, kw_only=True)
+class EntityCommandEvent(ActionEvent):
+    """Event for a hook of a declared entity: a command sent to the entity from Home Assistant."""
+
+    source: str = SOURCE_ENTITY
+
+    entity_id: str
+    """The entity the command was sent to, such as ``switch.haanim_climate_boost``."""
+
+    command: str
+    """The command: ``turn_on``, ``turn_off``, ``set_value``, ``select_option`` or ``press``."""
+
+    value: Any = None
+    """The value sent with ``set_value`` and ``select_option``; None for the other commands."""
+
+    context: Any = None
+    """Home Assistant's context of the command, which says who sent it; None outside Home Assistant."""
