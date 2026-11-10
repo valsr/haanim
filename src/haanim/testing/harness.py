@@ -39,6 +39,7 @@ from haanim.engine.devices import DeviceRegistry
 from haanim.engine.discovery import ASSETS_DIRNAME
 from haanim.engine.eval_function import CHECKPOINT
 from haanim.engine.errors import (
+    ActionDroppedError,
     ActionNotFoundError,
     HAAnimError,
     NonExistingAutomationError,
@@ -80,6 +81,16 @@ DRIVE_STEP_SECONDS = 0.5
 
 class HarnessError(Exception):
     """The harness was used in a way that cannot work, or the automation did not do what was waited for."""
+
+
+@dataclass(frozen=True)
+class HarnessFailure:
+    """A failure of an action the test did not call: one a trigger, an entity command or @shutdown ran."""
+
+    action: str
+    """The action's name."""
+    error: BaseException
+    """What it raised."""
 
 
 @dataclass(frozen=True)
@@ -227,7 +238,7 @@ def _split(name: str) -> tuple[str, str]:
 
 
 def _start_time(now: str | datetime | None, time_zone: str) -> datetime:
-    """Turn the ``now`` argument into a timezone-aware datetime: by default Monday 2025-01-06 12:00 in the zone."""
+    """Turn the ``now`` argument into an aware datetime; by default Monday 2025-01-06 12:00 in the zone."""
     if now is None:
         return DEFAULT_NOW.replace(tzinfo=ZoneInfo(time_zone))
     moment = datetime.fromisoformat(now) if isinstance(now, str) else now
@@ -260,6 +271,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         additional_imports: list[str] | None = None,
         allow_all_imports: bool = False,
         settings: LifecycleSettings | None = None,
+        expect_failures: bool = False,
     ) -> None:
         """Set up the fake Home Assistant for an automation. Nothing is loaded yet.
 
@@ -289,8 +301,17 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
             additional_imports: Modules the automation may import in addition to the default allowlist.
             allow_all_imports: Disable the import allowlist.
             settings: The lifecycle's time limits. The design's defaults if omitted.
+            expect_failures: An action that fails with nobody to raise to (one a
+                trigger, an entity command or ``@shutdown`` ran) is raised by the
+                next call of the harness, or when the harness exits, so that it
+                fails the test. With True it is only collected in ``failures``,
+                for tests of failures.
         """
         self.folder = Path(folder)
+        self._expect_failures = expect_failures
+        self.failures: list[HarnessFailure] = []
+        """Every failure of an action the test did not call directly, oldest first."""
+        self._pending: list[HarnessFailure] = []
         self._start_on_enter = start
         self._initial_variables = dict(variables) if variables is not None else None
         started_at = _start_time(now, time_zone)
@@ -348,6 +369,14 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         self._automation = Automation(
             self._context, dispatcher=self._dispatcher, triggers=self._triggers, settings=settings
         )
+        # Told about every action that fails with nobody to raise to: a trigger, a hook, ...
+        recorded = self._automation.record_action_failure
+
+        def record(action_name: str, error: BaseException) -> None:
+            recorded(action_name, error)
+            self._note_failure(action_name, error)
+
+        self._automation.record_action_failure = record  # type: ignore[method-assign]
         limits = settings or LifecycleSettings()
         # No step of the lifecycle waits longer than its three limits together
         self._longest_wait = limits.startup_timeout + limits.shutdown_timeout + limits.stop_grace_period + 1.0
@@ -388,8 +417,14 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        """Stop and unload the automation and stop everything the harness started."""
+        """Stop and unload the automation and stop everything the harness started.
+
+        A failure of an action that nobody raised yet is raised now, unless the
+        test is already failing.
+        """
         await self.close()
+        if exc_type is None:
+            self._raise_pending()
 
     async def close(self) -> None:
         """Stop and unload the automation. Does nothing the second time."""
@@ -398,7 +433,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         self._closed = True
         try:
             if self._automation.state is not AutomationState.UNAVAILABLE:
-                await self.unload()
+                await self._watch_shutdown(self.unload())
             await self._triggers.async_teardown()
             await self._dispatcher.shutdown()
         finally:
@@ -468,7 +503,44 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         Actions that are still running get their grace period and are then
         cancelled, as in Home Assistant. The clock moves forward by the time that takes.
         """
-        await self._drive(self._automation.stop())
+        self._raise_pending()
+        await self._watch_shutdown(self._drive(self._automation.stop()))
+        self._raise_pending()
+
+    async def _watch_shutdown(self, step: Coroutine[Any, Any, Any]) -> None:
+        """Run a step that stops the automation, noting a failure of ``@shutdown`` like any action's."""
+        before = self._automation.last_error
+        await step
+        after = self._automation.last_error
+        if after is not None and after is not before and after.action == "@shutdown":
+            self._note_failure(
+                "@shutdown", HarnessError(f"@shutdown failed: {after.error_type}: {after.message}")
+            )
+
+    def _note_failure(self, action_name: str, error: BaseException) -> None:
+        """Keep a failure nobody raised to; a dropped request is DROP mode working, not a failure."""
+        if isinstance(error, ActionDroppedError):
+            return
+        failure = HarnessFailure(action_name, error)
+        self.failures.append(failure)
+        if not self._expect_failures:
+            self._pending.append(failure)
+
+    def _raise_pending(self) -> None:
+        """Raise the oldest failure nobody raised yet, so that it fails the test; name the others."""
+        if not self._pending:
+            return
+        first, *others = self._pending
+        self._pending = []
+        error = first.error
+        error.add_note(
+            f"Raised by action '{first.action}' of automation '{self.automation_id}', which the test did not"
+            " call directly (a trigger, an entity command or @shutdown ran it). To test failures, pass"
+            " expect_failures=True to the harness and read harness.failures."
+        )
+        if others:
+            error.add_note("Other failures: " + ", ".join(f"{o.action}: {o.error!r}" for o in others))
+        raise error
 
     async def unload(self) -> None:
         """Unload the automation, stopping it first if it runs."""
@@ -495,7 +567,9 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         Raises:
             KeyError: If the automation declares no such entity, or its platform has no such command.
         """
+        self._raise_pending()
         await self._automation.entity_command(object_id, command, value)
+        self._raise_pending()
 
     @property
     def entities(self) -> list[DeviceEntity]:
@@ -569,10 +643,12 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
 
     def set_state(self, entity_id: str, state: Any, attributes: dict[str, Any] | None = None) -> None:
         """Set the state and attributes of an entity. Triggers react when the test next awaits the harness."""
+        self._raise_pending()
         self.states.set_state(entity_id, str(state), attributes)
 
     def remove_state(self, entity_id: str) -> None:
         """Make an entity not exist."""
+        self._raise_pending()
         self.states.remove(entity_id)
 
     def get_state(self, entity_id: str) -> str | None:
@@ -583,6 +659,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         self, event_type: str, data: dict[str, Any] | None = None, *, user_id: str | None = None
     ) -> None:
         """Fire an event on the bus. Triggers react when the test next awaits the harness."""
+        self._raise_pending()
         self.bus.fire(event_type, data, user_id=user_id)
 
     @property
@@ -600,8 +677,10 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         Returns:
             The new time.
         """
+        self._raise_pending()
         moment = await self.clock.advance(delta, **kwargs)
         await self.clock.settle()
+        self._raise_pending()
         return moment
 
     def set_sun(self, sunrise: str | None = "07:00", sunset: str | None = "19:00") -> None:
@@ -635,6 +714,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
             if self._dispatcher.is_idle():
                 await self.clock.settle()
                 if self._dispatcher.is_idle():
+                    self._raise_pending()
                     return
             if CHECKPOINT.passed == before:
                 stalled += 1
@@ -694,7 +774,10 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
             event = ActionEvent(
                 call_time=self.clock.now(), automation_id=self.automation_id, source=SOURCE_TRIGGER, data=data
             )
-        return await self._automation.call_action(action_name, data, caller=caller, event=event)
+        self._raise_pending()
+        result = await self._automation.call_action(action_name, data, caller=caller, event=event)
+        self._raise_pending()
+        return result
 
     # --- Services ----------------------------------------------------------------
 

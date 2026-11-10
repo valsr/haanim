@@ -530,7 +530,7 @@ class TestInspection:
 
     async def test_trigger_failure(self, folder: Path) -> None:
         """Test a failing trigger-fired action is visible as last_error, an event and a log record."""
-        async with AutomationHarness(folder) as automation:
+        async with AutomationHarness(folder, expect_failures=True) as automation:
             assert automation.last_error is None
             automation.fire_event("explode")
             await automation.wait_idle()

@@ -771,7 +771,7 @@ async def test_morning_routine_only_when_home():
 | With the harness you can                    | Using                                                           |
 | ------------------------------------------- | --------------------------------------------------------------- |
 | Set states and fire events                  | `set_state`, `remove_state`, `fire_event`                       |
-| Control time                                | `now=`, `advance_time(minutes=5)`, `set_sun(sunset="18:30")`    |
+| Control time                                | `now=`, `time_zone="Europe/Berlin"`, `advance_time(minutes=5)`, `set_sun(sunset="18:30")` |
 | Wait for the automation to finish reacting  | `await wait_idle()`; a long calculation: `wait_idle(max_steps=5_000_000)` |
 | Call actions                                | `await call("name", level=3)`, with `caller=` or `source="trigger"` |
 | See what it did                             | `service_calls()`, `events()`, `logs()`, `message`, `state`, `variables`, `last_error` |
@@ -779,11 +779,17 @@ async def test_morning_routine_only_when_home():
 | Stand in for other automations              | `stub_automation("notifications", send_message="sent")`, `automation_calls()` |
 | Check the card and press its buttons        | `card.title`, `card.blocks`, `card.block(id)`, `card.layout`, `await press(id)` |
 | Drive the lifecycle                         | `start=False`, then `load()`, `start()`, `stop()`, `reload()`   |
+| Test failures of triggered actions          | `expect_failures=True`, then `failures` (each with `action` and `error`) |
 | Provide assets and stored variables         | `assets={"logo.png": b"..."}`, `variables={"count": 3}`         |
 | Provide and read long-term statistics       | `statistics={"sensor.grid": [rows]}`, `statistics("sensor.haanim_x_energy")` |
 | Operate the device's entities               | `entity("boost").state`, `entities`, `await command("boost", "turn_on")`, `entities={"boost": True}` |
 
 Time stands still in the harness until the test advances it, so a test of "five minutes later" takes
-milliseconds.
+milliseconds. The clock runs in `time_zone` (UTC by default), and starts on Monday 2025-01-06 at noon unless
+`now=` says otherwise.
+
+An action the test did not call directly (one a trigger, an entity command or `@shutdown` ran) that fails
+makes the test fail: its exception is raised by the next call of the harness, or when the `async with`
+block ends. A test of such failures passes `expect_failures=True` and reads `failures` instead.
 
 For editors and type checkers, the same package gives completion and types for `from haanim import ...`.

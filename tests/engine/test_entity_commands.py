@@ -78,7 +78,7 @@ async def test_stopped_automation_warns(tmp_path: Path, caplog: pytest.LogCaptur
 
 
 async def test_hook_exception_is_recorded_not_raised(tmp_path: Path) -> None:
-    async with AutomationHarness(write(tmp_path / "climate")) as h:
+    async with AutomationHarness(write(tmp_path / "climate"), expect_failures=True) as h:
         await h.command("broken", "turn_on")
         assert h.last_error is not None
         assert (h.last_error.action, h.last_error.error_type) == ("broken.turn_on", "RuntimeError")
@@ -86,7 +86,7 @@ async def test_hook_exception_is_recorded_not_raised(tmp_path: Path) -> None:
 
 
 async def test_hook_invalid_set_state_is_failure(tmp_path: Path) -> None:
-    async with AutomationHarness(write(tmp_path / "climate")) as h:
+    async with AutomationHarness(write(tmp_path / "climate"), expect_failures=True) as h:
         await h.command("broken", "turn_off")
         assert h.last_error is not None
         assert (h.last_error.action, h.last_error.error_type) == ("broken.turn_off", "ValueError")

@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Test harness: `time_zone=` sets the zone the automation runs in even without `now=` (it was UTC); an action
+  a trigger, an entity command or `@shutdown` ran that fails now fails the test (`expect_failures=True` to
+  collect failures in `failures` instead); and an automation's `from .package import module` works, with or
+  without `__init__.py`.
 - `except StopIteration` in automation code caught nothing: Python turned it into `RuntimeError` on its way
   through the interpreter. It now behaves as in Python.
 - Automation code run synchronously by Python code (a `key=` function of `sorted`, a generator pulled by `any`)
