@@ -637,7 +637,7 @@ class EvalFunction:
         return drive_generator(lambda: self._run_body(scope), self.name, NativeCallWatch(self))
 
     def make_async_generator(self, *args: Any, **kwargs: Any) -> Any:
-        """Return the async generator a call of an async generator function gives: nothing of the body runs yet."""
+        """Return the async generator a call of an async generator function gives; its body has not run."""
         scope = self.bind(args, kwargs)
         return drive_async_generator(lambda: self._run_body(scope), self.name)
 

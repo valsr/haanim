@@ -28,6 +28,7 @@ from haanim.engine.eval_function import (
 from haanim.engine import operators
 from haanim.engine.comprehensions import (
     all_items,
+    async_for,
     comprehension,
     contains,
     dict_comprehension,
@@ -686,24 +687,7 @@ class AstEvaluator:
 
     async def _eval_async_for(self, node: ast.AsyncFor, scope: SymbolTable) -> None:
         """Evaluate an async for loop: await the items of an async iterator."""
-        iterator = aiter(await self.aeval(node.iter, scope))
-        while True:
-            try:
-                item = await anext(iterator)
-            except StopAsyncIteration:
-                for stmt in node.orelse:
-                    await self.aeval(stmt, scope)
-                return
-            if self.checkpoint_due():
-                await CHECKPOINT
-            await self._assign_target(node.target, item, scope)
-            try:
-                for stmt in node.body:
-                    await self.aeval(stmt, scope)
-            except BreakLoop:
-                return
-            except ContinueLoop:
-                continue
+        await async_for(self, node, scope, (BreakLoop, ContinueLoop))
 
     async def _eval_while(self, node: ast.While, scope: SymbolTable) -> Any:
         """Evaluate a while loop."""

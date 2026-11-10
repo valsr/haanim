@@ -1,4 +1,4 @@
-"""Comprehensions and generators in automation code.
+"""Comprehensions, async for loops and generators in automation code.
 
 List, set and dict comprehensions and generator expressions share one walker
 over their ``for`` and ``if`` clauses, with a checkpoint at every item. A
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import ast
 import builtins
-from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Generator, Iterable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Generator
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -137,7 +137,7 @@ async def walk_comprehension(
     clauses: list[ast.comprehension],
     scope: SymbolTable,
     on_item: Callable[[SymbolTable], Awaitable[None]],
-    first: Iterable[Any] | None = None,
+    first: Any = None,
 ) -> None:
     """Run ``on_item`` in the scope of every combination the ``for`` and ``if`` clauses give.
 
@@ -236,3 +236,34 @@ def _awaits(node: ast.GeneratorExp) -> bool:
         if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
             stack.extend(ast.iter_child_nodes(child))
     return False
+
+
+async def async_for(
+    engine: AstEvaluator,
+    node: ast.AsyncFor,
+    scope: SymbolTable,
+    loop_signals: tuple[type[BaseException], type[BaseException]],
+) -> None:
+    """Run an async for loop: await each item of an async iterator, with a checkpoint per item.
+
+    ``loop_signals`` are the evaluator's break and continue signals, in that order.
+    """
+    stop, skip = loop_signals
+    iterator = aiter(await engine.aeval(node.iter, scope))
+    while True:
+        try:
+            item = await anext(iterator)
+        except StopAsyncIteration:
+            for stmt in node.orelse:
+                await engine.aeval(stmt, scope)
+            return
+        if engine.checkpoint_due():
+            await CHECKPOINT
+        await engine.assign_target(node.target, item, scope)
+        try:
+            for stmt in node.body:
+                await engine.aeval(stmt, scope)
+        except stop:
+            return
+        except skip:
+            continue
