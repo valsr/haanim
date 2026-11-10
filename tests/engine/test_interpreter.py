@@ -220,6 +220,7 @@ CASES: dict[str, tuple[str, Any]] = {
         "module",
     ),
     "class body sees its own names": ("class A:\n    a = 1\n    b = a + 1\nr = A.b", 2),
+    "class records the line it is defined on": ("x = 1\n\nclass A:\n    pass\nr = A.__firstlineno__", 3),
     "class attributes exclude outer names": (
         "outer = 1\nclass A:\n    inner = 2\nr = (hasattr(A, 'outer'), hasattr(A, 'inner'), A.__name__)",
         (False, True, "A"),

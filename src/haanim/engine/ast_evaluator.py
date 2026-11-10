@@ -742,6 +742,7 @@ class AstEvaluator:
         class_scope = cell_scope.create_child(SCOPE_CLASS)
         class_scope.set("__module__", self.name)
         class_scope.set("__qualname__", node.name)
+        class_scope.set("__firstlineno__", node.lineno)
 
         for stmt in node.body:
             await self.aeval(stmt, class_scope)
