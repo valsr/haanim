@@ -49,6 +49,7 @@ from haanim.engine.variables import storage_key
 from haanim.events import SOURCE_AUTOMATION, SOURCE_MANUAL, SOURCE_TRIGGER, ActionEvent
 from haanim.interfaces import AutomationTimes, Host
 from haanim.testing.fakes import (
+    DEFAULT_NOW,
     FakeCardSink,
     FakeClock,
     FakeEntitySink,
@@ -225,10 +226,10 @@ def _split(name: str) -> tuple[str, str]:
     return domain, service
 
 
-def _start_time(now: str | datetime | None, time_zone: str) -> datetime | None:
-    """Turn the ``now`` argument into a timezone-aware datetime."""
+def _start_time(now: str | datetime | None, time_zone: str) -> datetime:
+    """Turn the ``now`` argument into a timezone-aware datetime: by default Monday 2025-01-06 12:00 in the zone."""
     if now is None:
-        return None
+        return DEFAULT_NOW.replace(tzinfo=ZoneInfo(time_zone))
     moment = datetime.fromisoformat(now) if isinstance(now, str) else now
     return moment if moment.tzinfo is not None else moment.replace(tzinfo=ZoneInfo(time_zone))
 
@@ -266,7 +267,8 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
             folder: The automation's folder, which holds its ``main.py``.
             now: The time the clock starts at, as a datetime or ISO text
                 (``"2025-01-06 08:59:00"``). Monday 2025-01-06 12:00 if omitted.
-            time_zone: The time zone of a ``now`` that names none.
+            time_zone: The time zone the automation runs in: of the clock, and of a
+                ``now`` that names none. UTC if omitted.
             automation_id: The automation's ID. Derived from the folder name if omitted.
             start: Load and start the automation on entering. With False the
                 test drives the lifecycle itself.
@@ -292,7 +294,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         self._start_on_enter = start
         self._initial_variables = dict(variables) if variables is not None else None
         started_at = _start_time(now, time_zone)
-        self.clock = FakeClock(started_at) if started_at is not None else FakeClock()
+        self.clock = FakeClock(started_at)
         self._services = _Services()
         self._sun = FakeSunProvider(sunrise, sunset)
         self._storage = FakeStorage()
