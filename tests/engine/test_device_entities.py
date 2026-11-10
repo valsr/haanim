@@ -119,6 +119,9 @@ def test_hooks_per_platform() -> None:
         (lambda: text_entity(pattern="("), "pattern"),
         (lambda: text_entity(mode="secret"), "mode"),
         (lambda: button_entity(initial=1), "initial"),
+        (lambda: sensor_entity(device_class="timestamp"), "device_class"),
+        (lambda: sensor_entity(device_class="enum"), "device_class"),
+        (lambda: number_entity(min="low"), "min"),
     ],
 )
 def test_bad_declarations(decorate: Any, message: str) -> None:
@@ -151,6 +154,7 @@ def test_decorating_a_function_fails() -> None:
         ("text", {}, "", ""),
         ("sensor", {"unit": "°C"}, None, None),
         ("switch", {}, None, None),
+        ("sensor", {"device_class": "temperature"}, "21", 21.0),
     ],
 )
 def test_valid_states(platform: str, options: dict[str, Any], value: Any, expected: Any) -> None:
@@ -175,6 +179,10 @@ def test_valid_states(platform: str, options: dict[str, Any], value: Any, expect
         ("text", {}, 5),
         ("button", {}, 1),
         ("sensor", {}, object()),
+        ("sensor", {"device_class": "temperature"}, "hot"),
+        ("sensor", {"precision": 1}, "hot"),
+        ("sensor", {"unit": "°C"}, float("nan")),
+        ("number", {}, float("inf")),
     ],
 )
 def test_invalid_states(platform: str, options: dict[str, Any], value: Any) -> None:

@@ -9,6 +9,7 @@ import pytest
 
 from haanim.engine.device_entities import (
     EntityDeclaration,
+    button_entity,
     get_declaration,
     number_entity,
     select_entity,
@@ -57,7 +58,7 @@ async def test_new_declaration_gets_initial_state_and_is_saved(
     assert entity.state is True
     assert entity.declared
     assert entity.entity_id("climate") == "switch.haanim_climate_boost"
-    assert entity.unique_id("climate") == "haanim_climate_boost"
+    assert entity.unique_id("climate") == "haanim_climate.boost"
 
     await clock.advance(seconds=SAVE_DELAY_SECONDS)
     saved = storage.peek("device.climate")
@@ -295,3 +296,43 @@ def test_stored_values_are_copies(registry: DeviceRegistry) -> None:
     store.set_state("temp", value)
     value["a"].append(2)
     assert store.get("temp").state == {"a": [1]}  # type: ignore[union-attr]
+
+
+# --- Final review fixes -----------------------------------------------------------
+
+
+def test_unique_id_cannot_collide_across_automations(registry: DeviceRegistry) -> None:
+    """Automation 'a' with entity 'b_c' and automation 'a_b' with entity 'c' get different unique IDs."""
+    registry.store("a").reconcile([decl(sensor_entity(), "b_c")])
+    registry.store("a_b").reconcile([decl(sensor_entity(), "c")])
+    first, second = registry.store("a").get("b_c"), registry.store("a_b").get("c")
+    assert first is not None and second is not None
+    assert first.unique_id("a") != second.unique_id("a_b")
+    assert first.unique_id("a") == "haanim_a.b_c"
+
+
+async def test_stored_button_is_not_reset_on_reconcile(registry: DeviceRegistry, clock: FakeClock) -> None:
+    store = registry.store("climate")
+    store.reconcile([decl(button_entity(), "ring")])
+    first = store.get("ring").last_changed  # type: ignore[union-attr]
+    await clock.advance(seconds=5)
+    assert store.reconcile([decl(button_entity(), "ring")]) == []
+    assert store.get("ring").last_changed == first  # type: ignore[union-attr]
+
+
+class RaisingSink(FakeEntitySink):
+    """A sink whose host fails to show a change."""
+
+    def entity_changed(self, automation_id: str, key: str) -> None:
+        raise ValueError("Home Assistant refused the state")
+
+
+def test_a_failing_sink_does_not_reach_the_automation(
+    storage: FakeStorage, clock: FakeClock, caplog: pytest.LogCaptureFixture
+) -> None:
+    registry = DeviceRegistry(storage, clock, RaisingSink())
+    store = registry.store("climate")
+    store.reconcile([decl(sensor_entity(), "temp")])
+    store.set_state("temp", "a")
+    assert store.get("temp").state == "a"  # type: ignore[union-attr]
+    assert "Home Assistant refused the state" in caplog.text

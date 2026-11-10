@@ -212,14 +212,12 @@ class HAEntitySink:
         """Remove an automation's device and every entity of it."""
         for key in [key for key in self._entities if key[0] == automation_id]:
             del self._entities[key]
-        registry = er.async_get(self._hass)
-        unique_prefix = f"{DOMAIN}_{automation_id}_"
-        if self._entry is not None:
-            for entry in er.async_entries_for_config_entry(registry, self._entry.entry_id):
-                if entry.unique_id.startswith(unique_prefix) and entry.domain in _PLATFORM_NAMES:
-                    registry.async_remove(entry.entity_id)
         device = self._device(automation_id)
         if device is not None:
+            # The entities of this device and of no other; removing only the device would keep them
+            registry = er.async_get(self._hass)
+            for entry in er.async_entries_for_device(registry, device.id, include_disabled_entities=True):
+                registry.async_remove(entry.entity_id)
             dr.async_get(self._hass).async_remove_device(device.id)
         self._notify(automation_id)
 
@@ -262,10 +260,6 @@ class HAEntitySink:
     def _notify(self, automation_id: str) -> None:
         for listener in list(self._listeners.get(automation_id, [])):
             listener()
-
-
-# The platforms of declared entities; filled by the platform modules
-_PLATFORM_NAMES = frozenset({"sensor", "binary_sensor", "switch", "number", "select", "button", "text"})
 
 
 async def async_setup_declared_platform(

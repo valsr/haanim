@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Entity ID `<platform>.haanim_<automation_id>_<object_id>`; unique ID `haanim_<automation_id>_<object_id>` (no platform in it).
+- Entity ID `<platform>.haanim_<automation_id>_<object_id>`; unique ID `haanim_<automation_id>.<object_id>` (no platform in it; changed from `_` after the final review).
 - Object ID default: the class name slugged with `haanim.engine.automation_ids.automation_id` (same rule as automation IDs); `id=` overrides.
 - Device identifiers `("haanim", <automation_id>)`, name = automation name, manufacturer `"HAAnim"`.
 - Storage keys: `device.<automation_id>` per automation, `devices` index (sorted list of automation IDs). Document `{"version": 1, "entities": {<object_id>: {"platform", "options", "state", "attributes", "declared", "last_changed"}}}`.

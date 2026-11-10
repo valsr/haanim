@@ -59,8 +59,9 @@ The integration implements the sink: it registers the device and the entities an
   entity ID and unique ID do not change.
 - **Stopped automation.** Declared entities stay available with their last state. Commands log a warning
   (`"boost" ignored turn_on: automation is not running`) and are no-ops.
-- **IDs.** Entity ID `<platform>.haanim_<automation_id>_<object_id>`; unique ID
-  `haanim_<automation_id>_<object_id>`. The platform is not in the unique ID; if a declaration changes an
+- **IDs.** Entity ID `<platform>.haanim_<automation_id>_<object_id>` (Home Assistant adds `_2` if another
+  entity has it already); unique ID `haanim_<automation_id>.<object_id>`, whose dot cannot occur in either
+  ID, so unique IDs of different automations never collide. The platform is not in the unique ID; if a declaration changes an
   entity's platform, the stored entity of the old platform becomes a leftover and a new entity is created.
 
 ## 2. The automation API
@@ -80,7 +81,7 @@ Exported from `haanim`. Every decorator takes these options:
 
 | Decorator | Extra options | Hooks |
 | --- | --- | --- |
-| `@sensor_entity` | `device_class`, `unit`, `state_class`, `precision` | none |
+| `@sensor_entity` | `device_class` (a measured one: not `date`, `enum`, `timestamp`, `uptime`), `unit`, `state_class`, `precision` | none |
 | `@binary_sensor_entity` | `device_class` | none |
 | `@switch_entity` | `device_class` | `turn_on`, `turn_off` |
 | `@number_entity` | `min`, `max`, `step`, `unit`, `mode`, `device_class` | `set_value` |

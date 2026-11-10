@@ -8,6 +8,7 @@ collects the declared classes after ``main.py`` has run.
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -42,7 +43,8 @@ _MEASURED = frozenset(
     }
 )
 DEVICE_CLASSES: dict[str, frozenset[str]] = {
-    "sensor": _MEASURED | {"date", "enum", "timestamp", "uptime"},
+    # Not date, enum, timestamp and uptime: Home Assistant wants other types than JSON for those
+    "sensor": _MEASURED,
     "number": _MEASURED,
     "binary_sensor": frozenset(
         {
@@ -135,7 +137,9 @@ def get_declaration(cls: Any) -> EntityDeclaration | None:
     return declaration if isinstance(declaration, EntityDeclaration) else None
 
 
-def _check_options(platform: str, where: str, options: Mapping[str, Any]) -> None:
+def _check_options(  # pylint: disable=too-many-branches
+    platform: str, where: str, options: Mapping[str, Any]
+) -> None:
     """Raise AutomationDefinitionError unless the platform options fit together."""
     spec = PLATFORMS[platform]
     for option in options:
@@ -155,6 +159,10 @@ def _check_options(platform: str, where: str, options: Mapping[str, Any]) -> Non
         raise AutomationDefinitionError(f"{where}: mode must be one of {', '.join(sorted(_MODES[platform]))}")
 
     if platform == "number":
+        for name in ("min", "max", "step"):
+            value = options.get(name, 0)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise AutomationDefinitionError(f"{where}: {name} must be a number, not {value!r}")
         low, high = options.get("min", 0), options.get("max", 100)
         if low > high:
             raise AutomationDefinitionError(f"{where}: min {low} is greater than max {high}")
@@ -178,18 +186,25 @@ def _check_options(platform: str, where: str, options: Mapping[str, Any]) -> Non
 
 
 def _number(value: Any, what: str) -> float:
-    """Return a value as a float; raise ValueError for a bool or anything that is not a number."""
+    """Return a value as a float; raise ValueError for a bool, infinity, NaN or what is not a number."""
     if isinstance(value, bool):
         raise ValueError(f"{what} must be a number, not a bool")
     try:
-        return float(value)
+        number = float(value)
     except TypeError, ValueError:
         raise ValueError(f"{what} must be a number, not {value!r}") from None
+    if not math.isfinite(number):
+        raise ValueError(f"{what} must be a finite number, not {value!r}")
+    return number
 
 
 def is_numeric_sensor(options: Mapping[str, Any]) -> bool:
-    """Return whether a sensor's state is a number: it has a unit or a state class."""
-    return options.get("unit") is not None or options.get("state_class") is not None
+    """Return whether a sensor's state is a number, as Home Assistant decides it.
+
+    It is with a unit, a state class, a precision or a device class (every
+    device class a declaration accepts is a measured one).
+    """
+    return any(options.get(name) is not None for name in ("unit", "state_class", "precision", "device_class"))
 
 
 def validate_state(  # pylint: disable=too-many-return-statements,too-many-branches

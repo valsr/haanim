@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import AsyncGenerator, Callable, Coroutine
 from pathlib import Path
 from typing import Any
@@ -112,7 +113,7 @@ async def test_device_and_entities_created(hass: HomeAssistant, setup: Setup) ->
     ):
         entry = registry.async_get(entity_id)
         assert entry is not None and entry.device_id == device.id, entity_id
-    assert registry.async_get("sensor.haanim_climate_average_temp").unique_id == "haanim_climate_average_temp"  # type: ignore[union-attr]
+    assert registry.async_get("sensor.haanim_climate_average_temp").unique_id == "haanim_climate.average_temp"  # type: ignore[union-attr]
 
 
 async def test_set_state_writes_ha_state(hass: HomeAssistant, setup: Setup) -> None:
@@ -194,6 +195,7 @@ async def test_stopped_automation_keeps_entities_available(hass: HomeAssistant, 
 
 async def test_folder_removal_removes_device(hass: HomeAssistant, setup: Setup, tmp_path: Path) -> None:
     manager = await setup({"climate": CLIMATE})
+    shutil.rmtree(tmp_path / "climate")
     await manager.remove(tmp_path / "climate")
     await hass.async_block_till_done()
     assert device_of(hass, "climate") is None
@@ -351,3 +353,92 @@ async def test_command_while_stopped_is_noop(
     )
     assert hass.states.get("switch.haanim_heat_boost").state == "off"  # type: ignore[union-attr]
     assert '"boost" ignored turn_on: automation is not running' in caplog.text
+
+
+# --- Final review fixes -----------------------------------------------------------
+
+KITCHEN = """
+from haanim import sensor_entity
+
+@sensor_entity
+class lights:
+    pass
+"""
+
+KITCHEN_LIGHTS = """
+from haanim import sensor_entity
+
+@sensor_entity
+class level:
+    pass
+"""
+
+
+async def test_removing_an_automation_keeps_another_with_a_longer_id(
+    hass: HomeAssistant, setup: Setup, tmp_path: Path
+) -> None:
+    """Deleting 'kitchen' leaves the entities of 'kitchen_lights' alone."""
+    manager = await setup({"kitchen": KITCHEN, "kitchen_lights": KITCHEN_LIGHTS})
+    for path in (tmp_path / "kitchen").iterdir():
+        path.unlink()
+    (tmp_path / "kitchen").rmdir()
+    await manager.remove(tmp_path / "kitchen")
+    await hass.async_block_till_done()
+    registry = er.async_get(hass)
+    assert registry.async_get("sensor.haanim_kitchen_lights_level") is not None
+    assert registry.async_get_entity_id("sensor", DOMAIN, "haanim_kitchen_lights") is not None
+    assert device_of(hass, "kitchen") is None
+
+
+async def test_entity_and_status_sensor_with_the_same_name(hass: HomeAssistant, setup: Setup) -> None:
+    """'kitchen' declaring 'lights' and an automation 'kitchen_lights' both get their sensor."""
+    await setup({"kitchen": KITCHEN, "kitchen_lights": KITCHEN_LIGHTS})
+    registry = er.async_get(hass)
+    declared = registry.async_get_entity_id("sensor", DOMAIN, "haanim_kitchen.lights")
+    status = registry.async_get_entity_id("sensor", DOMAIN, "haanim_kitchen_lights")
+    assert declared is not None and status is not None and declared != status
+    assert hass.states.get(declared) is not None
+
+
+async def test_missing_main_py_keeps_the_device(hass: HomeAssistant, setup: Setup, tmp_path: Path) -> None:
+    """A folder whose main.py is gone for a moment (an editor saving) keeps its device and entities."""
+    manager = await setup({"climate": CLIMATE})
+    (tmp_path / "climate" / "main.py").unlink()
+    await manager.remove(tmp_path / "climate")
+    await hass.async_block_till_done()
+    assert device_of(hass, "climate") is not None
+    assert manager.devices.automation_ids() == ["climate"]
+
+
+async def test_no_automations_found_at_start_keeps_stored_devices(
+    hass: HomeAssistant, setup: Setup, hass_storage: dict[str, Any]
+) -> None:
+    """An empty automations folder (a share not mounted yet) does not wipe the stored devices."""
+    hass_storage["haanim.devices"] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": "haanim.devices",
+        "data": ["climate"],
+    }
+    hass_storage["haanim.device.climate"] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": "haanim.device.climate",
+        "data": {
+            "version": 1,
+            "entities": {
+                "x": {
+                    "object_id": "x",
+                    "platform": "sensor",
+                    "options": {"name": "x", "icon": None, "initial": None, "initial_attributes": {}},
+                    "state": "a",
+                    "attributes": {},
+                    "declared": True,
+                    "last_changed": None,
+                }
+            },
+        },
+    }
+    manager = await setup({})
+    await hass.async_block_till_done()
+    assert manager.devices.automation_ids() == ["climate"]

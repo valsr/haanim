@@ -255,11 +255,14 @@ class AutomationManager:  # pylint: disable=too-many-public-methods
         await self.async_load_all_automations()
         await start_all(self._automations.values(), self._control.is_enabled)
         self._started = True
-        # Devices of automations whose folders went away while Home Assistant was not running
+        # Devices of automations whose folders went away while Home Assistant was not running. Not when
+        # no automation is found at all: the folder may be a share that is not mounted yet.
         loaded = set(self.automation_ids())
-        for automation_id in self.devices.automation_ids():
-            if automation_id not in loaded:
-                await self.devices.remove_device(automation_id)
+        folders = await self._folder_ids()
+        if loaded and folders is not None:
+            for automation_id in self.devices.automation_ids():
+                if automation_id not in loaded and automation_id not in folders:
+                    await self.devices.remove_device(automation_id)
         for listener in list(self._listeners):
             listener.automations_loaded()
 
@@ -579,9 +582,23 @@ class AutomationManager:  # pylint: disable=too-many-public-methods
         await self.async_unload_automation(automation_path)
         self._automation_ids.pop(automation_path, None)
         if automation is not None:
-            await self.devices.remove_device(automation.automation_id)
+            # Only a folder that is gone takes its device along; a main.py missing for a moment does not
+            folders = await self._folder_ids()
+            if folders is not None and automation.automation_id not in folders:
+                await self.devices.remove_device(automation.automation_id)
             for listener in list(self._listeners):
                 listener.automation_removed(automation.automation_id)
+
+    async def _folder_ids(self) -> set[str] | None:
+        """Return the automation IDs of the folders in the automation folder, with or without main.py.
+
+        None if the automation folder itself is not there.
+        """
+        files = self.host.files
+        root = Path(self._automation_path)
+        if not files.is_dir(root):
+            return None
+        return {derive_automation_id(path.name) for path in await files.list_dir(root) if files.is_dir(path)}
 
     def report_rejected(self, rejected: Sequence[RejectedFolder]) -> None:
         """Raise and clear the repair issues of folders that are not loaded because of their name."""

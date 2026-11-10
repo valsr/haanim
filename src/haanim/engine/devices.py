@@ -73,8 +73,12 @@ class StoredEntity:  # pylint: disable=too-many-instance-attributes
         return f"{self.platform}.{ID_PREFIX}_{automation_id}_{self.object_id}"
 
     def unique_id(self, automation_id: str) -> str:
-        """Return the entity's unique ID; unique within its platform."""
-        return f"{ID_PREFIX}_{automation_id}_{self.object_id}"
+        """Return the entity's unique ID; unique within its platform.
+
+        The dot cannot be part of an automation ID or an object ID, so the IDs of
+        two automations never collide, nor with a status sensor's ``haanim_<id>``.
+        """
+        return f"{ID_PREFIX}_{automation_id}.{self.object_id}"
 
     @property
     def platform_options(self) -> dict[str, Any]:
@@ -187,6 +191,11 @@ class DeviceStore:
             else:
                 entity.options = _copy(declaration.as_stored())
                 entity.declared = True
+                if not PLATFORMS[entity.platform].stateful:
+                    self._entities[key] = entity
+                    declared_keys.add(key)
+                    touched.append(key)
+                    continue
                 try:
                     entity.state = validate_state(entity.platform, entity.platform_options, entity.state)
                 except ValueError as err:
@@ -403,13 +412,20 @@ class DeviceRegistry:
         """Note a change of an entity: schedule a save and tell the sink."""
         self._schedule(automation_id)
         if self.sink is not None:
-            self.sink.entity_changed(automation_id, key)
+            try:
+                self.sink.entity_changed(automation_id, key)
+            except Exception:  # pylint: disable=broad-exception-caught
+                # What the host fails to show is its problem: the change is stored
+                _LOGGER.exception("Failed to show entity '%s' of '%s'", key, automation_id)
 
     def entity_removed(self, automation_id: str, entity: StoredEntity) -> None:
         """Note that a leftover was removed: schedule a save and tell the sink."""
         self._schedule(automation_id)
         if self.sink is not None:
-            self.sink.entity_removed(automation_id, entity)
+            try:
+                self.sink.entity_removed(automation_id, entity)
+            except Exception:  # pylint: disable=broad-exception-caught
+                _LOGGER.exception("Failed to remove entity '%s' of '%s'", entity.key, automation_id)
 
     # --- Writing ------------------------------------------------------------------
 
