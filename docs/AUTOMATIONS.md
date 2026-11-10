@@ -74,8 +74,36 @@ turns the allowlist off for the automation. Both add to the integration's option
 
 Automation code is run by HAAnim's interpreter, on Home Assistant's event loop. Blocking calls
 (`time.sleep`, file and network I/O, threads, subprocesses) are not available; use `await haa.sleep()` and
-services instead. Generators (`yield`) are not supported. Loops and function calls yield to the event loop
-regularly, so a long loop does not freeze Home Assistant.
+services instead. Loops and function calls yield to the event loop regularly, so a long loop does not freeze
+Home Assistant.
+
+Generators work as in Python: functions with `yield` and `yield from`, and generator expressions. They are
+lazy, and `send()`, `throw()` and `close()` work.
+
+```python
+from haanim import action, logging
+
+
+def readings(limit):
+    value = 20.0
+    while value < limit:
+        yield value
+        value += 0.5
+
+
+@action
+def summary(event):
+    for value in readings(21):
+        logging.info("reading %s", value)
+    return sum(readings(25)), max(v for v in readings(22))
+```
+
+`list`, `tuple`, `set`, `dict`, `sorted`, `sum`, `min`, `max` and `str.join` pull a generator with the event
+loop free between items, so even `list()` of an endless generator only runs until the action's timeout. Other
+functions that pull a generator themselves (`any`, `all`, `itertools`, ...), and functions of the automation
+that Python code calls (a `key=` of `sorted`), cannot pause: such a run is stopped with a `TimeoutError` after
+10 seconds, because it blocks Home Assistant while it runs. Async generators (`yield` in an `async def`) are
+not supported.
 
 ## Actions
 

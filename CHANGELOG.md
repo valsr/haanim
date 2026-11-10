@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `state_class` (usage per hour for sums, which continue from and join up with the stored ones), and
   `haa.statistics()` and `entity.statistics()` read the statistics of any entity.
 - The `demo_entities` example, with a backfill of energy statistics.
+- Generators: `yield`, `yield from` and generator expressions, lazy and with `send`, `throw` and `close`.
+  `list`, `sum`, `sorted` and the other calls that consume every item pull a generator with the event loop free
+  between items.
 - Cards have a table element: `haa.card.create_table()`, with column names, rows of values, units and a
   title, and `add_row(..., limit=...)` for a rolling log.
 - Constants for automations: `EntityPlatform`, `EntityCommand`, `StateClass`, `NumberMode`, `TextMode`, `Period`,
@@ -30,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `except StopIteration` in automation code caught nothing: Python turned it into `RuntimeError` on its way
+  through the interpreter. It now behaves as in Python.
+- Automation code run synchronously by Python code (a `key=` function of `sorted`, a generator pulled by `any`)
+  could freeze Home Assistant for good. It is now stopped with a `TimeoutError` after 10 seconds.
 - The test harness's `wait_idle()` gave up on a long calculation after a fixed number of event-loop turns,
   saying the action should be given time. It now waits as long as the actions compute, up to `max_steps`
   steps of automation code (1,000,000 by default), and says whether actions are waiting or still computing.
