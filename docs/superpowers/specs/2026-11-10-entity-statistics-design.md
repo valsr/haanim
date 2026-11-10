@@ -95,7 +95,7 @@ engine: validation, usage → sums (pure code)  ─┘      └─ HAStatistics 
 | `async query(statistic_id, start, end, period, types) -> list[dict]` | Rows of a period, oldest first |
 | `async import_rows(metadata, rows) -> None` | Writes hourly rows, replacing rows of the same hours; returns once written |
 | `async adjust_sums(statistic_id, start, delta, unit) -> None` | Adds `delta` to every sum from `start` on, in hourly and 5-minute rows; returns once written |
-| `entity_statistic_id(entity_id) -> str` | The statistic ID of an entity (its current entity ID) |
+| `entity_statistic_id(platform, unique_id, default) -> str` | The statistic ID of an entity: its current entity ID, `default` if unknown |
 
 Without a provider, the statistics calls raise `StatisticsUnavailableError`, a new public error.
 
