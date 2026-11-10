@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The test harness drives entities: `entity()`, `entities`, `command()` and `entities=`.
 - The `demo_entities` example.
 
+### Fixed
+
+- The test harness's `wait_idle()` gave up on a long calculation after a fixed number of event-loop turns,
+  saying the action should be given time. It now waits as long as the actions compute, up to `max_steps`
+  steps of automation code (1,000,000 by default), and says whether actions are waiting or still computing.
+
 ## [0.3.1] - 2026-11-09
 
 ### Fixed

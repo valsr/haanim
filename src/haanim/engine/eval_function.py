@@ -46,11 +46,17 @@ class Checkpoint:
     """Awaitable that gives the event loop one turn.
 
     This is where an action can be suspended, cancelled or timed out without
-    an ``await`` in the automation's code.
+    an ``await`` in the automation's code. It counts how often it was passed:
+    the test harness tells a computing action from a waiting one by it.
     """
+
+    def __init__(self) -> None:
+        """Initialize with nothing passed."""
+        self.passed = 0
 
     def __await__(self) -> Generator[None]:
         """Yield to whatever is running the coroutine, once."""
+        self.passed += 1
         yield
 
 

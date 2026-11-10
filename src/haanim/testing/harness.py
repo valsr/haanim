@@ -37,6 +37,7 @@ from haanim.engine.automation_ids import automation_id as derive_automation_id
 from haanim.engine.device_api import DeviceEntity, HAAnimDevice
 from haanim.engine.devices import DeviceRegistry
 from haanim.engine.discovery import ASSETS_DIRNAME
+from haanim.engine.eval_function import CHECKPOINT
 from haanim.engine.errors import (
     ActionNotFoundError,
     HAAnimError,
@@ -64,8 +65,11 @@ from haanim.types import EventData
 
 __all__ = ["AutomationCall", "AutomationHarness", "HarnessCard", "HarnessError"]
 
-# How often wait_idle lets the event loop run before it gives up on actions that do not finish
-IDLE_ROUNDS = 200
+# How many rounds of the event loop without a step of automation code mean that the actions are waiting
+IDLE_STALLED_ROUNDS = 3
+
+# How many steps of automation code (loop iterations and calls) wait_idle lets actions take by default
+DEFAULT_IDLE_STEPS = 1_000_000
 
 # How often a lifecycle step gets the event loop before the clock is moved for it, and by how much
 DRIVE_ROUNDS = 20
@@ -582,26 +586,52 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         """
         self._sun.set_times(sunrise, sunset)
 
-    async def wait_idle(self) -> None:
+    async def wait_idle(self, max_steps: int = DEFAULT_IDLE_STEPS) -> None:
         """Wait until every dispatched action has finished and nothing is left to react to.
 
+        An action that computes is waited for as long as it computes, up to
+        ``max_steps`` steps of automation code (loop iterations and calls).
         Time does not move: an action that sleeps or waits has to be helped
         along with ``advance_time``.
 
+        Args:
+            max_steps: How many steps the actions may take before wait_idle
+                gives up on them; raise it for a calculation that long.
+
         Raises:
-            HarnessError: If actions are still running after the event loop had its turns.
+            HarnessError: If actions are waiting (for time, or for something
+                else), or still computing after ``max_steps`` steps.
         """
-        for _ in range(IDLE_ROUNDS):
+        start = CHECKPOINT.passed
+        stalled = 0
+        while True:
+            before = CHECKPOINT.passed
             await self.clock.settle()
             if self._dispatcher.is_idle():
                 await self.clock.settle()
                 if self._dispatcher.is_idle():
                     return
+            if CHECKPOINT.passed == before:
+                stalled += 1
+                if stalled >= IDLE_STALLED_ROUNDS:
+                    raise HarnessError(
+                        f"Actions are waiting: {self._running()}. Nothing moves them on: if they sleep or "
+                        "wait for a timeout, move time with advance_time(); if they wait for a state or an "
+                        "event, set or fire it."
+                    )
+            else:
+                stalled = 0
+                if CHECKPOINT.passed - start > max_steps:
+                    raise HarnessError(
+                        f"Actions are still computing: {self._running()}, after {max_steps} steps. If the "
+                        "calculation is that long, give wait_idle(max_steps=...) a larger number; if it "
+                        "never ends, it is an endless loop."
+                    )
+
+    def _running(self) -> str:
+        """Return the names of the running actions, for a message."""
         running = sorted(self._status.get_status(self.automation_id).running_actions.values())
-        raise HarnessError(
-            f"Actions are still running: {', '.join(running) or 'unknown'}. "
-            "If they sleep or wait for a timeout, move time with advance_time()."
-        )
+        return ", ".join(running) or "unknown"
 
     # --- Actions -----------------------------------------------------------------
 

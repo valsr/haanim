@@ -643,7 +643,7 @@ async def test_morning_routine_only_when_home():
 | ------------------------------------------- | --------------------------------------------------------------- |
 | Set states and fire events                  | `set_state`, `remove_state`, `fire_event`                       |
 | Control time                                | `now=`, `advance_time(minutes=5)`, `set_sun(sunset="18:30")`    |
-| Wait for the automation to finish reacting  | `await wait_idle()`                                             |
+| Wait for the automation to finish reacting  | `await wait_idle()`; a long calculation: `wait_idle(max_steps=5_000_000)` |
 | Call actions                                | `await call("name", level=3)`, with `caller=` or `source="trigger"` |
 | See what it did                             | `service_calls()`, `events()`, `logs()`, `message`, `state`, `variables`, `last_error` |
 | Decide what services do                     | `stub_service("weather.get_forecasts", response={...})`, `success=False`, `remove_service` |

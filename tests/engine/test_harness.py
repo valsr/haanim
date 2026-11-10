@@ -130,6 +130,23 @@ def folder(tmp_path: Path) -> Path:
     return folder
 
 
+BUSY = """
+from haanim import haa, on_event
+
+@on_event("crunch")
+def crunch(event):
+    total = 0
+    for i in range(event.event_data["n"]):
+        total += i
+    haa.set_variable("total", total)
+
+@on_event("forever")
+def spin(event):
+    while True:
+        pass
+"""
+
+
 def seen(automation: AutomationHarness) -> list[Any]:
     """Return what the automation's functions recorded."""
     return automation._context.get_symbol("seen")  # pylint: disable=protected-access
@@ -360,11 +377,43 @@ class TestTime:
         """Test wait_idle says so when an action sleeps, and advancing time finishes it."""
         async with AutomationHarness(folder) as automation:
             task = asyncio.ensure_future(automation.call("slow"))
-            with pytest.raises(HarnessError, match=r"still running: slow.*advance_time"):
+            with pytest.raises(HarnessError, match=r"waiting: slow.*advance_time"):
                 await automation.wait_idle()
             await automation.advance_time(seconds=30)
             assert await task == "done"
             await automation.wait_idle()
+
+    async def test_wait_idle_waits_for_a_long_calculation(self, tmp_path: Path) -> None:
+        """Test wait_idle waits as long as an action computes, however many event-loop turns that takes."""
+        folder = tmp_path / "busy"
+        folder.mkdir()
+        (folder / "main.py").write_text(BUSY, encoding="utf-8")
+        async with AutomationHarness(folder) as automation:
+            automation.fire_event("crunch", {"n": 30000})
+            await automation.wait_idle()
+            assert automation.variables["total"] == sum(range(30000))
+
+    async def test_wait_idle_gives_up_on_an_endless_calculation(self, tmp_path: Path) -> None:
+        """Test wait_idle stops after max_steps, and says the action is computing, not waiting."""
+        folder = tmp_path / "busy"
+        folder.mkdir()
+        (folder / "main.py").write_text(BUSY, encoding="utf-8")
+        async with AutomationHarness(folder) as automation:
+            automation.fire_event("forever")
+            with pytest.raises(HarnessError, match=r"still computing: spin.*max_steps") as raised:
+                await automation.wait_idle(max_steps=2000)
+            assert "advance_time" not in str(raised.value)
+            await automation.stop()
+
+    async def test_wait_idle_says_a_sleeping_action_is_waiting(self, folder: Path) -> None:
+        """Test the message for an action that sleeps points at time, not at the step limit."""
+        async with AutomationHarness(folder) as automation:
+            task = asyncio.ensure_future(automation.call("slow"))
+            with pytest.raises(HarnessError, match=r"waiting: slow") as raised:
+                await automation.wait_idle()
+            assert "max_steps" not in str(raised.value)
+            await automation.advance_time(seconds=30)
+            await task
 
 
 class TestCalls:
