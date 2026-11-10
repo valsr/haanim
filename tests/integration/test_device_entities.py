@@ -212,3 +212,107 @@ async def test_folder_gone_while_stopped_removes_device(
     await hass.async_block_till_done()
     assert manager.devices.automation_ids() == ["climate"]
     assert hass.states.get("sensor.haanim_gone_x") is None or er.async_get(hass).async_get("sensor.haanim_gone_x") is None
+
+
+CONTROLS = """
+from haanim import button_entity, haa, number_entity, select_entity, switch_entity, text_entity
+
+@switch_entity(initial=False)
+class boost:
+    def turn_on(self, entity, event):
+        entity.set_state(True)
+
+    def turn_off(self, entity, event):
+        entity.set_state(False)
+
+@switch_entity(initial=False)
+class lazy:
+    pass
+
+@number_entity(min=0, max=30, step=0.5, unit="°C", mode="box", initial=20)
+class target:
+    def set_value(self, entity, event):
+        entity.set_state(event.value)
+
+@select_entity(options=["eco", "comfort"], initial="eco")
+class mode:
+    def select_option(self, entity, event):
+        entity.set_state(event.value)
+
+@button_entity
+class ring:
+    def press(self, entity, event):
+        haa.set_variable("rang", True)
+
+@text_entity(max_length=10, pattern="[a-z]*", initial="")
+class note:
+    def set_value(self, entity, event):
+        entity.set_state(event.value)
+"""
+
+
+async def test_switch_runs_hooks(hass: HomeAssistant, setup: Setup) -> None:
+    await setup({"heat": CONTROLS})
+    await hass.services.async_call("switch", "turn_on", {"entity_id": "switch.haanim_heat_boost"}, blocking=True)
+    assert hass.states.get("switch.haanim_heat_boost").state == "on"  # type: ignore[union-attr]
+    await hass.services.async_call("switch", "turn_off", {"entity_id": "switch.haanim_heat_boost"}, blocking=True)
+    assert hass.states.get("switch.haanim_heat_boost").state == "off"  # type: ignore[union-attr]
+
+
+async def test_switch_without_hook_stays_off(
+    hass: HomeAssistant, setup: Setup, caplog: pytest.LogCaptureFixture
+) -> None:
+    await setup({"heat": CONTROLS})
+    await hass.services.async_call("switch", "turn_on", {"entity_id": "switch.haanim_heat_lazy"}, blocking=True)
+    assert hass.states.get("switch.haanim_heat_lazy").state == "off"  # type: ignore[union-attr]
+    assert '"lazy" has no turn_on hook; command ignored' in caplog.text
+
+
+async def test_number_runs_hook(hass: HomeAssistant, setup: Setup) -> None:
+    await setup({"heat": CONTROLS})
+    state = hass.states.get("number.haanim_heat_target")
+    assert state is not None
+    assert (state.attributes["min"], state.attributes["max"], state.attributes["step"]) == (0, 30, 0.5)
+    assert state.attributes["mode"] == "box"
+    await hass.services.async_call(
+        "number", "set_value", {"entity_id": "number.haanim_heat_target", "value": 22.5}, blocking=True
+    )
+    assert hass.states.get("number.haanim_heat_target").state == "22.5"  # type: ignore[union-attr]
+
+
+async def test_select_runs_hook(hass: HomeAssistant, setup: Setup) -> None:
+    await setup({"heat": CONTROLS})
+    assert hass.states.get("select.haanim_heat_mode").attributes["options"] == ["eco", "comfort"]  # type: ignore[union-attr]
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": "select.haanim_heat_mode", "option": "comfort"}, blocking=True
+    )
+    assert hass.states.get("select.haanim_heat_mode").state == "comfort"  # type: ignore[union-attr]
+
+
+async def test_button_runs_hook(hass: HomeAssistant, setup: Setup) -> None:
+    manager = await setup({"heat": CONTROLS})
+    await hass.services.async_call("button", "press", {"entity_id": "button.haanim_heat_ring"}, blocking=True)
+    context = manager.get_context_by_name("heat")
+    assert context is not None and context.variables is not None
+    assert context.variables.get("rang") is True
+
+
+async def test_text_runs_hook(hass: HomeAssistant, setup: Setup) -> None:
+    await setup({"heat": CONTROLS})
+    state = hass.states.get("text.haanim_heat_note")
+    assert state is not None
+    assert (state.attributes["max"], state.attributes["pattern"]) == (10, "[a-z]*")
+    await hass.services.async_call(
+        "text", "set_value", {"entity_id": "text.haanim_heat_note", "value": "hello"}, blocking=True
+    )
+    assert hass.states.get("text.haanim_heat_note").state == "hello"  # type: ignore[union-attr]
+
+
+async def test_command_while_stopped_is_noop(
+    hass: HomeAssistant, setup: Setup, caplog: pytest.LogCaptureFixture
+) -> None:
+    manager = await setup({"heat": CONTROLS})
+    await manager.async_stop_automation("heat")
+    await hass.services.async_call("switch", "turn_on", {"entity_id": "switch.haanim_heat_boost"}, blocking=True)
+    assert hass.states.get("switch.haanim_heat_boost").state == "off"  # type: ignore[union-attr]
+    assert '"boost" ignored turn_on: automation is not running' in caplog.text

@@ -1,0 +1,42 @@
+"""Switches automations declare with ``@switch_entity``; turning one on or off runs its hook."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from custom_components.haanim.entities import DeclaredEntity, async_setup_declared_platform
+
+
+class DeclaredSwitch(DeclaredEntity, SwitchEntity):
+    """A switch an automation declares."""
+
+    @property
+    def is_on(self) -> bool | None:  # pyright: ignore[reportIncompatibleVariableOverride]
+        """The stored state; None while unknown."""
+        return self.state_value
+
+    @property
+    def device_class(self) -> SwitchDeviceClass | None:  # pyright: ignore[reportIncompatibleVariableOverride]
+        """The declared device class."""
+        value = self.declaration.get("device_class")
+        return SwitchDeviceClass(value) if value else None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Run the ``turn_on`` hook."""
+        await self.async_command("turn_on")
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Run the ``turn_off`` hook."""
+        await self.async_command("turn_off")
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
+    """Set up the switches automations declare."""
+    await async_setup_declared_platform(hass, entry, async_add_entities, "switch", DeclaredSwitch)
