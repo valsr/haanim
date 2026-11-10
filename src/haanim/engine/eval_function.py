@@ -298,8 +298,9 @@ class NativeCallWatch:
             self._function.engine.warn_blocking(self._function)
         if elapsed > NATIVE_CALL_LIMIT_SECONDS or steps > NATIVE_CALL_STEP_LIMIT:
             return TimeoutError(
-                f"function '{self._function.name}' ran for more than {NATIVE_CALL_LIMIT_SECONDS:g} seconds "
-                "without returning to the interpreter, and was stopped: it blocks Home Assistant while it runs"
+                f"function '{self._function.name}' ran for more than {NATIVE_CALL_LIMIT_SECONDS:g} seconds"
+                " without returning to the interpreter, and was stopped:"
+                " it blocks Home Assistant while it runs"
             )
         return None
 

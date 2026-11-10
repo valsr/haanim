@@ -102,11 +102,14 @@ def find_unsupported(tree: ast.AST, filename: str) -> list[Problem]:
     for node in ast.walk(tree):
         # A yield makes a def a generator; in a lambda or an async def it is not supported
         if isinstance(node, (ast.Lambda, ast.AsyncFunctionDef)):
-            message = _YIELD_IN_LAMBDA if isinstance(node, ast.Lambda) else _ASYNC_GENERATOR
+            yield_problem = _YIELD_IN_LAMBDA if isinstance(node, ast.Lambda) else _ASYNC_GENERATOR
             for found in own_yields(node):
                 problems.append(
                     Problem(
-                        filename=filename, lineno=found.lineno, col_offset=found.col_offset, message=message
+                        filename=filename,
+                        lineno=found.lineno,
+                        col_offset=found.col_offset,
+                        message=yield_problem,
                     )
                 )
         message = _UNSUPPORTED_NODES.get(type(node))
