@@ -6,7 +6,7 @@ import ast
 import inspect
 import types
 import weakref
-from collections.abc import Callable, Coroutine, Generator
+from collections.abc import AsyncGenerator, Callable, Coroutine, Generator
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -218,6 +218,102 @@ def _close_body(coro: Coroutine[Any, Any, Any], watch: NativeCallWatch | None) -
         raise RuntimeError("generator ignored GeneratorExit")
 
 
+AUTOMATION_ASYNC_GENERATORS: weakref.WeakSet[AsyncGenerator[Any, Any]] = weakref.WeakSet()
+"""Every async generator automation code made."""
+
+
+def is_automation_async_generator(obj: Any) -> bool:
+    """Return whether an object is an async generator automation code made."""
+    try:
+        return obj in AUTOMATION_ASYNC_GENERATORS
+    except TypeError:
+        return False
+
+
+class _Forward:
+    """Awaitable that hands what a body yielded (a future, or None at a checkpoint) on to the event loop."""
+
+    __slots__ = ("message",)
+
+    def __init__(self, message: Any) -> None:
+        """Hold the message for the event loop."""
+        self.message = message
+
+    def __await__(self) -> Generator[Any, Any, Any]:
+        """Yield the message to the event loop; return what it sends back."""
+        return (yield self.message)
+
+
+def drive_async_generator(
+    body: Callable[[], Coroutine[Any, Any, Any]], name: str
+) -> AsyncGenerator[Any, Any]:
+    """Return a Python async generator that runs the coroutine of an async generator body.
+
+    Each ``yield`` (a ``YieldPoint``) hands its value to whoever awaited
+    ``__anext__()`` or ``asend()``; everything else the body awaits reaches the
+    event loop through the generator, so the body runs on the loop as any
+    automation code does.
+    """
+    generator = _adrive(body, name)
+    AUTOMATION_ASYNC_GENERATORS.add(generator)
+    return generator
+
+
+async def _adrive(body: Callable[[], Coroutine[Any, Any, Any]], name: str) -> AsyncGenerator[Any, Any]:
+    """The async generator ``drive_async_generator`` returns; the body's coroutine is made on first use."""
+    coro = body()
+    value_in: Any = None
+    error_in: BaseException | None = None
+    while True:
+        try:
+            message = coro.throw(error_in) if error_in is not None else coro.send(value_in)
+        except StopIteration:
+            return
+        except CarriedStopIteration as carried:
+            raise RuntimeError("async generator raised StopIteration") from carried.stop
+        except StopAsyncIteration as err:
+            raise RuntimeError("async generator raised StopAsyncIteration") from err
+        value_in, error_in = None, None
+        if isinstance(message, _Yielded):
+            try:
+                value_in = yield message.value
+            except GeneratorExit:
+                await _aclose_body(coro)
+                raise
+            except BaseException as err:  # pylint: disable=broad-exception-caught
+                error_in = err
+        else:
+            try:
+                value_in = await _Forward(message)
+            except BaseException as err:  # pylint: disable=broad-exception-caught
+                # Cancellation and a future's exception go into the body, at its await
+                error_in = err
+
+
+async def _aclose_body(coro: Coroutine[Any, Any, Any]) -> None:
+    """Close an async generator body suspended at a ``yield``; its cleanup may await, loop and call."""
+    pending: BaseException | None = CarriedGeneratorExit()
+    value_in: Any = None
+    while True:
+        try:
+            message = coro.throw(pending) if pending is not None else coro.send(value_in)
+        except StopIteration, GeneratorExit, CarriedGeneratorExit:
+            return
+        except CarriedStopIteration as carried:
+            raise RuntimeError("async generator raised StopIteration") from carried.stop
+        pending, value_in = None, None
+        if isinstance(message, _Yielded):
+            try:
+                coro.close()
+            except RuntimeError:
+                pass
+            raise RuntimeError("async generator ignored GeneratorExit")
+        try:
+            value_in = await _Forward(message)
+        except BaseException as err:  # pylint: disable=broad-exception-caught
+            pending = err
+
+
 def run_to_completion(
     coro: Coroutine[Any, Any, Any],
     name: str,
@@ -397,19 +493,27 @@ class EvalFunction:
         self.kw_defaults = kw_defaults or {}
         self._positional = [arg.arg for arg in (*args.posonlyargs, *args.args)]
         self._keyword_only = [arg.arg for arg in args.kwonlyargs]
-        self.is_generator = isinstance(body, list) and bool(yields_in(body))
+        has_yield = isinstance(body, list) and bool(yields_in(body))
+        self.is_generator = has_yield and not is_async
+        self.is_async_generator = has_yield and is_async
         self.function = self._build_function(doc)
 
     def _build_function(self, doc: str | None) -> Callable[..., Any]:
         """Create the Python callable for this function."""
         function: Callable[..., Any]
 
-        if self.is_generator and not self.is_async:
+        if self.is_generator:
 
             def generator_function(*args: Any, **kwargs: Any) -> Any:
                 return self.make_generator(*args, **kwargs)
 
             function = generator_function
+        elif self.is_async_generator:
+
+            def async_generator_function(*args: Any, **kwargs: Any) -> Any:
+                return self.make_async_generator(*args, **kwargs)
+
+            function = async_generator_function
         elif self.is_async:
 
             async def async_function(*args: Any, **kwargs: Any) -> Any:
@@ -531,6 +635,11 @@ class EvalFunction:
         """Return the generator a call of a generator function gives: nothing of the body runs yet."""
         scope = self.bind(args, kwargs)
         return drive_generator(lambda: self._run_body(scope), self.name, NativeCallWatch(self))
+
+    def make_async_generator(self, *args: Any, **kwargs: Any) -> Any:
+        """Return the async generator a call of an async generator function gives: nothing of the body runs yet."""
+        scope = self.bind(args, kwargs)
+        return drive_async_generator(lambda: self._run_body(scope), self.name)
 
     async def _run_body(self, scope: SymbolTable) -> Any:
         """Run a generator's body; its ``return`` value ends the generator."""

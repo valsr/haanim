@@ -622,7 +622,7 @@ class TestAwaitRule:
 
     def test_compiler_error_is_listed_with_unsupported_constructs(self) -> None:
         """Both kinds of problem are reported together, in source order."""
-        source = "async def gen():\n    yield 1\n\nawait gen()\n"
+        source = "def gen():\n    f = lambda: (yield)\n\nawait gen()\n"
 
         with pytest.raises(AutomationSyntaxError) as raised:
             validate_source(source, filename="main.py")

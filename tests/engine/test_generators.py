@@ -272,11 +272,6 @@ async def test_yield_in_lambda_rejected(tmp_path: Path) -> None:
     assert "'yield' in a lambda is not supported: use a def" in (error or "")
 
 
-async def test_async_generator_rejected(tmp_path: Path) -> None:
-    error = await load_error(tmp_path, "async def agen():\n    yield 1\n")
-    assert "async generators are not supported" in (error or "")
-
-
 # --- StopIteration ------------------------------------------------------------------
 
 
@@ -542,7 +537,7 @@ def test_restart_starts_the_count_again(monkeypatch: pytest.MonkeyPatch) -> None
 
 # --- Final review fixes -------------------------------------------------------------
 
-CLEANUP = '''
+CLEANUP = """
 from haanim import ActionMode
 log = []
 
@@ -582,7 +577,7 @@ def all_of_it(event):
 @action
 def logged(event):
     return log
-'''
+"""
 
 
 async def test_close_runs_a_finally_that_calls_functions_and_loops(tmp_path: Path) -> None:
@@ -608,10 +603,17 @@ async def test_cancelled_drain_runs_a_finally_that_calls_a_function(tmp_path: Pa
 @pytest.mark.timeout(20)
 @pytest.mark.parametrize(
     "statement",
-    ["return -1 in (x for x in forever())", "return [*forever()]", "a, *b = forever()", "return max(*forever())"],
+    [
+        "return -1 in (x for x in forever())",
+        "return [*forever()]",
+        "a, *b = forever()",
+        "return max(*forever())",
+    ],
     ids=["in", "star in a list", "unpacking", "star in a call"],
 )
-async def test_interpreter_iteration_of_an_infinite_generator_is_cancelled(tmp_path: Path, statement: str) -> None:
+async def test_interpreter_iteration_of_an_infinite_generator_is_cancelled(
+    tmp_path: Path, statement: str
+) -> None:
     import asyncio  # pylint: disable=import-outside-toplevel
 
     from haanim.engine.errors import ActionTimeOutError  # pylint: disable=import-outside-toplevel
@@ -637,7 +639,7 @@ async def test_star_and_unpacking_of_a_generator(tmp_path: Path) -> None:
 
 
 async def test_yield_from_forwards_throw_and_close(tmp_path: Path) -> None:
-    body = '''
+    body = """
 log = []
 
 def inner():
@@ -661,12 +663,12 @@ def go(event):
     caught = g.throw(ValueError())
     g.close()
     return [caught, log]
-'''
+"""
     assert await run(tmp_path, body) == ["caught", ["inner closed"]]
 
 
 async def test_except_generator_exit_in_a_body_that_cleans_up(tmp_path: Path) -> None:
-    body = '''
+    body = """
 log = []
 
 def note(text):
@@ -687,5 +689,5 @@ def go(event):
     next(g)
     g.close()
     return log
-'''
+"""
     assert await run(tmp_path, body) == ["exit"]

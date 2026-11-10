@@ -369,9 +369,9 @@ class TestFolderAtLoad:
         ("helper", "error", "message"),
         [
             (
-                "async def gen():\n    yield 1\n",
+                "def gen():\n    f = lambda: (yield)\n",
                 AutomationSyntaxError,
-                r"^lib/helper.py:2: async generators are not supported",
+                r"^lib/helper.py:2: 'yield' in a lambda is not supported",
             ),
             ("x = (\n", AutomationSyntaxError, r"^lib/helper.py:1: invalid syntax"),
             ("\nimport os\n", AutomationSecurityError, r"^lib/helper.py:2: import of module 'os'"),

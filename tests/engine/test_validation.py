@@ -25,14 +25,12 @@ from tests.engine.helpers import automation_file, load_and_run, make_context
 # Each unsupported construct of the design's "Supported Python" section:
 # (source, line of the construct, text expected in the message).
 UNSUPPORTED: dict[str, tuple[str, int, str]] = {
-    "yield in an async def": (
-        "x = 1\nasync def gen():\n    yield 1\n",
-        3,
-        "async generators are not supported",
-    ),
-    "bare yield in an async def": ("async def gen():\n    yield\n", 2, "async generators are not supported"),
     "yield in lambda": ("f = lambda: (yield)\n", 1, "'yield' in a lambda is not supported: use a def"),
-    "yield from in an async def": ("async def gen():\n\n    yield from [1, 2]\n", 3, "async generators"),
+    "yield from in an async def": (
+        "async def gen():\n\n    yield from [1, 2]\n",
+        3,
+        "'yield from' inside async function",
+    ),
     "async for": ("async def f(items):\n    async for item in items:\n        pass\n", 2, "'async for'"),
     "async list comprehension": (
         "async def f(items):\n    return [x async for x in items]\n",
@@ -272,7 +270,9 @@ class TestProblems:
 
     def test_all_problems_are_listed_in_source_order(self) -> None:
         """One error lists every problem, first one first."""
-        source = "match 1:\n    case _:\n        pass\nasync def gen():\n    yield 1\nr = lambda: (yield)\n"
+        source = (
+            "match 1:\n    case _:\n        pass\ndef gen():\n    f = lambda: (yield)\nr = lambda: (yield)\n"
+        )
 
         with pytest.raises(AutomationSyntaxError) as raised:
             validate_source(source, filename="main.py")
@@ -293,7 +293,7 @@ class TestProblems:
 
     def test_nested_function_is_checked(self) -> None:
         """Code in function and class bodies is checked although it does not run at load."""
-        source = "class A:\n    def m(self):\n        async def inner():\n            yield 1\n"
+        source = "class A:\n    def m(self):\n        def inner():\n            f = lambda: (yield)\n"
 
         _, problems = check_source(source, "main.py")
 
@@ -332,9 +332,9 @@ class TestValidateFiles:
         """A file other than the main one is checked too."""
         files = FakeFileSystem()
         files.write(Path("/a/main.py"), "import helper\n")
-        files.write(Path("/a/helper.py"), "\nasync def gen():\n    yield 1\n")
+        files.write(Path("/a/helper.py"), "\ndef gen():\n    f = lambda: (yield)\n")
 
-        with pytest.raises(AutomationSyntaxError, match=r"^helper.py:3: async generators") as raised:
+        with pytest.raises(AutomationSyntaxError, match=r"^helper.py:3: 'yield' in a lambda") as raised:
             await validate_files(files, [Path("/a/main.py"), Path("/a/helper.py")])
 
         assert raised.value.filename == "helper.py"
@@ -380,7 +380,9 @@ class TestLoad:
         """Code before the unsupported construct is not executed."""
         marker = tmp_path / "ran"
         path = automation_file(tmp_path, "lights")
-        path.write_text(f"open({str(marker)!r}, 'w').close()\nran = True\n\nasync def gen():\n    yield 1\n")
+        path.write_text(
+            f"open({str(marker)!r}, 'w').close()\nran = True\n\ndef gen():\n    f = lambda: (yield)\n"
+        )
         context = make_context(str(path), allow_all_imports=True)
 
         with pytest.raises(AutomationSyntaxError, match=r"^main.py:5: "):

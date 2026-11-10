@@ -19,7 +19,6 @@ from haanim.engine.import_controller import ImportController
 from haanim.interfaces import FileSystem
 
 _YIELD_IN_LAMBDA = "'yield' in a lambda is not supported: use a def"
-_ASYNC_GENERATOR = "async generators are not supported"
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 
@@ -100,9 +99,9 @@ def find_unsupported(tree: ast.AST, filename: str) -> list[Problem]:
     problems: list[Problem] = []
 
     for node in ast.walk(tree):
-        # A yield makes a def a generator; in a lambda or an async def it is not supported
-        if isinstance(node, (ast.Lambda, ast.AsyncFunctionDef)):
-            yield_problem = _YIELD_IN_LAMBDA if isinstance(node, ast.Lambda) else _ASYNC_GENERATOR
+        # A yield makes a def a generator and an async def an async generator; in a lambda it is not supported
+        if isinstance(node, ast.Lambda):
+            yield_problem = _YIELD_IN_LAMBDA
             for found in own_yields(node):
                 problems.append(
                     Problem(
