@@ -13,18 +13,30 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from haanim.const import (
+    STAT_CHANGE,
+    STAT_END,
+    STAT_MAX,
+    STAT_MEAN,
+    STAT_MIN,
+    STAT_START,
+    STAT_STATE,
+    STAT_SUM,
+    STAT_USAGE,
+    Period,
+)
 from haanim.engine.errors import StatisticsError, StatisticsUnavailableError
 from haanim.interfaces import StatisticsProvider
 
-PERIODS = ("5minute", "hour", "day", "week", "month")
+PERIODS = tuple(Period)
 EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 HOUR = timedelta(hours=1)
 # Home Assistant compiles an hour's statistics just after it ends; importing an hour before that conflicts
 COMPILE_MARGIN = timedelta(minutes=15)
-QUERY_TYPES = {"mean", "min", "max", "state", "sum", "change"}
+QUERY_TYPES = {STAT_MEAN, STAT_MIN, STAT_MAX, STAT_STATE, STAT_SUM, STAT_CHANGE}
 
-SUM_FIELDS = frozenset({"start", "usage"})
-MEAN_FIELDS = frozenset({"start", "mean", "min", "max"})
+SUM_FIELDS = frozenset({STAT_START, STAT_USAGE})
+MEAN_FIELDS = frozenset({STAT_START, STAT_MEAN, STAT_MIN, STAT_MAX})
 
 
 @dataclass(frozen=True)
@@ -44,7 +56,7 @@ class StatisticsMetadata:
     has_sum: bool
 
 
-def parse_time(value: Any, now: datetime, what: str = "start") -> datetime:
+def parse_time(value: Any, now: datetime, what: str = STAT_START) -> datetime:
     """Return a time as an aware UTC datetime; a naive time is in the time zone of ``now``.
 
     Raises:
@@ -88,9 +100,9 @@ def parse_rows(  # pylint: disable=too-many-branches
     for row in rows:
         if not isinstance(row, Mapping):
             raise ValueError(f"a row must be a dictionary, not {row!r}")
-        if "start" not in row:
+        if STAT_START not in row:
             raise ValueError("a row needs a start")
-        start = parse_time(row["start"], now)
+        start = parse_time(row[STAT_START], now)
         if (start.minute, start.second, start.microsecond) != (0, 0, 0):
             raise ValueError(f"start {start.isoformat()} is not the start of an hour")
         if start + HOUR + COMPILE_MARGIN > now:
@@ -100,24 +112,24 @@ def parse_rows(  # pylint: disable=too-many-branches
             )
         if has_sum:
             unknown = set(row) - SUM_FIELDS
-            if unknown or "usage" not in row:
+            if unknown or STAT_USAGE not in row:
                 raise ValueError(f"a row of sum statistics has start and usage, not {sorted(row)}")
-            usage = _number(row, "usage")
+            usage = _number(row, STAT_USAGE)
             if usage < 0 and not allow_negative:
                 raise ValueError(f"usage {usage:g} is negative, and the entity's total only increases")
-            by_hour[start] = {"start": start, "usage": usage}
+            by_hour[start] = {STAT_START: start, STAT_USAGE: usage}
         else:
             unknown = set(row) - MEAN_FIELDS
-            if unknown or "mean" not in row:
+            if unknown or STAT_MEAN not in row:
                 raise ValueError(f"a row of a measurement has start, mean, min and max, not {sorted(row)}")
-            mean = _number(row, "mean")
-            low = _number(row, "min") if "min" in row else mean
-            high = _number(row, "max") if "max" in row else mean
+            mean = _number(row, STAT_MEAN)
+            low = _number(row, STAT_MIN) if STAT_MIN in row else mean
+            high = _number(row, STAT_MAX) if STAT_MAX in row else mean
             if low > mean:
                 raise ValueError(f"min {low:g} is above mean {mean:g}")
             if mean > high:
                 raise ValueError(f"max {high:g} is below mean {mean:g}")
-            by_hour[start] = {"start": start, "mean": mean, "min": low, "max": high}
+            by_hour[start] = {STAT_START: start, STAT_MEAN: mean, STAT_MIN: low, STAT_MAX: high}
     return [by_hour[start] for start in sorted(by_hour)]
 
 
@@ -152,7 +164,7 @@ async def import_statistics(  # pylint: disable=too-many-locals
             await provider.import_rows(metadata, parsed)
             return len(parsed)
 
-        first, last = parsed[0]["start"], parsed[-1]["start"]
+        first, last = parsed[0][STAT_START], parsed[-1][STAT_START]
         # Home Assistant continues its live sum from its latest 5-minute row: without one it starts from 0
         if not await provider.has_short_term(metadata.statistic_id, last + HOUR):
             raise ValueError(
@@ -160,22 +172,22 @@ async def import_statistics(  # pylint: disable=too-many-locals
                 "continue from the imported one: import once it has been recorded for a few minutes"
             )
         history = await provider.query(
-            metadata.statistic_id, EPOCH, last + HOUR, "hour", {"sum"}, unit=metadata.unit
+            metadata.statistic_id, EPOCH, last + HOUR, Period.HOUR, {STAT_SUM}, unit=metadata.unit
         )
-        stored = [(row["start"], row["sum"]) for row in history if row.get("sum") is not None]
+        stored = [(row[STAT_START], row[STAT_SUM]) for row in history if row.get(STAT_SUM) is not None]
         before = [total for start, total in stored if start < first]
         base = before[-1] if before else 0.0
         up_to_end = [total for start, total in stored if start <= last]
         old_end = up_to_end[-1] if up_to_end else base
 
         # Every hour of the range gets a row, so a stored row in a gap keeps no old sum
-        usage = {row["start"]: row["usage"] for row in parsed}
+        usage = {row[STAT_START]: row[STAT_USAGE] for row in parsed}
         running = base
         sums: list[dict[str, Any]] = []
         hour = first
         while hour <= last:
             running += usage.get(hour, 0.0)
-            sums.append({"start": hour, "state": running, "sum": running})
+            sums.append({STAT_START: hour, STAT_STATE: running, STAT_SUM: running})
             hour += HOUR
         await provider.import_rows(metadata, sums)
         if running != old_end:
@@ -207,7 +219,7 @@ async def query_statistics(  # pylint: disable=too-many-positional-arguments
     # In the clock's time zone: days, weeks and months are the local ones
     local = now.tzinfo
     begin = parse_time(start, now).astimezone(local)
-    finish = (parse_time(end, now, "end") if end is not None else now).astimezone(local)
+    finish = (parse_time(end, now, STAT_END) if end is not None else now).astimezone(local)
     if begin > finish:
         raise ValueError(f"start {begin.isoformat()} is after end {finish.isoformat()}")
     if provider is None:

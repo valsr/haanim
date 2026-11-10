@@ -23,6 +23,7 @@ from homeassistant.components.websocket_api.messages import event_message
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
+from haanim.const import OPTION_NAME
 from custom_components.haanim.automation_manager import AutomationManager, async_get_manager
 from custom_components.haanim.const import DOMAIN, VERSION
 from custom_components.haanim.ha.host import HACardSink
@@ -49,7 +50,7 @@ def _entities(hass: HomeAssistant, manager: AutomationManager, automation_id: st
                 "object_id": stored.object_id,
                 "entity_id": entity_id or stored.entity_id(automation_id),
                 "platform": stored.platform,
-                "name": stored.options.get("name") or stored.object_id,
+                "name": stored.options.get(OPTION_NAME) or stored.object_id,
                 "state": stored.state,
                 "declared": stored.declared,
             }

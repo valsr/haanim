@@ -22,6 +22,13 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from haanim.const import (
+    EntityPlatform,
+    OPTION_DEVICE_CLASS,
+    OPTION_PRECISION,
+    OPTION_STATE_CLASS,
+    OPTION_UNIT,
+)
 from custom_components.haanim.automation_manager import AutomationManager
 from custom_components.haanim.const import DOMAIN
 from custom_components.haanim.entities import (
@@ -156,7 +163,7 @@ class AutomationEntities:
         """Remove the entity of an automation whose folder is gone."""
         entity = self._entities.pop(automation_id, None)
         registry = er.async_get(self._hass)
-        entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id_of(automation_id))
+        entity_id = registry.async_get_entity_id(EntityPlatform.SENSOR, DOMAIN, unique_id_of(automation_id))
         if entity_id is not None:
             registry.async_remove(entity_id)
         elif entity is not None and entity.added:
@@ -173,12 +180,12 @@ class AutomationEntities:
             stored.unique_id(automation_id)
             for automation_id in devices.automation_ids()
             for stored in devices.store(automation_id).entities()
-            if stored.platform == "sensor"
+            if stored.platform == EntityPlatform.SENSOR
         }
         self._entities = {key: entity for key, entity in self._entities.items() if key in ids}
         registry = er.async_get(self._hass)
         for registered in er.async_entries_for_config_entry(registry, self._entry.entry_id):
-            if registered.domain == "sensor" and registered.unique_id not in known:
+            if registered.domain == EntityPlatform.SENSOR and registered.unique_id not in known:
                 registry.async_remove(registered.entity_id)
 
 
@@ -193,18 +200,18 @@ class DeclaredSensor(DeclaredEntity, SensorEntity):
     @property
     def native_unit_of_measurement(self) -> str | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The declared unit."""
-        return self.declaration.get("unit")
+        return self.declaration.get(OPTION_UNIT)
 
     @property
     def device_class(self) -> SensorDeviceClass | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The declared device class."""
-        value = self.declaration.get("device_class")
+        value = self.declaration.get(OPTION_DEVICE_CLASS)
         return SensorDeviceClass(value) if value else None
 
     @property
     def state_class(self) -> SensorStateClass | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The declared state class."""
-        value = self.declaration.get("state_class")
+        value = self.declaration.get(OPTION_STATE_CLASS)
         return SensorStateClass(value) if value else None
 
     @property
@@ -212,7 +219,7 @@ class DeclaredSensor(DeclaredEntity, SensorEntity):
         self,
     ) -> int | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The declared precision."""
-        return self.declaration.get("precision")
+        return self.declaration.get(OPTION_PRECISION)
 
 
 async def async_setup_entry(
@@ -227,4 +234,6 @@ async def async_setup_entry(
     if manager.started:
         # Loaded before this platform was set up: a reload of the integration
         entities.automations_loaded()
-    await async_setup_declared_platform(hass, entry, async_add_entities, "sensor", DeclaredSensor)
+    await async_setup_declared_platform(
+        hass, entry, async_add_entities, EntityPlatform.SENSOR, DeclaredSensor
+    )

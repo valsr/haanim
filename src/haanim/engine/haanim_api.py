@@ -13,6 +13,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from haanim.const import Period
 from haanim.engine.assets import AssetStore
 from haanim.engine.card import HAAnimCard
 from haanim.engine.device_api import HAAnimDevice
@@ -424,7 +425,7 @@ class HAAnim:  # pylint: disable=too-many-public-methods  # The methods are the 
         return self._device
 
     async def statistics(
-        self, entity_id: str, start: Any, end: Any = None, period: str = "hour"
+        self, entity_id: str, start: Any, end: Any = None, period: str = Period.HOUR
     ) -> list[dict[str, Any]]:
         """Return the long-term statistics of any entity for a period, oldest first.
 

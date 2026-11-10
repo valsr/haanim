@@ -13,6 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from haanim.const import EntityCommand, EntityPlatform, OPTION_DEVICE_CLASS
 from custom_components.haanim.entities import DeclaredEntity, async_setup_declared_platform
 
 
@@ -22,16 +23,18 @@ class DeclaredButton(DeclaredEntity, ButtonEntity):
     @property
     def device_class(self) -> ButtonDeviceClass | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The declared device class."""
-        value = self.declaration.get("device_class")
+        value = self.declaration.get(OPTION_DEVICE_CLASS)
         return ButtonDeviceClass(value) if value else None
 
     async def async_press(self) -> None:
         """Run the ``press`` hook."""
-        await self.async_command("press")
+        await self.async_command(EntityCommand.PRESS)
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up the buttons automations declare."""
-    await async_setup_declared_platform(hass, entry, async_add_entities, "button", DeclaredButton)
+    await async_setup_declared_platform(
+        hass, entry, async_add_entities, EntityPlatform.BUTTON, DeclaredButton
+    )

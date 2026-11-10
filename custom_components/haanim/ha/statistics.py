@@ -18,10 +18,21 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.recorder import get_instance
 
 from custom_components.haanim.const import DOMAIN
+from haanim.const import (
+    STAT_CHANGE,
+    STAT_END,
+    STAT_MAX,
+    STAT_MEAN,
+    STAT_MIN,
+    STAT_START,
+    STAT_STATE,
+    STAT_SUM,
+    Period,
+)
 from haanim.engine.statistics import StatisticsMetadata
 
 # What a query row of the recorder has besides its times; last_reset is left out
-FIELDS = ("mean", "min", "max", "state", "sum", "change")
+FIELDS = (STAT_MEAN, STAT_MIN, STAT_MAX, STAT_STATE, STAT_SUM, STAT_CHANGE)
 
 
 def _time(value: Any) -> datetime:
@@ -67,7 +78,7 @@ class HAStatistics:
         rows = []
         for found in result.get(statistic_id, []):
             row: dict[str, Any] = dict(found)
-            item: dict[str, Any] = {"start": _time(row["start"]), "end": _time(row["end"])}
+            item: dict[str, Any] = {STAT_START: _time(row[STAT_START]), STAT_END: _time(row[STAT_END])}
             item.update({key: row[key] for key in FIELDS if row.get(key) is not None})
             rows.append(item)
         return rows
@@ -75,7 +86,14 @@ class HAStatistics:
     async def has_short_term(self, statistic_id: str, start: datetime) -> bool:
         """Return whether the recorder has 5-minute rows of a statistic from start on."""
         result = await get_instance(self._hass).async_add_executor_job(
-            statistics_during_period, self._hass, start, None, {statistic_id}, "5minute", None, {"sum"}
+            statistics_during_period,
+            self._hass,
+            start,
+            None,
+            {statistic_id},
+            Period.FIVE_MINUTES,
+            None,
+            {STAT_SUM},
         )
         return bool(result.get(statistic_id))
 
@@ -97,7 +115,7 @@ class HAStatistics:
         if converter and stored_unit != unit and stored_unit in converter.VALID_UNITS:
             convert = converter.converter_factory(unit, stored_unit)
             rows = [
-                {key: convert(value) if key != "start" else value for key, value in row.items()}
+                {key: convert(value) if key != STAT_START else value for key, value in row.items()}
                 for row in rows
             ]
             unit = stored_unit

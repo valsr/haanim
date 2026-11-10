@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from haanim.const import OPTION_ICON, OPTION_INITIAL, OPTION_INITIAL_ATTRIBUTES, OPTION_NAME
 from haanim.engine.device_entities import PLATFORMS, EntityDeclaration, validate_state
 from haanim.interfaces import Clock, EntitySink, StorageBackend, TimerHandle
 from haanim.engine.variables import SAVE_DELAY_SECONDS
@@ -29,6 +30,20 @@ INDEX_KEY = "devices"
 
 # What entity IDs and unique IDs start with: the integration's domain
 ID_PREFIX = "haanim"
+
+# Between the object ID and the platform in the key of a leftover moved aside by a platform change
+LEFTOVER_SEPARATOR = "@"
+
+# The keys of a stored document and of each entity in it
+DOC_VERSION = "version"
+DOC_ENTITIES = "entities"
+DOC_OBJECT_ID = "object_id"
+DOC_PLATFORM = "platform"
+DOC_OPTIONS = "options"
+DOC_STATE = "state"
+DOC_ATTRIBUTES = "attributes"
+DOC_DECLARED = "declared"
+DOC_LAST_CHANGED = "last_changed"
 
 
 def device_key(automation_id: str) -> str:
@@ -83,33 +98,33 @@ class StoredEntity:  # pylint: disable=too-many-instance-attributes
     @property
     def platform_options(self) -> dict[str, Any]:
         """The platform options: the declaration without name, icon and initial values."""
-        common = ("name", "icon", "initial", "initial_attributes")
+        common = (OPTION_NAME, OPTION_ICON, OPTION_INITIAL, OPTION_INITIAL_ATTRIBUTES)
         return {key: value for key, value in self.options.items() if key not in common}
 
     def as_dict(self) -> dict[str, Any]:
         """Return the entity as it is saved."""
         return {
-            "object_id": self.object_id,
-            "platform": self.platform,
-            "options": self.options,
-            "state": self.state,
-            "attributes": self.attributes,
-            "declared": self.declared,
-            "last_changed": self.last_changed.isoformat() if self.last_changed else None,
+            DOC_OBJECT_ID: self.object_id,
+            DOC_PLATFORM: self.platform,
+            DOC_OPTIONS: self.options,
+            DOC_STATE: self.state,
+            DOC_ATTRIBUTES: self.attributes,
+            DOC_DECLARED: self.declared,
+            DOC_LAST_CHANGED: self.last_changed.isoformat() if self.last_changed else None,
         }
 
     @classmethod
     def from_dict(cls, key: str, data: dict[str, Any]) -> StoredEntity:
         """Build an entity from what was saved."""
-        changed = data.get("last_changed")
+        changed = data.get(DOC_LAST_CHANGED)
         return cls(
             key=key,
-            object_id=data.get("object_id") or key.split("@", 1)[0],
-            platform=data["platform"],
-            options=dict(data.get("options") or {}),
-            state=data.get("state"),
-            attributes=dict(data.get("attributes") or {}),
-            declared=bool(data.get("declared", True)),
+            object_id=data.get(DOC_OBJECT_ID) or key.split(LEFTOVER_SEPARATOR, 1)[0],
+            platform=data[DOC_PLATFORM],
+            options=dict(data.get(DOC_OPTIONS) or {}),
+            state=data.get(DOC_STATE),
+            attributes=dict(data.get(DOC_ATTRIBUTES) or {}),
+            declared=bool(data.get(DOC_DECLARED, True)),
             last_changed=datetime.fromisoformat(changed) if changed else None,
         )
 
@@ -224,12 +239,12 @@ class DeviceStore:
         current = self._entities.get(key)
         if current is not None and current.platform != declaration.platform:
             # The object ID moved to another platform: the old entity stays as a leftover
-            aside = f"{key}@{current.platform}"
+            aside = f"{key}{LEFTOVER_SEPARATOR}{current.platform}"
             current.key, current.declared = aside, False
             self._entities[aside] = current
             del self._entities[key]
             touched.append(aside)
-        returning = self._entities.pop(f"{key}@{declaration.platform}", None)
+        returning = self._entities.pop(f"{key}{LEFTOVER_SEPARATOR}{declaration.platform}", None)
         if returning is not None:
             # A leftover of this platform with this object ID is declared again
             returning.key = key
@@ -305,8 +320,8 @@ class DeviceStore:
         entity = self._require(key)
         if not entity.declared:
             raise ValueError(f"Entity '{key}' is a leftover; remove it instead")
-        entity.state = _copy(entity.options.get("initial"))
-        entity.attributes = _copy(entity.options.get("initial_attributes") or {})
+        entity.state = _copy(entity.options.get(OPTION_INITIAL))
+        entity.attributes = _copy(entity.options.get(OPTION_INITIAL_ATTRIBUTES) or {})
         entity.last_changed = self._registry.clock.now()
         self._registry.entity_changed(self.automation_id, key)
 
@@ -328,13 +343,13 @@ class DeviceStore:
     def as_document(self) -> dict[str, Any]:
         """Return what is saved."""
         return {
-            "version": STORAGE_VERSION,
-            "entities": {key: entity.as_dict() for key, entity in self._entities.items()},
+            DOC_VERSION: STORAGE_VERSION,
+            DOC_ENTITIES: {key: entity.as_dict() for key, entity in self._entities.items()},
         }
 
     def load_document(self, document: Any) -> None:
         """Replace the entities with what was saved."""
-        entities = document.get("entities") if isinstance(document, dict) else None
+        entities = document.get(DOC_ENTITIES) if isinstance(document, dict) else None
         self._entities = {}
         for key, data in (entities or {}).items():
             try:

@@ -13,6 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from haanim.const import EntityPlatform, OPTION_DEVICE_CLASS
 from custom_components.haanim.entities import DeclaredEntity, async_setup_declared_platform
 
 
@@ -30,7 +31,7 @@ class DeclaredBinarySensor(DeclaredEntity, BinarySensorEntity):
         self,
     ) -> BinarySensorDeviceClass | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The declared device class."""
-        value = self.declaration.get("device_class")
+        value = self.declaration.get(OPTION_DEVICE_CLASS)
         return BinarySensorDeviceClass(value) if value else None
 
 
@@ -39,5 +40,5 @@ async def async_setup_entry(
 ) -> None:
     """Set up the binary sensors automations declare."""
     await async_setup_declared_platform(
-        hass, entry, async_add_entities, "binary_sensor", DeclaredBinarySensor
+        hass, entry, async_add_entities, EntityPlatform.BINARY_SENSOR, DeclaredBinarySensor
     )

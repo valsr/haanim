@@ -23,6 +23,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from haanim.const import OPTION_ICON, OPTION_NAME
 from custom_components.haanim.const import DOMAIN
 from haanim.engine.devices import DeviceRegistry, StoredEntity
 
@@ -94,12 +95,12 @@ class DeclaredEntity(Entity):
     @property
     def name(self) -> str | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The declared name."""
-        return self.declaration.get("name") or self._object_id
+        return self.declaration.get(OPTION_NAME) or self._object_id
 
     @property
     def icon(self) -> str | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The declared icon."""
-        return self.declaration.get("icon")
+        return self.declaration.get(OPTION_ICON)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:  # pyright: ignore[reportIncompatibleVariableOverride]

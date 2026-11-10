@@ -13,6 +13,14 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
+from haanim.const import (
+    OPTION_NAME,
+    OPTION_STATE_CLASS,
+    OPTION_UNIT,
+    EntityPlatform,
+    Period,
+    StateClass,
+)
 from haanim.engine.device_entities import get_declaration
 from haanim.engine.devices import DeviceStore, StoredEntity
 from haanim.engine.errors import NonExistingEntityError, StatisticsUnavailableError
@@ -144,27 +152,29 @@ class DeviceEntity:
             StatisticsError: If the recorder fails.
         """
         entity = self._entity()
-        state_class = entity.options.get("state_class")
-        if entity.platform != "sensor" or not entity.declared or state_class is None:
+        state_class = entity.options.get(OPTION_STATE_CLASS)
+        if entity.platform != EntityPlatform.SENSOR or not entity.declared or state_class is None:
             raise ValueError(
                 f"Entity '{self._key}' cannot have statistics: only a declared sensor with a state_class can"
                 + ("" if entity.declared else " (it is a leftover)")
             )
         metadata = StatisticsMetadata(
             statistic_id=self._statistic_id(entity),
-            name=entity.options.get("name"),
-            unit=entity.options.get("unit"),
-            has_sum=state_class != "measurement",
+            name=entity.options.get(OPTION_NAME),
+            unit=entity.options.get(OPTION_UNIT),
+            has_sum=state_class != StateClass.MEASUREMENT,
         )
         return await import_statistics(
             self._statistics,
             metadata,
             rows,
-            total_increasing=state_class == "total_increasing",
+            total_increasing=state_class == StateClass.TOTAL_INCREASING,
             now=self._now(),
         )
 
-    async def statistics(self, start: Any, end: Any = None, period: str = "hour") -> list[dict[str, Any]]:
+    async def statistics(
+        self, start: Any, end: Any = None, period: str = Period.HOUR
+    ) -> list[dict[str, Any]]:
         """Return this entity's long-term statistics of a period, oldest first.
 
         Args:

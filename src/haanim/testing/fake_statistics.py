@@ -5,7 +5,18 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from haanim.engine.statistics import StatisticsMetadata
+from haanim.const import (
+    STAT_CHANGE,
+    STAT_END,
+    STAT_MAX,
+    STAT_MEAN,
+    STAT_MIN,
+    STAT_START,
+    STAT_STATE,
+    STAT_SUM,
+    Period,
+)
+from haanim.engine.statistics import HOUR, StatisticsMetadata
 
 __all__ = ["FakeStatistics"]
 
@@ -39,16 +50,16 @@ class FakeStatistics:
     async def import_rows(self, metadata: StatisticsMetadata, rows: list[dict[str, Any]]) -> None:
         """Store rows, replacing stored rows of the same hours."""
         self.metadata[metadata.statistic_id] = metadata
-        stored = {row["start"]: row for row in self.rows.get(metadata.statistic_id, [])}
-        stored.update({row["start"]: dict(row) for row in rows})
+        stored = {row[STAT_START]: row for row in self.rows.get(metadata.statistic_id, [])}
+        stored.update({row[STAT_START]: dict(row) for row in rows})
         self.rows[metadata.statistic_id] = [stored[start] for start in sorted(stored)]
 
     async def adjust_sums(self, statistic_id: str, start: datetime, delta: float, unit: str | None) -> None:
         """Add delta to every stored sum from start on."""
         for row in self.rows.get(statistic_id, []):
-            if row["start"] >= start and "sum" in row:
-                row["sum"] += delta
-                row["state"] = row.get("state", 0.0) + delta
+            if row[STAT_START] >= start and STAT_SUM in row:
+                row[STAT_SUM] += delta
+                row[STAT_STATE] = row.get(STAT_STATE, 0.0) + delta
 
     async def query(  # pylint: disable=too-many-positional-arguments,too-many-locals
         self,
@@ -62,55 +73,61 @@ class FakeStatistics:
         """Return the rows of a period, oldest first; values are in the one unit they were stored in."""
         if unit is not None:
             self.query_units.append(unit)
-        if period == "5minute":
+        if period == Period.FIVE_MINUTES:
             return []
         stored = self.rows.get(statistic_id, [])
         zone = start.tzinfo
         groups: dict[datetime, list[dict[str, Any]]] = {}
         for row in stored:
-            if start <= row["start"] < end:
-                groups.setdefault(self._period_start(row["start"], period, zone), []).append(row)
+            if start <= row[STAT_START] < end:
+                groups.setdefault(self._period_start(row[STAT_START], period, zone), []).append(row)
         result = []
         for begin in sorted(groups):
             hours = groups[begin]
             item: dict[str, Any] = {
-                "start": begin.astimezone(timezone.utc),
-                "end": self._period_end(begin, period),
+                STAT_START: begin.astimezone(timezone.utc),
+                STAT_END: self._period_end(begin, period),
             }
-            if "sum" in hours[-1]:
-                earlier = [row["sum"] for row in stored if row["start"] < hours[0]["start"] and "sum" in row]
-                item.update(state=hours[-1]["state"], sum=hours[-1]["sum"])
-                item["change"] = hours[-1]["sum"] - (earlier[-1] if earlier else 0.0)
+            if STAT_SUM in hours[-1]:
+                earlier = [
+                    row[STAT_SUM]
+                    for row in stored
+                    if row[STAT_START] < hours[0][STAT_START] and STAT_SUM in row
+                ]
+                item.update({STAT_STATE: hours[-1][STAT_STATE], STAT_SUM: hours[-1][STAT_SUM]})
+                item[STAT_CHANGE] = hours[-1][STAT_SUM] - (earlier[-1] if earlier else 0.0)
             else:
                 item.update(
-                    mean=sum(row["mean"] for row in hours) / len(hours),
-                    min=min(row["min"] for row in hours),
-                    max=max(row["max"] for row in hours),
+                    {
+                        STAT_MEAN: sum(row[STAT_MEAN] for row in hours) / len(hours),
+                        STAT_MIN: min(row[STAT_MIN] for row in hours),
+                        STAT_MAX: max(row[STAT_MAX] for row in hours),
+                    }
                 )
             result.append(
-                {key: value for key, value in item.items() if key in ("start", "end") or key in types}
+                {key: value for key, value in item.items() if key in (STAT_START, STAT_END) or key in types}
             )
         return result
 
     @staticmethod
     def _period_start(moment: datetime, period: str, zone: Any) -> datetime:
         local = moment.astimezone(zone)
-        if period == "hour":
+        if period == Period.HOUR:
             return local.replace(minute=0, second=0, microsecond=0)
         day = local.replace(hour=0, minute=0, second=0, microsecond=0)
-        if period == "day":
+        if period == Period.DAY:
             return day
-        if period == "week":
+        if period == Period.WEEK:
             return day - timedelta(days=day.weekday())
         return day.replace(day=1)
 
     @staticmethod
     def _period_end(begin: datetime, period: str) -> datetime:
-        if period == "hour":
-            return (begin + timedelta(hours=1)).astimezone(timezone.utc)
-        if period == "day":
+        if period == Period.HOUR:
+            return (begin + HOUR).astimezone(timezone.utc)
+        if period == Period.DAY:
             following = begin + timedelta(days=1)
-        elif period == "week":
+        elif period == Period.WEEK:
             following = begin + timedelta(days=7)
         else:
             following = (begin.replace(day=28) + timedelta(days=4)).replace(day=1)
