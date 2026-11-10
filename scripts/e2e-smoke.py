@@ -194,6 +194,7 @@ async def run(base: str) -> None:
         # --- The device and the entities an automation declares ---------------------------------
         for entity_id in (
             "sensor.haanim_demo_entities_ticks",
+            "sensor.haanim_demo_entities_energy",
             "switch.haanim_demo_entities_boost",
             "number.haanim_demo_entities_target",
             "select.haanim_demo_entities_mode",
@@ -211,9 +212,23 @@ async def run(base: str) -> None:
         await smoke.service("switch", "turn_off", entity_id="switch.haanim_demo_entities_boost")
         _, listed_entities = await smoke.command("haanim/entities/list", automation_id="demo_entities")
         check(
-            len(listed_entities["entities"]) == 5 and listed_entities["device_id"],
+            len(listed_entities["entities"]) == 6 and listed_entities["device_id"],
             "haanim/entities/list lists the device's entities",
         )
+
+        imported = await smoke.service(
+            "haanim", "run_action", True, automation_id="demo_entities", action="backfill"
+        )
+        check(imported == {"result": 24}, f"the backfill imports 24 hours of statistics: {imported}")
+        statistics_id = "sensor.haanim_demo_entities_energy"
+        _, periods = await smoke.command(
+            "recorder/statistics_during_period",
+            start_time="2000-01-01T00:00:00Z",
+            statistic_ids=[statistics_id],
+            period="hour",
+        )
+        hours = periods.get(statistics_id, [])
+        check(len(hours) >= 24, f"the recorder has the imported hours: {len(hours)}")
 
         # --- Services ------------------------------------------------------------------------
         listed = await smoke.service("haanim", "list_automations", True)

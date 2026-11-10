@@ -5,9 +5,12 @@ written by the automation; the switch, number, select and button are operated
 by users in Home Assistant, and each command runs the class's hook.
 """
 
+from datetime import timedelta
+
 from haanim import (
     ActionEvent,
     DeviceEntity,
+    action,
     EntityCommandEvent,
     button_entity,
     haa,
@@ -25,6 +28,15 @@ from haanim import (
 )
 class ticks:
     """Written by the automation: no hooks."""
+
+
+@sensor_entity(name="Energy", unit="kWh", device_class="energy", state_class="total_increasing", initial=0)
+class energy:
+    """Long-term statistics only: the backfill action imports past hours into it."""
+
+
+# kWh used in each hour of a day, from midnight
+PROFILE = [0.3] * 6 + [0.8, 1.2, 0.9] + [0.5] * 8 + [1.1, 1.6, 1.4, 1.0, 0.7] + [0.4] * 2
 
 
 @switch_entity(name="Boost", icon="mdi:fire", initial=False)
@@ -67,3 +79,11 @@ def begin(event: ActionEvent) -> None:
 def count(event: ActionEvent) -> None:
     minutes = haa.device.entity(ticks)
     minutes.set_state((minutes.state or 0) + 1)
+
+
+@action(description="Import the last 24 hours of energy use as long-term statistics.")
+async def backfill(event: ActionEvent) -> int:
+    last = haa.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+    first = last - timedelta(hours=23)
+    rows = [{"start": first + timedelta(hours=hour), "usage": PROFILE[hour]} for hour in range(24)]
+    return await haa.device.entity(energy).import_statistics(rows)

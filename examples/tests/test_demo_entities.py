@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
+
+import pytest
 
 from haanim.testing import AutomationHarness
 
@@ -14,6 +17,7 @@ async def test_entities_are_declared() -> None:
     async with AutomationHarness(DEMO) as automation:
         assert [(e.object_id, e.platform) for e in automation.entities] == [
             ("boost", "switch"),
+            ("energy", "sensor"),
             ("mode", "select"),
             ("reset", "button"),
             ("target", "number"),
@@ -62,3 +66,16 @@ async def test_stored_state_is_kept() -> None:
     """An entity starts with its stored state, not its initial one."""
     async with AutomationHarness(DEMO, entities={"target": 21.5}) as automation:
         assert automation.entity("target").state == 21.5
+
+
+async def test_backfill() -> None:
+    """The backfill action imports the last 24 hours of energy use as long-term statistics."""
+    async with AutomationHarness(DEMO) as automation:
+        assert await automation.call("backfill") == 24
+        rows = automation.statistics("sensor.haanim_demo_entities_energy")
+        assert len(rows) == 24
+        assert rows[-1]["sum"] == pytest.approx(sum(PROFILE))
+        assert rows[-1]["start"] + timedelta(hours=1) <= automation.now
+
+
+PROFILE = [0.3] * 6 + [0.8, 1.2, 0.9] + [0.5] * 8 + [1.1, 1.6, 1.4, 1.0, 0.7] + [0.4] * 2

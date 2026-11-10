@@ -19,7 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as actions, with an `EntityCommandEvent`.
 - The automation page in the panel has an **Entities** tab: remove leftover entities and purge stored data.
 - The test harness drives entities: `entity()`, `entities`, `command()` and `entities=`.
-- The `demo_entities` example.
+- Long-term statistics: `entity.import_statistics()` imports past hours into a declared sensor with a
+  `state_class` (usage per hour for sums, which continue from and join up with the stored ones), and
+  `haa.statistics()` and `entity.statistics()` read the statistics of any entity.
+- The `demo_entities` example, with a backfill of energy statistics.
 
 ### Fixed
 

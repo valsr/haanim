@@ -348,6 +348,38 @@ new state with `set_state()`; without that the state stays as it was. A class wi
 automation that is not running, log a warning and ignore the command. A hook that raises is recorded in
 `last_error` like any action.
 
+**Statistics.** A sensor with a `state_class` has long-term statistics in Home Assistant, and the automation
+can import past hours into them, for instance readings an energy provider publishes a day late:
+
+```python
+from datetime import timedelta
+
+
+@sensor_entity(unit="kWh", device_class="energy", state_class="total_increasing")
+class energy:
+    pass
+
+
+@action
+async def backfill(event):
+    yesterday = haa.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    rows = [{"start": yesterday + timedelta(hours=h), "usage": 0.5} for h in range(24)]
+    await haa.device.entity(energy).import_statistics(rows)
+    week = await haa.statistics("sensor.grid_energy", haa.now() - timedelta(days=7), period="day")
+    haa.set_message(f"{sum([day.get('change', 0) for day in week]):.1f} kWh this week")
+```
+
+- Each row is a whole hour that has ended: `start` (a datetime, or ISO text; a time without a zone is local)
+  and, for `total` and `total_increasing`, `usage`: what was used in that hour. HAAnim continues the running
+  sum from the stored one and shifts the hours after the import, so the Energy dashboard shows no jump. For
+  `measurement`, a row has `mean`, and optionally `min` and `max`.
+- A later row for the same hour replaces an earlier one. Invalid rows raise `ValueError` and nothing is
+  imported.
+- `haa.statistics(entity_id, start, end=None, period="hour")` reads the statistics of any entity, and
+  `entity.statistics(start, end, period)` those of the automation's own; `period` is `5minute`, `hour`, `day`,
+  `week` or `month`. Rows have `start`, `end` and `mean`, `min`, `max`, or `state`, `sum` and `change`.
+- Without Home Assistant's recorder, these raise `StatisticsUnavailableError`.
+
 **Leftovers.** An entity whose class is deleted or renamed stays in Home Assistant as unavailable, with its
 history. The automation page in the HAAnim panel lists the device's entities in its **Entities** tab:
 **Remove** deletes a leftover, and **Purge data** resets a declared entity to its initial state and
@@ -651,6 +683,7 @@ async def test_morning_routine_only_when_home():
 | Check the card and press its buttons        | `card.title`, `card.blocks`, `card.block(id)`, `card.layout`, `await press(id)` |
 | Drive the lifecycle                         | `start=False`, then `load()`, `start()`, `stop()`, `reload()`   |
 | Provide assets and stored variables         | `assets={"logo.png": b"..."}`, `variables={"count": 3}`         |
+| Provide and read long-term statistics       | `statistics={"sensor.grid": [rows]}`, `statistics("sensor.haanim_x_energy")` |
 | Operate the device's entities               | `entity("boost").state`, `entities`, `await command("boost", "turn_on")`, `entities={"boost": True}` |
 
 Time stands still in the harness until the test advances it, so a test of "five minutes later" takes
