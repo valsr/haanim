@@ -13,6 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from custom_components.haanim.entities import DeclaredEntity, async_setup_declared_platform
 from haanim.const import (
     EntityCommand,
     EntityPlatform,
@@ -23,7 +24,6 @@ from haanim.const import (
     OPTION_STEP,
     OPTION_UNIT,
 )
-from custom_components.haanim.entities import DeclaredEntity, async_setup_declared_platform
 from haanim.engine.device_entities import NUMBER_MAX, NUMBER_MIN
 
 

@@ -280,10 +280,19 @@ Each automation is a device in Home Assistant, named after the automation. Its s
 `sensor.haanim_<id>` is on the device, and so is every entity the automation declares with a class:
 
 ```python
-from haanim import DeviceEntity, EntityCommandEvent, haa, on_state, sensor_entity, switch_entity
+from haanim import (
+    DeviceEntity,
+    EntityCommandEvent,
+    StateClass,
+    UnitOfTemperature,
+    haa,
+    on_state,
+    sensor_entity,
+    switch_entity,
+)
 
 
-@sensor_entity(unit="°C", device_class="temperature", state_class="measurement")
+@sensor_entity(unit=UnitOfTemperature.CELSIUS, device_class="temperature", state_class=StateClass.MEASUREMENT)
 class average_temp:
     """Written by the automation: no hooks."""
 
@@ -317,6 +326,12 @@ safe like an automation ID (`id=` gives another one). Above, in the automation `
 | `@button_entity`        | `device_class`                                           | `press`                |
 | `@text_entity`          | `min_length`, `max_length`, `pattern`, `mode`            | `set_value`            |
 
+Platforms, commands, state classes, modes, statistics periods and common units have constants in `haanim`:
+`EntityPlatform`, `EntityCommand`, `StateClass`, `NumberMode`, `TextMode`, `Period`, and `UnitOfEnergy`,
+`UnitOfPower`, `UnitOfTemperature`, `UnitOfTime`, `UnitOfVolume`, `UnitOfPressure`, `UnitOfElectricCurrent`,
+`UnitOfElectricPotential` and `PERCENTAGE`, with Home Assistant's names and values. Each is its string, so
+`StateClass.MEASUREMENT` and `"measurement"` mean the same, and any other unit string works too.
+
 Every decorator takes `name=`, `icon=`, `id=`, `attributes=` (the attributes the entity starts with),
 `initial=` (the state it starts with) and `action_mode=` (how the hooks run when commands overlap; `DROP` by
 default, as for actions). The options are fixed by the decorator: change them in the code.
@@ -325,7 +340,7 @@ default, as for actions). The options are fixed by the decorator: change them in
 restarts and reloads, and stay while the automation is stopped. Read and write them through the proxy:
 
 ```python
-@sensor_entity(unit="°C")
+@sensor_entity(unit=UnitOfTemperature.CELSIUS)
 class average_temp:
     pass
 
@@ -355,7 +370,7 @@ can import past hours into them, for instance readings an energy provider publis
 from datetime import timedelta
 
 
-@sensor_entity(unit="kWh", device_class="energy", state_class="total_increasing")
+@sensor_entity(unit=UnitOfEnergy.KILO_WATT_HOUR, device_class="energy", state_class=StateClass.TOTAL_INCREASING)
 class energy:
     pass
 
@@ -365,7 +380,7 @@ async def backfill(event):
     yesterday = haa.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
     rows = [{"start": yesterday + timedelta(hours=h), "usage": 0.5} for h in range(24)]
     await haa.device.entity(energy).import_statistics(rows)
-    week = await haa.statistics("sensor.grid_energy", haa.now() - timedelta(days=7), period="day")
+    week = await haa.statistics("sensor.grid_energy", haa.now() - timedelta(days=7), period=Period.DAY)
     haa.set_message(f"{sum([day.get('change', 0) for day in week]):.1f} kWh this week")
 ```
 

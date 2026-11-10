@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `state_class` (usage per hour for sums, which continue from and join up with the stored ones), and
   `haa.statistics()` and `entity.statistics()` read the statistics of any entity.
 - The `demo_entities` example, with a backfill of energy statistics.
+- Constants for automations: `EntityPlatform`, `EntityCommand`, `StateClass`, `NumberMode`, `TextMode`, `Period`,
+  and common units (`UnitOfEnergy`, `UnitOfTemperature`, ... and `PERCENTAGE`) with Home Assistant's names and values.
 
 ### Fixed
 

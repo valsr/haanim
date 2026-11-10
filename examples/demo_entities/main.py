@@ -12,6 +12,10 @@ from haanim import (
     DeviceEntity,
     action,
     EntityCommandEvent,
+    StateClass,
+    UnitOfEnergy,
+    UnitOfTemperature,
+    UnitOfTime,
     button_entity,
     haa,
     number_entity,
@@ -24,13 +28,23 @@ from haanim import (
 
 
 @sensor_entity(
-    name="Minutes running", unit="min", state_class="total_increasing", icon="mdi:timer", initial=0
+    name="Minutes running",
+    unit=UnitOfTime.MINUTES,
+    state_class=StateClass.TOTAL_INCREASING,
+    icon="mdi:timer",
+    initial=0,
 )
 class ticks:
     """Written by the automation: no hooks."""
 
 
-@sensor_entity(name="Energy", unit="kWh", device_class="energy", state_class="total_increasing", initial=0)
+@sensor_entity(
+    name="Energy",
+    unit=UnitOfEnergy.KILO_WATT_HOUR,
+    device_class="energy",
+    state_class=StateClass.TOTAL_INCREASING,
+    initial=0,
+)
 class energy:
     """Long-term statistics only: the backfill action imports past hours into it."""
 
@@ -50,7 +64,7 @@ class boost:
         haa.set_message("Boost off")
 
 
-@number_entity(name="Target", min=10, max=30, step=0.5, unit="°C", initial=20)
+@number_entity(name="Target", min=10, max=30, step=0.5, unit=UnitOfTemperature.CELSIUS, initial=20)
 class target:
     def set_value(self, entity: DeviceEntity, event: EntityCommandEvent) -> None:
         entity.set_state(event.value)

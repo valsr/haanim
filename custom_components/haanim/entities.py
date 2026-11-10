@@ -23,8 +23,8 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from haanim.const import OPTION_ICON, OPTION_NAME
 from custom_components.haanim.const import DOMAIN
+from haanim.const import OPTION_ICON, OPTION_NAME
 from haanim.engine.devices import DeviceRegistry, StoredEntity
 
 if TYPE_CHECKING:
