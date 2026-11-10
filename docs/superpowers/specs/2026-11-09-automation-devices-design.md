@@ -76,7 +76,7 @@ Exported from `haanim`. Every decorator takes these options:
 | `id=` | Object ID; default: the class name, slugged with the automation ID rule |
 | `attributes=` | Initial attributes, used when the entity is created |
 | `initial=` | State used when the entity is created or purged |
-| `action_mode=` | Action mode of the hooks; default `ActionMode.SINGLE` |
+| `action_mode=` | Action mode of the hooks; default `ActionMode.DROP`, as for actions |
 
 | Decorator | Extra options | Hooks |
 | --- | --- | --- |
@@ -199,7 +199,8 @@ Assistant's more-info dialog; the tab links to the device page. The list updates
 ### Storage
 
 One key per automation, `device.<automation_id>`, separate from the variables so `haa.clear_variables()`
-cannot remove entities. Saves are batched like variables (`SAVE_DELAY_SECONDS`) and always made when the
+cannot remove entities, and an index key `devices` listing the automation IDs that have stored entities, so
+the integration can create every entity when Home Assistant starts, before any automation is loaded. Saves are batched like variables (`SAVE_DELAY_SECONDS`) and always made when the
 automation stops.
 
 ```json
