@@ -18,13 +18,31 @@ from haanim.engine.errors import AutomationSecurityError, AutomationSyntaxError
 from haanim.engine.import_controller import ImportController
 from haanim.interfaces import FileSystem
 
-_GENERATOR_HINT = "use a list comprehension"
+_YIELD_IN_LAMBDA = "'yield' in a lambda is not supported: use a def"
+_ASYNC_GENERATOR = "async generators are not supported"
+_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+
+
+def own_yields(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> list[ast.Yield | ast.YieldFrom]:
+    """Return the yields of a function or lambda itself, not of functions, lambdas and classes inside it."""
+    return yields_in(node.body if isinstance(node.body, list) else [node.body])
+
+
+def yields_in(body: list[ast.stmt] | list[ast.expr]) -> list[ast.Yield | ast.YieldFrom]:
+    """Return the yields in some statements, not in functions, lambdas and classes inside them."""
+    found: list[ast.Yield | ast.YieldFrom] = []
+    children: list[ast.AST] = list(body)
+    while children:
+        child = children.pop()
+        if isinstance(child, (ast.Yield, ast.YieldFrom)):
+            found.append(child)
+        if not isinstance(child, _SCOPES):
+            children.extend(ast.iter_child_nodes(child))
+    return found
+
 
 # Node types that are unsupported wherever they appear.
 _UNSUPPORTED_NODES: dict[type[ast.AST], str] = {
-    ast.Yield: "'yield' is not supported: automations cannot define generators",
-    ast.YieldFrom: "'yield from' is not supported: automations cannot define generators",
-    ast.GeneratorExp: f"generator expressions are not supported: {_GENERATOR_HINT}",
     ast.AsyncFor: "'async for' is not supported",
     ast.Match: "'match' statements are not supported",
     ast.TryStar: "'except*' is not supported",
@@ -82,6 +100,15 @@ def find_unsupported(tree: ast.AST, filename: str) -> list[Problem]:
     problems: list[Problem] = []
 
     for node in ast.walk(tree):
+        # A yield makes a def a generator; in a lambda or an async def it is not supported
+        if isinstance(node, (ast.Lambda, ast.AsyncFunctionDef)):
+            message = _YIELD_IN_LAMBDA if isinstance(node, ast.Lambda) else _ASYNC_GENERATOR
+            for found in own_yields(node):
+                problems.append(
+                    Problem(
+                        filename=filename, lineno=found.lineno, col_offset=found.col_offset, message=message
+                    )
+                )
         message = _UNSUPPORTED_NODES.get(type(node))
         if message is None and isinstance(node, _COMPREHENSIONS):
             if any(generator.is_async for generator in node.generators):

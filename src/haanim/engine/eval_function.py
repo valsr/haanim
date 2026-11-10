@@ -5,11 +5,13 @@ from __future__ import annotations
 import ast
 import inspect
 import types
+import weakref
 from collections.abc import Callable, Coroutine, Generator
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from haanim.engine.symbol_table import SCOPE_FUNCTION, SymbolTable
+from haanim.engine.validation import yields_in
 
 if TYPE_CHECKING:
     from haanim.engine.ast_evaluator import AstEvaluator
@@ -61,6 +63,91 @@ class Checkpoint:
 
 
 CHECKPOINT = Checkpoint()
+
+
+class _Yielded:
+    """What a generator body hands up through its coroutine at a ``yield``: the value."""
+
+    __slots__ = ("value",)
+
+    def __init__(self, value: Any) -> None:
+        """Hold a yielded value."""
+        self.value = value
+
+
+class YieldPoint:
+    """Awaitable for a ``yield`` in a generator body: passes the value up, returns what is sent back."""
+
+    __slots__ = ("value",)
+
+    def __init__(self, value: Any) -> None:
+        """Hold the value to yield."""
+        self.value = value
+
+    def __await__(self) -> Generator[Any, Any, Any]:
+        """Hand the value up to the driving generator; return what is sent back into the body."""
+        sent = yield _Yielded(self.value)
+        return sent
+
+
+AUTOMATION_GENERATORS: weakref.WeakSet[Generator[Any, Any, Any]] = weakref.WeakSet()
+"""Every generator automation code made: how the interpreter knows its own generators."""
+
+
+def is_automation_generator(obj: Any) -> bool:
+    """Return whether an object is a generator automation code made."""
+    try:
+        return obj in AUTOMATION_GENERATORS
+    except TypeError:  # not hashable, so not a generator
+        return False
+
+
+def drive_generator(
+    body: Callable[[], Coroutine[Any, Any, Any]], name: str, on_checkpoint: Callable[[], None] | None = None
+) -> Generator[Any, Any, Any]:
+    """Return a Python generator that runs the coroutine of a generator body.
+
+    The body's checkpoints are passed over; each ``yield`` (a ``YieldPoint``)
+    hands its value to whoever called ``next()`` or ``send()``; ``send``,
+    ``throw`` and ``close`` go back into the body at that ``yield``.
+    """
+    generator = _drive(body, name, on_checkpoint)
+    AUTOMATION_GENERATORS.add(generator)
+    return generator
+
+
+def _drive(
+    body: Callable[[], Coroutine[Any, Any, Any]], name: str, on_checkpoint: Callable[[], None] | None
+) -> Generator[Any, Any, Any]:
+    """The generator ``drive_generator`` returns.
+
+    The body's coroutine is made on the first ``next()``: a generator closed
+    before it starts leaves no coroutine that was never awaited.
+    """
+    coro = body()
+    value_in: Any = None
+    error_in: BaseException | None = None
+    while True:
+        try:
+            message = coro.throw(error_in) if error_in is not None else coro.send(value_in)
+        except StopIteration as stop:
+            return stop.value
+        value_in, error_in = None, None
+        if message is None:
+            if on_checkpoint is not None:
+                on_checkpoint()
+            continue
+        if isinstance(message, _Yielded):
+            try:
+                value_in = yield message.value
+            except GeneratorExit:
+                coro.close()
+                raise
+            except BaseException as err:  # pylint: disable=broad-exception-caught
+                error_in = err
+            continue
+        coro.close()
+        raise RuntimeError(f"Generator '{name}' cannot wait for anything")
 
 
 def run_to_completion(
@@ -177,13 +264,20 @@ class EvalFunction:
         self.kw_defaults = kw_defaults or {}
         self._positional = [arg.arg for arg in (*args.posonlyargs, *args.args)]
         self._keyword_only = [arg.arg for arg in args.kwonlyargs]
+        self.is_generator = isinstance(body, list) and bool(yields_in(body))
         self.function = self._build_function(doc)
 
     def _build_function(self, doc: str | None) -> Callable[..., Any]:
         """Create the Python callable for this function."""
         function: Callable[..., Any]
 
-        if self.is_async:
+        if self.is_generator and not self.is_async:
+
+            def generator_function(*args: Any, **kwargs: Any) -> Any:
+                return self.make_generator(*args, **kwargs)
+
+            function = generator_function
+        elif self.is_async:
 
             async def async_function(*args: Any, **kwargs: Any) -> Any:
                 return await self.invoke(*args, **kwargs)
@@ -299,6 +393,20 @@ class EvalFunction:
             else:
                 raise TypeError(f"{self.name}() got an unexpected keyword argument '{name}'")
         return extra_kwargs
+
+    def make_generator(self, *args: Any, **kwargs: Any) -> Any:
+        """Return the generator a call of a generator function gives: nothing of the body runs yet."""
+        scope = self.bind(args, kwargs)
+        return drive_generator(lambda: self._run_body(scope), self.name, NativeCallWatch(self))
+
+    async def _run_body(self, scope: SymbolTable) -> Any:
+        """Run a generator's body; its ``return`` value ends the generator."""
+        try:
+            for stmt in self.body:  # type: ignore[union-attr]
+                await self.engine.aeval(stmt, scope)
+        except ReturnValue as ret:
+            return ret.value
+        return None
 
     async def invoke(self, *args: Any, **kwargs: Any) -> Any:
         """Run the function body on the event loop.

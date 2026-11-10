@@ -34,6 +34,9 @@ def as_coroutine_function(func: Callable[..., Any]) -> Callable[..., Any]:
         eval_function, prefix = found
 
         async def invoke(*args: Any, **kwargs: Any) -> Any:
+            # As in Python, calling a generator function gives its generator
+            if eval_function.is_generator:
+                return eval_function.make_generator(*prefix, *args, **kwargs)
             return await eval_function.invoke(*prefix, *args, **kwargs)
 
         return invoke

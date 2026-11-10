@@ -369,9 +369,9 @@ class TestFolderAtLoad:
         ("helper", "error", "message"),
         [
             (
-                "def gen():\n    yield 1\n",
+                "async def gen():\n    yield 1\n",
                 AutomationSyntaxError,
-                r"^lib/helper.py:2: 'yield' is not supported",
+                r"^lib/helper.py:2: async generators are not supported",
             ),
             ("x = (\n", AutomationSyntaxError, r"^lib/helper.py:1: invalid syntax"),
             ("\nimport os\n", AutomationSecurityError, r"^lib/helper.py:2: import of module 'os'"),

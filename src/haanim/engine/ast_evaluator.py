@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any
 
 from haanim.engine.eval_function import (
     CHECKPOINT,
+    YieldPoint,
+    drive_generator,
     ControlFlow,
     EvalFunction,
     ReturnValue,
@@ -127,6 +129,9 @@ class AstEvaluator:
             ast.Call: self._eval_call,
             ast.Lambda: self._eval_lambda,
             ast.ListComp: self._eval_list_comprehension,
+            ast.Yield: self._eval_yield,
+            ast.YieldFrom: self._eval_yield_from,
+            ast.GeneratorExp: self._eval_generator_expression,
             ast.SetComp: self._eval_set_comprehension,
             ast.DictComp: self._eval_dict_comprehension,
             ast.JoinedStr: self._eval_joined_str,
@@ -418,8 +423,52 @@ class AstEvaluator:
         found = get_eval_function(func)
         if found is not None and not found[0].is_async:
             eval_function, prefix = found
+            if eval_function.is_generator:
+                return eval_function.make_generator(*prefix, *args, **kwargs)
             return await eval_function.invoke(*prefix, *args, **kwargs)
         return func(*args, **kwargs)
+
+    async def _eval_yield(self, node: ast.Yield, scope: SymbolTable) -> Any:
+        """Evaluate a yield: hand the value to the generator's consumer, and be what it sends back."""
+        value = await self.aeval(node.value, scope) if node.value is not None else None
+        return await YieldPoint(value)
+
+    async def _eval_yield_from(self, node: ast.YieldFrom, scope: SymbolTable) -> Any:
+        """Evaluate a yield from: pass every item of an iterable on, and be its return value."""
+        iterator = iter(await self.aeval(node.value, scope))
+        sent: Any = None
+        while True:
+            try:
+                item = iterator.send(sent) if sent is not None else next(iterator)  # type: ignore[attr-defined]
+            except StopIteration as stop:
+                return stop.value
+            sent = await YieldPoint(item)
+
+    async def _eval_generator_expression(self, node: ast.GeneratorExp, scope: SymbolTable) -> Any:
+        """Evaluate a generator expression: a lazy generator over its comprehension.
+
+        As in Python, the first ``for``'s iterable is evaluated now; the rest as items are pulled.
+        """
+        first = iter(await self.aeval(node.generators[0].iter, scope))
+
+        async def process(idx: int, local_scope: SymbolTable) -> None:
+            if idx >= len(node.generators):
+                await YieldPoint(await self.aeval(node.elt, local_scope))
+                return
+            gen = node.generators[idx]
+            iterable = first if idx == 0 else await self.aeval(gen.iter, local_scope)
+            for item in iterable:
+                inner_scope = local_scope.create_child(SCOPE_COMPREHENSION)
+                await self._assign_target(gen.target, item, inner_scope)
+                passed = True
+                for if_clause in gen.ifs:
+                    if not await self.aeval(if_clause, inner_scope):
+                        passed = False
+                        break
+                if passed:
+                    await process(idx + 1, inner_scope)
+
+        return drive_generator(lambda: process(0, scope), "<genexpr>")
 
     async def _make_function(
         self,
