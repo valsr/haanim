@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from haanim.engine.eval_function import (
     CHECKPOINT,
+    CarriedGeneratorExit,
     CarriedStopIteration,
     NativeSection,
     YieldPoint,
@@ -26,7 +27,9 @@ from haanim.engine.eval_function import (
 )
 from haanim.engine import operators
 from haanim.engine.comprehensions import (
+    all_items,
     comprehension,
+    contains,
     dict_comprehension,
     drain,
     drains,
@@ -307,7 +310,7 @@ class AstEvaluator:
         values: list[Any] = []
         for elt in elts:
             if isinstance(elt, ast.Starred):
-                values.extend(await self.aeval(elt.value, scope))
+                values.extend(await all_items(self, await self.aeval(elt.value, scope)))
             else:
                 values.append(await self.aeval(elt, scope))
         return values
@@ -383,7 +386,12 @@ class AstEvaluator:
             op_func = ops.get(type(op))
             if op_func is None:
                 raise AutomationRuntimeError(f"Unsupported comparison operator: {type(op).__name__}")
-            if not op_func(left, right):
+            if isinstance(op, (ast.In, ast.NotIn)) and is_automation_generator(right):
+                # Searched with the event loop free between items
+                result = await contains(self, right, left)
+                if result == isinstance(op, ast.NotIn):
+                    return False
+            elif not op_func(left, right):
                 return False
             left = right
 
@@ -613,7 +621,7 @@ class AstEvaluator:
         elif isinstance(target, (ast.Tuple, ast.List)):
             if not hasattr(value, "__iter__"):
                 raise TypeError(f"cannot unpack non-iterable {type(value).__name__} object")
-            values = list(value)
+            values = list(await all_items(self, value))
             targets = target.elts
             starred = [index for index, elt in enumerate(targets) if isinstance(elt, ast.Starred)]
             if starred:
@@ -852,7 +860,11 @@ class AstEvaluator:
             Whether a clause matched.
         """
         # Automation code sees a carried StopIteration as itself
-        seen = err.stop if isinstance(err, CarriedStopIteration) else err
+        seen: BaseException = err
+        if isinstance(err, CarriedStopIteration):
+            seen = err.stop
+        elif isinstance(err, CarriedGeneratorExit):
+            seen = err.exit
         for handler in handlers:
             if handler.type is not None and not isinstance(seen, await self.aeval(handler.type, scope)):
                 continue

@@ -84,6 +84,22 @@ class CarriedStopIteration(Exception):
         self.stop = stop
 
 
+class CarriedGeneratorExit(BaseException):
+    """A ``GeneratorExit`` on its way into a generator body that is being closed.
+
+    Python closes a coroutine awaiting another by calling the inner one's
+    ``close()``, which fails when its cleanup reaches a checkpoint. Thrown as
+    this instead, it goes down the interpreter's frames by ``throw()``, and
+    automation code sees ``exit`` (``except GeneratorExit`` catches it, and
+    ``except Exception`` does not).
+    """
+
+    def __init__(self) -> None:
+        """Carry a GeneratorExit."""
+        self.exit = GeneratorExit()
+        super().__init__()
+
+
 class _Yielded:
     """What a generator body hands up through its coroutine at a ``yield``: the value."""
 
@@ -166,13 +182,40 @@ def _drive(
                     # Resumed: the limit is on each run between returns to the interpreter
                     watch.restart()
             except GeneratorExit:
-                coro.close()
+                _close_body(coro, watch)
                 raise
             except BaseException as err:  # pylint: disable=broad-exception-caught
                 error_in = err
             continue
         coro.close()
         raise RuntimeError(f"Generator '{name}' cannot wait for anything")
+
+
+def _close_body(coro: Coroutine[Any, Any, Any], watch: NativeCallWatch | None) -> None:
+    """Close a generator body suspended at a ``yield``: raise GeneratorExit there and run its cleanup.
+
+    The body's ``finally`` blocks may loop and call functions, which are
+    checkpoints: they are passed over, as while the generator runs.
+    ``coro.close()`` cannot do this; it fails at the first checkpoint.
+    """
+    pending: BaseException | None = CarriedGeneratorExit()
+    while True:
+        try:
+            message = coro.throw(pending) if pending is not None else coro.send(None)
+        except StopIteration, GeneratorExit, CarriedGeneratorExit:
+            return
+        except CarriedStopIteration as carried:
+            raise RuntimeError("generator raised StopIteration") from carried.stop
+        pending = None
+        if message is None:
+            if watch is not None:
+                pending = watch()
+            continue
+        try:
+            coro.close()
+        except RuntimeError:
+            pass
+        raise RuntimeError("generator ignored GeneratorExit")
 
 
 def run_to_completion(

@@ -15,7 +15,14 @@ from collections.abc import Awaitable, Callable, Generator, Iterable
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
-from haanim.engine.eval_function import CHECKPOINT, NativeCallWatch, YieldPoint, drive_generator
+from haanim.engine.eval_function import (
+    CHECKPOINT,
+    CarriedGeneratorExit,
+    NativeCallWatch,
+    YieldPoint,
+    drive_generator,
+    is_automation_generator,
+)
 from haanim.engine.symbol_table import SCOPE_COMPREHENSION, SymbolTable
 
 if TYPE_CHECKING:
@@ -66,16 +73,62 @@ async def drain(engine: AstEvaluator, generator: Generator[Any, Any, Any]) -> li
         raise
 
 
+async def all_items(engine: AstEvaluator, value: Any) -> Any:
+    """Return what to take every item from: an automation generator drained with checkpoints, or the value."""
+    return await drain(engine, value) if is_automation_generator(value) else value
+
+
+async def contains(engine: AstEvaluator, container: Any, item: Any) -> bool:
+    """Evaluate ``item in container``; an automation generator is searched with checkpoints between items."""
+    if not is_automation_generator(container):
+        return item in container
+    try:
+        while True:
+            try:
+                candidate = next(container)
+            except StopIteration:
+                return False
+            if candidate is item or candidate == item:
+                return True
+            if engine.checkpoint_due():
+                await CHECKPOINT
+    except BaseException:
+        container.close()
+        raise
+
+
 async def yield_from(iterable: Any) -> Any:
-    """Pass every item of an iterable on from a generator body, with what is sent; return its return value."""
+    """Pass every item of an iterable on from a generator body; return its return value.
+
+    As in Python, what is sent goes to the iterable, an exception thrown in is
+    thrown into it, and closing the generator closes it.
+    """
     iterator = iter(iterable)
     sent: Any = None
+    thrown: BaseException | None = None
     while True:
         try:
-            item = iterator.send(sent) if sent is not None else next(iterator)
+            if thrown is not None:
+                throw = getattr(iterator, "throw", None)
+                if throw is None:
+                    raise thrown
+                item = throw(thrown)
+            elif sent is not None:
+                item = iterator.send(sent)
+            else:
+                item = next(iterator)
         except StopIteration as stop:
             return stop.value
-        sent = await YieldPoint(item)
+        sent, thrown = None, None
+        try:
+            sent = await YieldPoint(item)
+        except GeneratorExit, CarriedGeneratorExit:
+            close = getattr(iterator, "close", None)
+            if close is not None:
+                close()
+            raise
+        except BaseException as err:  # pylint: disable=broad-exception-caught
+            thrown = err
 
 
 async def walk_comprehension(

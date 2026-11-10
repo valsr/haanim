@@ -538,3 +538,154 @@ def test_restart_starts_the_count_again(monkeypatch: pytest.MonkeyPatch) -> None
     w.restart()
     assert [w(), w(), w()] == [None, None, None]
     assert isinstance(w(), TimeoutError)
+
+
+# --- Final review fixes -------------------------------------------------------------
+
+CLEANUP = '''
+from haanim import ActionMode
+log = []
+
+def note(text):
+    log.append(text)
+
+def tidy():
+    try:
+        yield 1
+        yield 2
+    finally:
+        note("fin")
+        for _ in range(3):
+            pass
+        note("after loop")
+
+def endless():
+    try:
+        i = 0
+        while True:
+            yield i
+            i += 1
+    finally:
+        note("fin")
+
+@action
+def close_it(event):
+    g = tidy()
+    next(g)
+    g.close()
+    return log
+
+@action(timeout=2)
+def all_of_it(event):
+    return list(endless())
+
+@action
+def logged(event):
+    return log
+'''
+
+
+async def test_close_runs_a_finally_that_calls_functions_and_loops(tmp_path: Path) -> None:
+    async with AutomationHarness(write(tmp_path, CLEANUP)) as automation:
+        assert await automation.call("close_it") == ["fin", "after loop"]
+
+
+@pytest.mark.timeout(20)
+async def test_cancelled_drain_runs_a_finally_that_calls_a_function(tmp_path: Path) -> None:
+    import asyncio  # pylint: disable=import-outside-toplevel
+
+    from haanim.engine.errors import ActionTimeOutError  # pylint: disable=import-outside-toplevel
+
+    async with AutomationHarness(write(tmp_path, CLEANUP)) as automation:
+        task = asyncio.ensure_future(automation.call("all_of_it"))
+        await automation.clock.settle()
+        await automation.advance_time(seconds=3)
+        with pytest.raises(ActionTimeOutError):
+            await task
+        assert await automation.call("logged") == ["fin"]
+
+
+@pytest.mark.timeout(20)
+@pytest.mark.parametrize(
+    "statement",
+    ["return -1 in (x for x in forever())", "return [*forever()]", "a, *b = forever()", "return max(*forever())"],
+    ids=["in", "star in a list", "unpacking", "star in a call"],
+)
+async def test_interpreter_iteration_of_an_infinite_generator_is_cancelled(tmp_path: Path, statement: str) -> None:
+    import asyncio  # pylint: disable=import-outside-toplevel
+
+    from haanim.engine.errors import ActionTimeOutError  # pylint: disable=import-outside-toplevel
+
+    body = f"@action(timeout=2)\ndef go(event):\n    {statement}\n\n@action\ndef other(event):\n    return 'other ran'\n"
+    async with AutomationHarness(write(tmp_path, body)) as automation:
+        task = asyncio.ensure_future(automation.call("go"))
+        await automation.clock.settle()
+        assert await automation.call("other") == "other ran"
+        await automation.advance_time(seconds=3)
+        with pytest.raises(ActionTimeOutError):
+            await task
+
+
+async def test_in_stops_at_the_first_match(tmp_path: Path) -> None:
+    body = "@action\ndef go(event):\n    g = count_up(10)\n    return [3 in g, next(g), 99 in g, list(g)]\n"
+    assert await run(tmp_path, body) == [True, 4, False, []]
+
+
+async def test_star_and_unpacking_of_a_generator(tmp_path: Path) -> None:
+    body = "@action\ndef go(event):\n    a, *b = count_up(4)\n    return [a, b, [*count_up(2), 9], max(*count_up(3), 1)]\n"
+    assert await run(tmp_path, body) == [0, [1, 2, 3], [0, 1, 9], 2]
+
+
+async def test_yield_from_forwards_throw_and_close(tmp_path: Path) -> None:
+    body = '''
+log = []
+
+def inner():
+    try:
+        try:
+            yield 1
+        except ValueError:
+            yield "caught"
+        yield 2
+    finally:
+        log.append("inner closed")
+
+def outer():
+    result = yield from inner()
+    yield result
+
+@action
+def go(event):
+    g = outer()
+    next(g)
+    caught = g.throw(ValueError())
+    g.close()
+    return [caught, log]
+'''
+    assert await run(tmp_path, body) == ["caught", ["inner closed"]]
+
+
+async def test_except_generator_exit_in_a_body_that_cleans_up(tmp_path: Path) -> None:
+    body = '''
+log = []
+
+def note(text):
+    log.append(text)
+
+def watcher():
+    try:
+        yield 1
+    except GeneratorExit:
+        note("exit")
+        raise
+    except Exception:
+        note("never")
+
+@action
+def go(event):
+    g = watcher()
+    next(g)
+    g.close()
+    return log
+'''
+    assert await run(tmp_path, body) == ["exit"]
