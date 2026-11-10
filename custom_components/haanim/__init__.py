@@ -35,7 +35,8 @@ from haanim.engine.triggers import TriggerManager
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]  # One enum sensor per automation
+# One enum sensor per automation, and the entities automations declare
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 # Nothing is set in configuration.yaml. Home Assistant looks for this name; pylint takes a callable for a
 # function.

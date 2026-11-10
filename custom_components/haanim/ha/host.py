@@ -23,6 +23,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.sun import get_astral_event_next
 from homeassistant.util import dt as dt_util
 
+from custom_components.haanim.entities import HAEntitySink
 from custom_components.haanim.const import DOMAIN
 from custom_components.haanim.ha.assets import HAAssetSigner
 from custom_components.haanim.ha.events import EventManager
@@ -346,4 +347,5 @@ def build_host(hass: HomeAssistant, state_manager: StateManager, event_manager: 
         hass=hass,
         asset_signer=HAAssetSigner(hass),
         cards=HACardSink(),
+        entities=HAEntitySink(hass),
     )
