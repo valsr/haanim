@@ -12,6 +12,7 @@ from haanim.testing.fakes import (
     FakeIssueReporter,
     FakeServiceCaller,
     FakeStateProvider,
+    FakeStatistics,
     FakeStorage,
     FakeSunProvider,
     LocalFileSystem,

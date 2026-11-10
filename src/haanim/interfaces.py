@@ -21,6 +21,7 @@ from haanim.types import EventData, ServiceInfo, StateChangedEvent, StateVal
 if TYPE_CHECKING:
     from haanim.engine.automation_context import AutomationContext
     from haanim.engine.devices import StoredEntity
+    from haanim.engine.statistics import StatisticsMetadata
 
 T = TypeVar("T")
 
@@ -36,6 +37,7 @@ __all__ = [
     "IssueReporter",
     "ServiceCaller",
     "StateProvider",
+    "StatisticsProvider",
     "StorageBackend",
     "SunProvider",
     "TimerHandle",
@@ -283,6 +285,33 @@ class EntitySink(Protocol):
         ...
 
 
+class StatisticsProvider(Protocol):
+    """Where long-term statistics are read and written: Home Assistant's recorder.
+
+    Rows are dictionaries with ``start`` (an aware datetime) and the fields of
+    the statistic: ``mean``, ``min``, ``max`` or ``state``, ``sum``; query rows
+    also have ``end`` and, for sums, ``change``.
+    """
+
+    async def query(
+        self, statistic_id: str, start: datetime, end: datetime, period: str, types: set[str]
+    ) -> list[dict[str, Any]]:
+        """Return the rows of a period from start to end, oldest first; days, weeks and months in start's zone."""
+        ...
+
+    async def import_rows(self, metadata: StatisticsMetadata, rows: list[dict[str, Any]]) -> None:
+        """Write hourly rows, replacing stored rows of the same hours; return once they are written."""
+        ...
+
+    async def adjust_sums(self, statistic_id: str, start: datetime, delta: float, unit: str | None) -> None:
+        """Add delta to every stored sum from start on, hourly and 5-minute rows; return once written."""
+        ...
+
+    def entity_statistic_id(self, platform: str, unique_id: str, default: str) -> str:
+        """Return the statistic ID of an entity: its current entity ID, or default if unknown."""
+        ...
+
+
 class CardSink(Protocol):
     """Receives the card content of automations, to show it."""
 
@@ -456,6 +485,8 @@ class Host:
             shows no cards.
         entities: Where the entities of automations' devices are shown. None
             if the host shows no entities.
+        statistics: Where long-term statistics are kept. None if the host
+            keeps none.
     """
 
     states: StateProvider
@@ -470,3 +501,4 @@ class Host:
     asset_signer: AssetSigner | None = None
     cards: CardSink | None = None
     entities: EntitySink | None = None
+    statistics: StatisticsProvider | None = None
