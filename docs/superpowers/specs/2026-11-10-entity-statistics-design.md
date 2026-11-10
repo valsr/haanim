@@ -19,7 +19,7 @@ live, and queries the long-term statistics of any entity to compute on them.
 | External statistics (`haanim:<name>`) | Out of scope |
 | Statistic kind | From the declaration's `state_class`: `measurement` → mean/min/max; `total`, `total_increasing` → sums |
 | Sum import | Usage per hour; HAAnim computes the running sums and shifts later rows |
-| Granularity of import | Whole, ended hours |
+| Granularity of import | Whole hours that ended at least 15 minutes ago (Home Assistant compiles each hour just after it ends; importing first makes it roll back that compile) |
 | Repeated hours in one import | The last row wins |
 | Reaching Home Assistant | A new optional host interface, not service calls |
 
@@ -40,7 +40,7 @@ await temp.import_statistics([
 ])
 ```
 
-`DeviceEntity.import_statistics(rows) -> int` returns the number of hours imported.
+`DeviceEntity.import_statistics(rows) -> int` returns the number of hours written (for sums, every hour from the first to the last row).
 
 | Field | Entities | Meaning |
 | --- | --- | --- |
@@ -55,7 +55,8 @@ statistics counts as no usage. When two rows name the same hour, the last one wi
 `ValueError` is raised, and nothing is imported, for:
 
 - an entity without a `state_class`, a leftover entity, or a non-sensor entity;
-- a `start` that is not the start of an hour, or an hour that has not ended;
+- a `start` that is not the start of an hour, or an hour that did not end at least 15 minutes ago;
+- for sums, an entity Home Assistant does not record live yet (no 5-minute statistics after the range): its own sum would restart at zero after the import;
 - a missing required field, or a field of the other kind (`usage` for a measurement, `mean` for a sum);
 - a negative `usage` for `total_increasing`;
 - a number that is not finite, or `min > mean` or `mean > max`;
@@ -107,12 +108,15 @@ The engine turns usage into sums, so the logic is tested without Home Assistant:
 2. `base` = the last stored sum before the first imported hour, or 0.
 3. `old_end` = the stored sum at the last imported hour before the import; if that hour has no row, the
    last stored sum before it; or `base`.
-4. Each imported hour gets `sum` = `base` + the usage of every imported hour up to and including it,
-   and `state` = `sum`.
+4. Every hour from the first to the last imported one gets `sum` = `base` + the usage of every imported
+   hour up to and including it (a missing hour has no usage), and `state` = `sum`.
 5. Import the rows, then adjust every stored sum after the last imported hour by
    `new_end − old_end`, so later history (and what Home Assistant records live) still joins up.
 
 Measurement rows are imported as given, with `min` and `max` defaulting to `mean`.
+
+The stored sums are read in the declared unit; statistics Home Assistant keeps in another unit (a
+display unit the owner chose) get the rows converted to that unit.
 
 ### Metadata
 
