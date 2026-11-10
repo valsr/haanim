@@ -18,7 +18,24 @@ for type checking only.
 
 from typing import TYPE_CHECKING, Any
 
-from haanim.const import ActionMode
+from haanim.const import (
+    PERCENTAGE,
+    ActionMode,
+    EntityCommand,
+    EntityPlatform,
+    NumberMode,
+    Period,
+    StateClass,
+    TextMode,
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfPower,
+    UnitOfPressure,
+    UnitOfTemperature,
+    UnitOfTime,
+    UnitOfVolume,
+)
 from haanim.engine.card import HAAnimCard
 from haanim.engine.device_api import DeviceEntity, HAAnimDevice
 from haanim.engine.device_entities import (
@@ -158,6 +175,22 @@ __all__ = [
     "button_entity",
     "text_entity",
     "ActionMode",
+    # Constants of device entities, statistics and units
+    "EntityPlatform",
+    "EntityCommand",
+    "StateClass",
+    "NumberMode",
+    "TextMode",
+    "Period",
+    "UnitOfEnergy",
+    "UnitOfPower",
+    "UnitOfTemperature",
+    "UnitOfTime",
+    "UnitOfVolume",
+    "UnitOfPressure",
+    "UnitOfElectricCurrent",
+    "UnitOfElectricPotential",
+    "PERCENTAGE",
     # Events
     "ActionEvent",
     "TimeEvent",
