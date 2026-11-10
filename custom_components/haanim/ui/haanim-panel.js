@@ -6,6 +6,7 @@
  * - `/haanim/automation/<id>`: one automation: a header with its state, controls and metadata, and three
  *   tabs below it. The page opens on the first, the preview of its card.
  * - `/haanim/automation/<id>/actions`: the same page with the actions tab open.
+ * - `/haanim/automation/<id>/entities`: the same page with the entities of the automation's device.
  * - `/haanim/automation/<id>/logs`: the same page with the log tab open. The card's Log button goes here.
  */
 
@@ -22,6 +23,7 @@ import {
     renderConfig,
     renderControls,
     renderDetail,
+    renderEntities,
     renderHeader,
     renderList,
     renderLog,
@@ -112,6 +114,8 @@ export class HAAnimPanel extends HTMLElement {
         this._configuration = null;
         this._records = [];
         this._unsubscribeLog = null;
+        this._entities = null;
+        this._unsubscribeEntities = null;
         this._error = null;
         this._seen = null;
         this.shadowRoot.addEventListener('click', (event) => this._onClick(event));
@@ -129,7 +133,7 @@ export class HAAnimPanel extends HTMLElement {
             this._seen = seen;
             this._load();
         }
-        if (first) this._followLog();
+        if (first) this._follow();
     }
 
     get hass() {
@@ -151,6 +155,7 @@ export class HAAnimPanel extends HTMLElement {
 
     disconnectedCallback() {
         this._stopLog();
+        this._stopEntities();
     }
 
     /** What the pages depend on: the state, the flags and the message of every automation entity. */
@@ -197,9 +202,11 @@ export class HAAnimPanel extends HTMLElement {
         }
         this._automation = null;
         this._records = [];
+        this._entities = null;
         this._stopLog();
+        this._stopEntities();
         this._render(true);
-        this._followLog();
+        this._follow();
         this._load();
     }
 
@@ -207,6 +214,59 @@ export class HAAnimPanel extends HTMLElement {
     _go(path) {
         navigate(path);
         this._open(parseRoute(path.slice(PANEL_PATH.length)));
+    }
+
+    /** On an automation's page, follow its log and its entities. */
+    _follow() {
+        this._followLog();
+        this._followEntities();
+    }
+
+    /** On an automation's page, follow the entities of its device. */
+    async _followEntities() {
+        if (this._view.page !== 'detail' || !this._hass || this._unsubscribeEntities) return;
+        const view = this._view;
+        this._unsubscribeEntities = () => undefined;
+        try {
+            const unsubscribe = await this._hass.connection.subscribeMessage(
+                (message) => this._onEntities(view, message),
+                { type: `${DOMAIN}/entities/subscribe`, automation_id: view.id }
+            );
+            if (view === this._view) {
+                this._unsubscribeEntities = unsubscribe;
+            } else {
+                unsubscribe();
+            }
+        } catch (error) {
+            this._unsubscribeEntities = null;
+        }
+    }
+
+    _stopEntities() {
+        const unsubscribe = this._unsubscribeEntities;
+        this._unsubscribeEntities = null;
+        if (unsubscribe) {
+            Promise.resolve()
+                .then(() => unsubscribe())
+                .catch(() => undefined);
+        }
+    }
+
+    _onEntities(view, message) {
+        if (view !== this._view) return;
+        this._entities = message;
+        this._fill('detail-entities', renderEntities(this._entities));
+    }
+
+    /** Remove a leftover or purge a declared entity; the subscription shows the outcome. */
+    _entityCommand(kind, key) {
+        this._hass.callWS({ type: `${DOMAIN}/entities/${kind}`, automation_id: this._view.id, key }).then(
+            () => this._load(),
+            (error) => {
+                this._error = (error && error.message) || String(error);
+                this._fill('page-error', this._errorHtml());
+            }
+        );
     }
 
     /** On an automation's page, follow its log: the recent records, then each new one. */
@@ -256,7 +316,22 @@ export class HAAnimPanel extends HTMLElement {
         const row = target.closest('[data-open]');
         const page = target.closest('[data-page]');
         const tab = target.closest('[data-section]');
-        if (control) {
+        const remove = target.closest('[data-entity-remove]');
+        const purge = target.closest('[data-entity-purge]');
+        const moreInfo = target.closest('[data-more-info]');
+        if (remove) {
+            this._entityCommand('remove', remove.dataset.entityRemove);
+        } else if (purge) {
+            this._entityCommand('purge', purge.dataset.entityPurge);
+        } else if (moreInfo) {
+            this.dispatchEvent(
+                new CustomEvent('hass-more-info', {
+                    bubbles: true,
+                    composed: true,
+                    detail: { entityId: moreInfo.dataset.moreInfo },
+                })
+            );
+        } else if (control) {
             // A control names its automation: in the list every row has its own
             const call = serviceCall(control.dataset, control.dataset.automation || this._view.id);
             if (call && call.data.automation_id) this._callService(call.service, call.data);
@@ -322,6 +397,7 @@ export class HAAnimPanel extends HTMLElement {
         this._fill('detail-controls', automation ? renderControls(automation) : '');
         this._fill('detail-meta', automation ? renderDetail(automation) : '');
         this._fill('detail-actions', automation ? renderActionList(automation.actions) : '');
+        this._fill('detail-entities', renderEntities(this._entities));
         this._fill('detail-log-tools', automation ? renderLogTools(automation) : '');
         this._fill('detail-log', renderLog(this._records));
         this._showSection();
@@ -344,6 +420,7 @@ export class HAAnimPanel extends HTMLElement {
                 '<div id="detail-tabs"></div>' +
                 '<div id="tab-preview" role="tabpanel"><haanim-card id="detail-card"></haanim-card></div>' +
                 '<div id="tab-actions" role="tabpanel" hidden><div id="detail-actions"></div></div>' +
+                '<div id="tab-entities" role="tabpanel" hidden><div id="detail-entities"></div></div>' +
                 '<div id="tab-logs" role="tabpanel" hidden><div id="detail-log-tools"></div><div id="detail-log"></div></div>';
         } else if (page === 'config') {
             body = renderConfig(this._configuration);

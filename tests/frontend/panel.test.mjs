@@ -12,11 +12,11 @@ const LIST = {
         { id: 'broken', name: 'broken', version: '', state: 'error', enabled: true, message: 'main.py:1' },
     ],
 };
-const DETAIL_IDS = ['detail-header', 'detail-controls', 'detail-meta', 'detail-tabs', 'detail-actions', 'detail-log-tools', 'detail-log', 'tab-preview', 'tab-actions', 'tab-logs', 'page-error'];
+const DETAIL_IDS = ['detail-header', 'detail-controls', 'detail-meta', 'detail-tabs', 'detail-actions', 'detail-entities', 'detail-log-tools', 'detail-log', 'tab-preview', 'tab-actions', 'tab-entities', 'tab-logs', 'page-error'];
 
 /** Which tab of the page is open: the one whose pane is not hidden. */
 function openTab(parts) {
-    return ['preview', 'actions', 'logs'].filter((section) => parts[`tab-${section}`].hidden === false);
+    return ['preview', 'actions', 'entities', 'logs'].filter((section) => parts[`tab-${section}`].hidden === false);
 }
 
 function states(state = 'on') {
@@ -422,4 +422,50 @@ describe('haanim-panel', () => {
         await settle();
         assert.equal(page.hass.services.length, 0);
     });
+
+    test('the entities tab follows the entities and opens from its address', async () => {
+        const { panel, hass, parts } = await opened('/automation/climate/entities');
+        assert.deepEqual(openTab(parts), ['entities']);
+        assert.deepEqual(hass.active('haanim/entities/subscribe').map((subscription) => subscription.message), [
+            { type: 'haanim/entities/subscribe', automation_id: 'climate' },
+        ]);
+        hass.push('haanim/entities/subscribe', {
+            device_id: null,
+            entities: [{ key: 'old', object_id: 'old', entity_id: 'sensor.haanim_climate_old', platform: 'sensor', name: 'old', state: 1, declared: false }],
+        });
+        assert.match(parts['detail-entities'].innerHTML, /data-entity-remove="old"/);
+
+        panel.shadowRoot.fire('click', clicked({ 'entity-remove': 'old' }));
+        await settle();
+        assert.deepEqual(hass.calls.at(-2), { type: 'haanim/entities/remove', automation_id: 'climate', key: 'old' });
+        assert.deepEqual(hass.calls.at(-1), { type: 'haanim/automations/get', automation_id: 'climate' }, 'the count is read again');
+
+        panel.shadowRoot.fire('click', clicked({ 'entity-purge': 'boost' }));
+        await settle();
+        assert.deepEqual(hass.calls.at(-2), { type: 'haanim/entities/purge', automation_id: 'climate', key: 'boost' });
+    });
+
+    test('a failing remove shows its message', async () => {
+        const { panel, hass, parts } = await opened('/automation/climate/entities');
+        hass.answers['haanim/entities/remove'] = new Error('delete the class first');
+        panel.shadowRoot.fire('click', clicked({ 'entity-remove': 'boost' }));
+        await settle();
+        assert.match(parts['page-error'].innerHTML, /delete the class first/);
+    });
+
+    test('an entity name opens its more-info dialog', async () => {
+        const { panel } = await opened('/automation/climate/entities');
+        panel.dispatched = [];
+        panel.shadowRoot.fire('click', clicked({ 'more-info': 'sensor.haanim_climate_old' }));
+        assert.deepEqual(panel.dispatched.map((event) => [event.type, event.detail]), [['hass-more-info', { entityId: 'sensor.haanim_climate_old' }]]);
+    });
+
+    test('leaving the page stops following the entities', async () => {
+        const { panel, hass } = await opened('/automation/climate/entities');
+        panel.route = { prefix: '/haanim', path: '' };
+        await settle();
+        assert.equal(hass.active('haanim/entities/subscribe').length, 0);
+        assert.equal(hass.active('haanim/logs/subscribe').length, 0);
+    });
 });
+

@@ -474,6 +474,7 @@ export const PANEL_PATH = '/haanim';
 export const DETAIL_TABS = [
     { section: 'preview', label: 'Preview' },
     { section: 'actions', label: 'Actions' },
+    { section: 'entities', label: 'Entities' },
     { section: 'logs', label: 'Logs' },
 ];
 
@@ -574,7 +575,9 @@ export function renderControls(automation) {
 export function renderTabs(section, automation = null) {
     const open = detailTab(section);
     const buttons = DETAIL_TABS.map((tab) => {
-        const count = tab.section === 'actions' && automation ? ` (${(automation.actions || []).length})` : '';
+        let count = '';
+        if (tab.section === 'actions' && automation) count = ` (${(automation.actions || []).length})`;
+        if (tab.section === 'entities' && automation) count = ` (${automation.entity_count || 0})`;
         const selected = tab.section === open;
         return (
             `<button class="tab${selected ? ' active' : ''}" role="tab" aria-selected="${selected}"` +
@@ -582,6 +585,45 @@ export function renderTabs(section, automation = null) {
         );
     }).join('');
     return `<div class="tabs" role="tablist">${buttons}</div>`;
+}
+
+/** An entity's state as the entities tab shows it. */
+function entityState(state) {
+    if (state === null || state === undefined) return 'unknown';
+    if (state === true) return 'on';
+    if (state === false) return 'off';
+    return typeof state === 'object' ? JSON.stringify(state) : String(state);
+}
+
+/**
+ * Render the entities of an automation's device: a row each, with Purge data for a declared entity and
+ * Remove for a leftover. `view` is what `haanim/entities/list` answers; null while it is being read.
+ */
+export function renderEntities(view) {
+    if (!view) return '<div class="empty">Loading…</div>';
+    const device = view.device_id
+        ? `<a class="device" href="/config/devices/device/${encodeURIComponent(view.device_id)}">Device page</a>`
+        : '';
+    const rows = (view.entities || [])
+        .map((entity) => {
+            const key = escapeHtml(entity.key);
+            const actions = entity.declared
+                ? `<button data-entity-purge="${key}">Purge data</button>` +
+                  '<button disabled title="delete the class first">Remove</button>'
+                : `<button data-entity-remove="${key}">Remove</button>`;
+            return (
+                `<tr><td><button class="link" data-more-info="${escapeHtml(entity.entity_id)}">` +
+                `${escapeHtml(entity.name)}</button><div class="entity-id">${escapeHtml(entity.entity_id)}</div></td>` +
+                `<td>${escapeHtml(entity.platform)}</td><td>${escapeHtml(entityState(entity.state))}</td>` +
+                `<td>${entity.declared ? 'declared' : 'leftover'}</td><td>${actions}</td></tr>`
+            );
+        })
+        .join('');
+    if (!rows) return `${device}<div class="empty">No entities</div>`;
+    return (
+        `${device}<table class="entities"><tr><th>Entity</th><th>Type</th><th>State</th><th>Status</th><th></th></tr>` +
+        `${rows}</table>`
+    );
 }
 
 /** Render the automation's actions as a list, each with a run button. */

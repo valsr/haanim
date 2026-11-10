@@ -31,6 +31,7 @@ import {
     renderLog,
     renderLogTools,
     renderMarkdown,
+    renderEntities,
     renderTabs,
     renderToolbar,
     safeUrl,
@@ -653,19 +654,20 @@ describe('renderControls', () => {
 
 describe('renderTabs', () => {
     const tabs = (html) => [...html.matchAll(/<button class="(tab[^"]*)" role="tab" aria-selected="(\w+)" data-section="(\w+)">([^<]*)</g)].map((match) => match.slice(1));
-    test('preview, actions and logs, in that order, with the open one marked', () => {
-        assert.deepEqual(DETAIL_TABS.map((tab) => tab.section), ['preview', 'actions', 'logs']);
+    test('preview, actions, entities and logs, in that order, with the open one marked', () => {
+        assert.deepEqual(DETAIL_TABS.map((tab) => tab.section), ['preview', 'actions', 'entities', 'logs']);
         assert.deepEqual(tabs(renderTabs('preview')), [
             ['tab active', 'true', 'preview', 'Preview'],
             ['tab', 'false', 'actions', 'Actions'],
+            ['tab', 'false', 'entities', 'Entities'],
             ['tab', 'false', 'logs', 'Logs'],
         ]);
-        assert.deepEqual(tabs(renderTabs('logs')).map((tab) => tab[1]), ['false', 'false', 'true']);
+        assert.deepEqual(tabs(renderTabs('logs')).map((tab) => tab[1]), ['false', 'false', 'false', 'true']);
         assert.match(renderTabs('logs'), /^<div class="tabs" role="tablist">/);
     });
     test('without a section, or with one that is none, the preview is open', () => {
         for (const section of [null, undefined, '', 'other']) {
-            assert.deepEqual(tabs(renderTabs(section)).map((tab) => tab[1]), ['true', 'false', 'false'], String(section));
+            assert.deepEqual(tabs(renderTabs(section)).map((tab) => tab[1]), ['true', 'false', 'false', 'false'], String(section));
         }
         assert.equal(detailTab('actions'), 'actions');
         assert.equal(detailTab('nothing'), 'preview');
@@ -674,6 +676,48 @@ describe('renderTabs', () => {
         assert.match(renderTabs('actions', { actions: [{ name: 'a' }, { name: 'b' }] }), /data-section="actions">Actions \(2\)</);
         assert.match(renderTabs('actions', {}), /data-section="actions">Actions \(0\)</);
         assert.match(renderTabs('actions', null), /data-section="actions">Actions</);
+    });
+    test('the entities tab says how many entities there are', () => {
+        assert.match(renderTabs('entities', { entity_count: 3 }), /data-section="entities">Entities \(3\)</);
+        assert.match(renderTabs('entities', {}), /data-section="entities">Entities \(0\)</);
+        assert.match(renderTabs('entities', null), /data-section="entities">Entities</);
+    });
+});
+
+describe('renderEntities', () => {
+    const view = {
+        device_id: 'dev1',
+        entities: [
+            { key: 'boost', object_id: 'boost', entity_id: 'switch.haanim_heat_boost', platform: 'switch', name: 'Boost <b>', state: true, declared: true },
+            { key: 'old@sensor', object_id: 'old', entity_id: 'sensor.haanim_heat_old', platform: 'sensor', name: 'old', state: null, declared: false },
+        ],
+    };
+    test('a declared entity can be purged, not removed', () => {
+        const html = renderEntities(view);
+        assert.match(html, /data-more-info="switch.haanim_heat_boost">Boost &lt;b&gt;<\/button>/);
+        assert.match(html, /<td>switch<\/td><td>on<\/td><td>declared<\/td>/);
+        assert.match(html, /<button data-entity-purge="boost">Purge data<\/button>/);
+        assert.match(html, /<button disabled title="delete the class first">Remove<\/button>/);
+    });
+    test('a leftover can be removed, not purged', () => {
+        const html = renderEntities(view);
+        assert.match(html, /<td>sensor<\/td><td>unknown<\/td><td>leftover<\/td>/);
+        assert.match(html, /<button data-entity-remove="old@sensor">Remove<\/button>/);
+        assert.doesNotMatch(html, /data-entity-purge="old@sensor"/);
+    });
+    test('links to the device page', () => {
+        assert.match(renderEntities(view), /<a class="device" href="\/config\/devices\/device\/dev1">Device page<\/a>/);
+        assert.doesNotMatch(renderEntities({ ...view, device_id: null }), /config\/devices/);
+    });
+    test('states are shown as text', () => {
+        const row = (state) => renderEntities({ device_id: null, entities: [{ ...view.entities[0], state }] });
+        assert.match(row(false), /<td>off<\/td>/);
+        assert.match(row(21.5), /<td>21.5<\/td>/);
+        assert.match(row({ a: 1 }), /<td>\{&quot;a&quot;:1\}<\/td>/);
+    });
+    test('without entities, or before they are read', () => {
+        assert.match(renderEntities({ device_id: null, entities: [] }), /No entities/);
+        assert.match(renderEntities(null), /Loading/);
     });
 });
 
