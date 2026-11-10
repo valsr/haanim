@@ -512,7 +512,8 @@ class TestBlockingWarning:
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         """An automation loaded through the context is timed with the host's clock."""
-        clock = SteppingClock(step=0.6)
+        # Over a second for each call of slow, under the 10-second limit for the sort as a whole
+        clock = SteppingClock(step=0.3)
         host = make_host(files=LocalFileSystem())
         object.__setattr__(host.clock, "now", clock.now)
         path = automation_file(tmp_path, "lights")
