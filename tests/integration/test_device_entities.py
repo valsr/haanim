@@ -442,3 +442,10 @@ async def test_no_automations_found_at_start_keeps_stored_devices(
     manager = await setup({})
     await hass.async_block_till_done()
     assert manager.devices.automation_ids() == ["climate"]
+
+
+async def test_without_recorder_no_statistics_provider(hass: HomeAssistant) -> None:
+    """A Home Assistant without the recorder gives HAAnim no statistics provider."""
+    from custom_components.haanim.ha.host import build_host  # pylint: disable=import-outside-toplevel
+
+    assert build_host(hass, None, None).statistics is None  # type: ignore[arg-type]

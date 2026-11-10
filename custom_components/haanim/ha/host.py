@@ -28,6 +28,7 @@ from custom_components.haanim.const import DOMAIN
 from custom_components.haanim.ha.assets import HAAssetSigner
 from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.ha.state import StateManager
+from custom_components.haanim.ha.statistics import HAStatistics
 from haanim.engine.errors import ServiceCallError
 from haanim.interfaces import Host
 from haanim.types import ServiceInfo
@@ -348,4 +349,6 @@ def build_host(hass: HomeAssistant, state_manager: StateManager, event_manager: 
         asset_signer=HAAssetSigner(hass),
         cards=HACardSink(),
         entities=HAEntitySink(hass),
+        # Statistics are kept by the recorder; without it there are none
+        statistics=HAStatistics(hass) if "recorder" in hass.config.components else None,
     )
