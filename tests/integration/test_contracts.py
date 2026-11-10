@@ -322,9 +322,15 @@ class RegisterService(Protocol):
     """Registers a service in the system under test."""
 
     def __call__(
-        self, domain: str, service: str, *, response: dict[str, Any] | None = None, fail: str | None = None
+        self,
+        domain: str,
+        service: str,
+        *,
+        response: dict[str, Any] | None = None,
+        fail: str | None = None,
+        responds: bool = True,
     ) -> None:
-        """Register the service; ``fail`` makes calls to it fail with that reason."""
+        """Register the service; ``fail`` makes calls to it fail with that reason, ``responds=False`` gives no response."""
 
 
 @dataclass
@@ -344,7 +350,12 @@ def service_setup(request: pytest.FixtureRequest, hass: HomeAssistant) -> Servic
         fake = FakeServiceCaller()
 
         def register_fake(
-            domain: str, service: str, *, response: dict[str, Any] | None = None, fail: str | None = None
+            domain: str,
+            service: str,
+            *,
+            response: dict[str, Any] | None = None,
+            fail: str | None = None,
+            responds: bool = True,
         ) -> None:
             fake.register(domain, service, response=response)
             if fail is not None:
@@ -355,7 +366,12 @@ def service_setup(request: pytest.FixtureRequest, hass: HomeAssistant) -> Servic
     received: list[dict[str, Any]] = []
 
     def register_real(
-        domain: str, service: str, *, response: dict[str, Any] | None = None, fail: str | None = None
+        domain: str,
+        service: str,
+        *,
+        response: dict[str, Any] | None = None,
+        fail: str | None = None,
+        responds: bool = True,
     ) -> None:
         async def handler(call: ServiceCall) -> dict[str, Any] | None:
             received.append(dict(call.data))
@@ -363,7 +379,8 @@ def service_setup(request: pytest.FixtureRequest, hass: HomeAssistant) -> Servic
                 raise HomeAssistantError(fail)
             return response if call.return_response else None
 
-        hass.services.async_register(domain, service, handler, supports_response=SupportsResponse.OPTIONAL)
+        supports = SupportsResponse.OPTIONAL if responds else SupportsResponse.NONE
+        hass.services.async_register(domain, service, handler, supports_response=supports)
 
     return ServiceSetup(HAServiceCaller(hass), register_real, lambda: received)
 
@@ -402,6 +419,16 @@ class TestServiceCallerContract:
         service_setup.register("contract", "do", response={"ok": True})
         result = await service_setup.caller.async_call("contract", "do", return_response=True)
         assert result == {"ok": True}
+
+    async def test_response_requested_from_service_without_one(self, service_setup: ServiceSetup) -> None:
+        """Test asking a service that gives no response for one calls it and returns None.
+
+        HAAnim's proxy always asks for a response; most services (light.turn_on, notify, ...) have none.
+        """
+        service_setup.register("contract", "do", responds=False)
+        result = await service_setup.caller.async_call("contract", "do", {"level": 3}, return_response=True)
+        assert result is None
+        assert service_setup.received() == [{"level": 3}]
 
     async def test_failing_service_raises_service_call_error(self, service_setup: ServiceSetup) -> None:
         """Test a failing service raises ServiceCallError carrying the reason."""

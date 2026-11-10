@@ -78,7 +78,7 @@ from haanim.events import (
     TimeEvent,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 RUNTIME_ONLY = ("haa", "hass", "logging")
 """Names an automation imports that exist only while it runs: the interpreter supplies them."""

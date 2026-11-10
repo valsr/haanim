@@ -198,10 +198,12 @@ call = await haa.service.light.turn_on(entity_id="light.kitchen", brightness=200
 if not call.success:
     print(call.error)
 
-forecast = await haa.service.weather.get_forecasts(entity_id="weather.home", type="daily",
-                                                   return_response=True)
+forecast = await haa.service.weather.get_forecasts(entity_id="weather.home", type="daily")
 print(forecast.response_data)
 ```
+
+A service's response, if it gives one, is always in `response_data` (an empty dictionary otherwise); do not pass
+`return_response`, which would reach the service as one of its fields.
 
 A service that does not exist raises `NonExistingServiceError`. A call that fails does not raise: the result
 has `success` set to `False` and the reason in `error`.

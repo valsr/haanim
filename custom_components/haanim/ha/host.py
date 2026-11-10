@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypeVar
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry
 from homeassistant.helpers.service import async_get_all_descriptions
@@ -90,9 +90,16 @@ class HAServiceCaller:
     ) -> dict[str, Any] | None:
         """Call a service and wait for it to finish.
 
+        A response is asked for only from a service that can give one: Home Assistant refuses
+        ``return_response`` for the others, and HAAnim's proxy always asks.
+
         Raises:
             ServiceCallError: If Home Assistant reports the call as failed.
         """
+        if return_response and self._hass.services.has_service(domain, service):
+            return_response = (
+                self._hass.services.supports_response(domain, service) is not SupportsResponse.NONE
+            )
         try:
             response = await self._hass.services.async_call(
                 domain,

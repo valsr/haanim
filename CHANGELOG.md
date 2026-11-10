@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-09
+
+### Fixed
+
+- Calling a service that gives no response (`light.turn_on`, `persistent_notification.create`, most services)
+  failed with "An action which does not return responses can't be called with return_response=True". A
+  response is now asked for only from services that can give one.
+- The services guide no longer shows `return_response=True` as an argument: it reached the service as a field.
+
 ## [0.3.0] - 2026-10-23
 
 ### Added
