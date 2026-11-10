@@ -31,7 +31,11 @@ UNSUPPORTED: dict[str, tuple[str, int, str]] = {
         3,
         "'yield from' inside async function",
     ),
-    "async for": ("async def f(items):\n    async for item in items:\n        pass\n", 2, "'async for'"),
+    "async for outside an async def": (
+        "items = []\nasync for item in items:\n    pass\n",
+        2,
+        "'async for' outside async function",
+    ),
     "async list comprehension": (
         "async def f(items):\n    return [x async for x in items]\n",
         2,

@@ -163,6 +163,7 @@ class AstEvaluator:
             ast.AugAssign: self._eval_augmented_assignment,
             ast.If: self._eval_if,
             ast.For: self._eval_for,
+            ast.AsyncFor: self._eval_async_for,
             ast.While: self._eval_while,
             ast.Break: self._eval_break,
             ast.Continue: self._eval_continue,
@@ -682,6 +683,27 @@ class AstEvaluator:
             for stmt in node.orelse:
                 await self.aeval(stmt, scope)
         return None
+
+    async def _eval_async_for(self, node: ast.AsyncFor, scope: SymbolTable) -> None:
+        """Evaluate an async for loop: await the items of an async iterator."""
+        iterator = aiter(await self.aeval(node.iter, scope))
+        while True:
+            try:
+                item = await anext(iterator)
+            except StopAsyncIteration:
+                for stmt in node.orelse:
+                    await self.aeval(stmt, scope)
+                return
+            if self.checkpoint_due():
+                await CHECKPOINT
+            await self._assign_target(node.target, item, scope)
+            try:
+                for stmt in node.body:
+                    await self.aeval(stmt, scope)
+            except BreakLoop:
+                return
+            except ContinueLoop:
+                continue
 
     async def _eval_while(self, node: ast.While, scope: SymbolTable) -> Any:
         """Evaluate a while loop."""

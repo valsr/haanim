@@ -306,3 +306,89 @@ async def test_return_value_in_async_generator_rejected(tmp_path: Path) -> None:
     assert "'return' with value in async generator" in (
         await load_error(tmp_path, "async def g():\n    yield 1\n    return 2\n") or ""
     )
+
+
+# --- async for ----------------------------------------------------------------------
+
+
+async def test_async_for_over_an_automation_generator(tmp_path: Path) -> None:
+    body = "@action\nasync def go(event):\n    out = []\n    async for x in count_up_async(3):\n        out.append(x)\n    return out\n"
+    assert await run(tmp_path, body) == [0, 1, 2]
+
+
+async def test_async_for_over_a_native_async_iterator(tmp_path: Path) -> None:
+    body = """
+class Countdown:
+    def __init__(self, n):
+        self.n = n
+    def __aiter__(self):
+        return self
+    async def __anext__(self):
+        if self.n == 0:
+            raise StopAsyncIteration
+        self.n -= 1
+        return self.n
+
+@action
+async def go(event):
+    out = []
+    async for x in Countdown(3):
+        out.append(x)
+    return out
+"""
+    assert await run(tmp_path, body) == [2, 1, 0]
+
+
+async def test_async_for_break_continue_else(tmp_path: Path) -> None:
+    body = """
+@action
+async def go(event):
+    out = []
+    async for x in count_up_async(5):
+        if x == 1:
+            continue
+        if x == 3:
+            break
+        out.append(x)
+    else:
+        out.append("no break")
+    async for x in count_up_async(2):
+        out.append(x)
+    else:
+        out.append("else")
+    return out
+"""
+    assert await run(tmp_path, body) == [0, 2, 0, 1, "else"]
+
+
+async def test_async_for_over_a_non_async_iterable(tmp_path: Path) -> None:
+    body = "@action\nasync def go(event):\n    try:\n        async for x in [1, 2]:\n            pass\n    except TypeError:\n        return 'type error'\n"
+    assert await run(tmp_path, body) == "type error"
+
+
+async def test_break_leaves_the_generator_to_the_finalizer(tmp_path: Path) -> None:
+    body = """
+import gc
+
+async def tracked():
+    try:
+        yield 1
+        yield 2
+    finally:
+        note("finalized")
+
+@action
+async def go(event):
+    ag = tracked()
+    async for x in ag:
+        break
+    before = list(log)
+    del ag
+    gc.collect()
+    return before
+"""
+    async with AutomationHarness(write(tmp_path, body), additional_imports=["gc"]) as automation:
+        assert await automation.call("go") == []
+        # The event loop's finalizer closes the collected generator on its next turns
+        await automation.clock.settle()
+        assert await automation.call("logged") == ["finalized"]

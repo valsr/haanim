@@ -42,7 +42,6 @@ def yields_in(body: list[ast.stmt] | list[ast.expr]) -> list[ast.Yield | ast.Yie
 
 # Node types that are unsupported wherever they appear.
 _UNSUPPORTED_NODES: dict[type[ast.AST], str] = {
-    ast.AsyncFor: "'async for' is not supported",
     ast.Match: "'match' statements are not supported",
     ast.TryStar: "'except*' is not supported",
 }
