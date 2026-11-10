@@ -73,6 +73,8 @@ from haanim.engine.errors import (
     NonExistingServiceError,
     PoolExhaustedError,
     QueueFullError,
+    StatisticsError,
+    StatisticsUnavailableError,
 )
 from haanim.engine.haanim_api import HAAnim, HAAnimAutomationProxy, HAAnimServiceCall, HAAnimServiceProxy
 from haanim.engine.logging_wrapper import LoggerWrapper
@@ -184,4 +186,6 @@ __all__ = [
     "ActionCancelledError",
     "NonExistingEntityError",
     "NonExistingServiceError",
+    "StatisticsUnavailableError",
+    "StatisticsError",
 ]

@@ -36,6 +36,8 @@ DESIGN_ERRORS = [
     "ActionCancelledError",
     "NonExistingEntityError",
     "NonExistingServiceError",
+    "StatisticsUnavailableError",
+    "StatisticsError",
 ]
 
 
