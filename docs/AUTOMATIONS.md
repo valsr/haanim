@@ -102,8 +102,28 @@ def summary(event):
 loop free between items, so even `list()` of an endless generator only runs until the action's timeout. Other
 functions that pull a generator themselves (`any`, `all`, `itertools`, ...), and functions of the automation
 that Python code calls (a `key=` of `sorted`), cannot pause: such a run is stopped with a `TimeoutError` after
-10 seconds, because it blocks Home Assistant while it runs. Async generators (`yield` in an `async def`) are
-not supported.
+10 seconds, because it blocks Home Assistant while it runs.
+
+Async generators work as in Python too: `yield` in an `async def`, consumed with `async for`, `anext()` and
+async comprehensions (`[x async for x in ...]`, inside an `async def`). They run on the event loop like any
+automation code, so they can wait between items without blocking anything; `asend()`, `athrow()` and
+`aclose()` work, and their `finally` blocks may `await`.
+
+```python
+from haanim import action, haa
+
+
+async def polled(entity_id, times):
+    for _ in range(times):
+        yield haa.state(entity_id)
+        await haa.sleep(60)
+
+
+@action
+async def watch_temperature(event):
+    readings = [float(value) async for value in polled("sensor.temperature", 3)]
+    haa.set_message(f"average {sum(readings) / len(readings):.1f}")
+```
 
 ## Actions
 
