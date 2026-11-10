@@ -47,7 +47,7 @@
   - `ENTITY_ATTRIBUTE = "_haanim_entity"`; `get_declaration(cls) -> EntityDeclaration | None`.
   - Decorator factories `sensor_entity`, `binary_sensor_entity`, `switch_entity`, `number_entity`, `select_entity`, `button_entity`, `text_entity`, each `(**options) -> Callable[[type], type]`; also usable bare (`@sensor_entity` without parentheses).
   - `DECORATORS: dict[str, Callable]` by import name, for Task 4.
-- Validation (raises `AutomationDefinitionError` with the class name): target not a class; unknown option for the platform; `device_class` not in HA's list for the platform (keep a frozenset per platform in this file — the engine cannot import HA; copy from HA's `SensorDeviceClass`, `BinarySensorDeviceClass`, `SwitchDeviceClass`, `NumberDeviceClass`, `ButtonDeviceClass`); `state_class` not in `measurement`, `total`, `total_increasing`; `min > max`; `step <= 0`; `select` without non-empty `options` list of strings; `number.mode` not in `auto`, `box`, `slider`; `text.mode` not in `text`, `password`; invalid `pattern` regex; `initial` failing `validate_state` (Task 2) — call it at decoration time; `initial` on a `button`.
+- Validation (raises `AutomationDefinitionError` with the class name): target not a class; unknown option for the platform; `device_class` not in HA's list for the platform (keep a frozenset per platform in this file — the engine cannot import HA; copy from HA's `SensorDeviceClass`, `BinarySensorDeviceClass`, `SwitchDeviceClass`, `NumberDeviceClass`, `ButtonDeviceClass`); `state_class` not in `measurement`, `total`, `total_increasing`; `min > max`; `step <= 0`; `select` without non-empty `options` list of strings; `number.mode` not in `auto`, `box`, `slider`; `text.mode` not in `text`, `password`; invalid `pattern` regex; `initial` on a `button`. (The check that `initial` passes `validate_state` is added in Task 2.)
 
 - [ ] **Step 1: Write failing tests**
 
@@ -80,7 +80,6 @@ def test_default_action_mode_is_drop():
     (lambda: sensor_entity(device_class="nope"), "device_class"),
     (lambda: switch_entity(unit="W"), "unit"),
     (lambda: text_entity(pattern="("), "pattern"),
-    (lambda: number_entity(min=0, max=10, initial=11), "initial"),
 ])
 def test_bad_declarations(decorate, message):
     with pytest.raises(AutomationDefinitionError, match=message):
@@ -138,7 +137,7 @@ def test_invalid_states(platform, options, value):
 ```
 
 - [ ] **Step 2: Run** — Expected: FAIL.
-- [ ] **Step 3: Implement `validate_state`.**
+- [ ] **Step 3: Implement `validate_state`, and call it from the decorators on `initial` at decoration time (raising `AutomationDefinitionError` naming `initial`).** Add to the tests: `number_entity(min=0, max=10, initial=11)` raises `AutomationDefinitionError` matching `"initial"`.
 - [ ] **Step 4: Run** `uv run pytest tests/engine/test_device_entities.py -v` — Expected: PASS.
 - [ ] **Step 5: Commit** `git commit -m "Validation of declared entity states"`
 
