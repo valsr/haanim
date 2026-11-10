@@ -8,6 +8,7 @@ from haanim.testing.fakes import (
     FakeFileSystem,
     FakeAssetSigner,
     FakeCardSink,
+    FakeEntitySink,
     FakeIssueReporter,
     FakeServiceCaller,
     FakeStateProvider,

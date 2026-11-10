@@ -21,6 +21,7 @@ from haanim.interfaces import (
     AssetSigner,
     AutomationTimes,
     CardSink,
+    EntitySink,
     FileSystem,
     Host,
     IssueReporter,
@@ -30,6 +31,7 @@ from haanim.types import EventData, ServiceInfo, StateChangedEvent, StateVal
 
 if TYPE_CHECKING:
     from haanim.engine.automation_context import AutomationContext
+    from haanim.engine.devices import StoredEntity
 
 __all__ = [
     "FakeAutomationRegistry",
@@ -37,6 +39,7 @@ __all__ = [
     "FakeEventBus",
     "FakeAssetSigner",
     "FakeCardSink",
+    "FakeEntitySink",
     "FakeFileSystem",
     "FakeIssueReporter",
     "FakeServiceCaller",
@@ -791,6 +794,28 @@ class FakeIssueReporter:
         self.history.append(("clear", issue_id))
 
 
+class FakeEntitySink:
+    """Records what the device registry says about entities."""
+
+    def __init__(self) -> None:
+        """Initialize with nothing recorded."""
+        self.changes: list[tuple[str, str, str]] = []
+        """``("changed" | "removed" | "device_removed", automation_id, key)`` for every call, oldest
+        first; the key is empty for ``device_removed``."""
+
+    def entity_changed(self, automation_id: str, key: str) -> None:
+        """Record a change."""
+        self.changes.append(("changed", automation_id, key))
+
+    def entity_removed(self, automation_id: str, entity: StoredEntity) -> None:
+        """Record a removal."""
+        self.changes.append(("removed", automation_id, entity.key))
+
+    def device_removed(self, automation_id: str) -> None:
+        """Record a device removal."""
+        self.changes.append(("device_removed", automation_id, ""))
+
+
 class FakeStorage:
     """Documents held in memory."""
 
@@ -927,6 +952,7 @@ def make_host(
     hass: Any = None,
     asset_signer: AssetSigner | None = None,
     cards: CardSink | None = None,
+    entities: EntitySink | None = None,
 ) -> Host:
     """Build a Host from fakes.
 
@@ -950,4 +976,5 @@ def make_host(
         hass=hass,
         asset_signer=asset_signer or FakeAssetSigner(),
         cards=cards or FakeCardSink(),
+        entities=entities,
     )

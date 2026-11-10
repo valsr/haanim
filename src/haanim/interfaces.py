@@ -20,6 +20,7 @@ from haanim.types import EventData, ServiceInfo, StateChangedEvent, StateVal
 
 if TYPE_CHECKING:
     from haanim.engine.automation_context import AutomationContext
+    from haanim.engine.devices import StoredEntity
 
 T = TypeVar("T")
 
@@ -28,6 +29,7 @@ __all__ = [
     "AutomationRegistry",
     "CardSink",
     "Clock",
+    "EntitySink",
     "EventBus",
     "FileSystem",
     "Host",
@@ -261,6 +263,26 @@ class AssetSigner(Protocol):
         ...
 
 
+class EntitySink(Protocol):
+    """Where the entities of automations' devices are shown: told about every change.
+
+    The sink reads what it shows from the engine's device registry; these calls
+    only say what changed.
+    """
+
+    def entity_changed(self, automation_id: str, key: str) -> None:
+        """An entity was created, or its state, attributes, declaration or declared flag changed."""
+        ...
+
+    def entity_removed(self, automation_id: str, entity: StoredEntity) -> None:
+        """A leftover entity was removed; ``entity`` is what it was."""
+        ...
+
+    def device_removed(self, automation_id: str) -> None:
+        """An automation's device and all its entities are gone."""
+        ...
+
+
 class CardSink(Protocol):
     """Receives the card content of automations, to show it."""
 
@@ -432,6 +454,8 @@ class Host:
             the host cannot.
         cards: Where the card content of automations goes. None if the host
             shows no cards.
+        entities: Where the entities of automations' devices are shown. None
+            if the host shows no entities.
     """
 
     states: StateProvider
@@ -445,3 +469,4 @@ class Host:
     hass: Any = None
     asset_signer: AssetSigner | None = None
     cards: CardSink | None = None
+    entities: EntitySink | None = None
