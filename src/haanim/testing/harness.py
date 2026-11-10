@@ -33,6 +33,9 @@ from haanim.engine.automation_context import ActionDefinition, AutomationContext
 from haanim.engine.automation_status import AutomationStatusManager
 from haanim.engine.card import CARD_PARTS
 from haanim.engine.control import AutomationControl, EnabledFlags
+from haanim.engine.automation_ids import automation_id as derive_automation_id
+from haanim.engine.device_api import DeviceEntity, HAAnimDevice
+from haanim.engine.devices import DeviceRegistry
 from haanim.engine.discovery import ASSETS_DIRNAME
 from haanim.engine.errors import (
     ActionNotFoundError,
@@ -47,6 +50,7 @@ from haanim.interfaces import AutomationTimes, Host
 from haanim.testing.fakes import (
     FakeCardSink,
     FakeClock,
+    FakeEntitySink,
     FakeEventBus,
     FakeServiceCaller,
     FakeStateProvider,
@@ -242,6 +246,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         start: bool = True,
         states: dict[str, Any] | None = None,
         variables: dict[str, Any] | None = None,
+        entities: dict[str, Any] | None = None,
         assets: dict[str, bytes | str] | None = None,
         sunrise: str | None = "07:00",
         sunset: str | None = "19:00",
@@ -262,6 +267,9 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
             states: Entity states that exist before the automation starts:
                 ``{"sensor.x": "21"}`` or ``{"sensor.x": ("21", {"unit": "C"})}``.
             variables: The automation's stored variables before it starts.
+            entities: The stored states of the automation's entities before it
+                starts, by object ID: ``{"boost": True}``. An entity starts with
+                its stored state instead of its declaration's ``initial``.
             assets: Assets served from memory, by name relative to ``assets/``,
                 in addition to the files in the folder's own ``assets/``.
             sunrise: Time of sunrise as ``HH:MM``; None for no sunrise.
@@ -279,6 +287,8 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         self._sun = FakeSunProvider(sunrise, sunset)
         self._storage = FakeStorage()
         self._cards = FakeCardSink()
+        self.entity_sink = FakeEntitySink()
+        """What the automation's device entities told Home Assistant."""
         self._states = FakeStateProvider(self.clock)
         self._bus = FakeEventBus(self.clock)
         self.host: Host = make_host(
@@ -290,6 +300,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
             files=_Files(self.folder / ASSETS_DIRNAME, assets or {}),
             storage=self._storage,
             cards=self._cards,
+            entities=self.entity_sink,
         )
         for entity_id, value in (states or {}).items():
             if isinstance(value, tuple):
@@ -303,7 +314,11 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         self._triggers = TriggerManager(self.host, self._dispatcher)
         self._flags = EnabledFlags(self._storage)
         self._control = AutomationControl(self._flags, self._dispatcher)
+        self._devices = DeviceRegistry(self._storage, self.clock, self.entity_sink)
+        device_store = self._devices.store(automation_id or derive_automation_id(self.folder.name))
+        device_store.seed(dict(entities or {}))
         self._context = AutomationContext(
+            device_store=device_store,
             host=self.host,
             automation_path=str(self.folder),
             automation_id=automation_id,
@@ -440,6 +455,21 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
     async def unload(self) -> None:
         """Unload the automation, stopping it first if it runs."""
         await self._drive(self._automation.unload())
+
+    # --- Device entities ----------------------------------------------------------
+
+    def entity(self, key: str) -> DeviceEntity:
+        """Return an entity of the automation's device by its object ID; works while the automation is stopped.
+
+        Raises:
+            NonExistingEntityError: If the device has no such entity.
+        """
+        return HAAnimDevice(self._context.device_store, self._context.device_name).entity(key)
+
+    @property
+    def entities(self) -> list[DeviceEntity]:
+        """Every entity of the automation's device, leftovers included."""
+        return HAAnimDevice(self._context.device_store, self._context.device_name).entities
 
     async def restart(self) -> bool:
         """Stop and start the automation. Returns whether it started."""

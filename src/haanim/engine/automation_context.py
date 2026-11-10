@@ -23,6 +23,8 @@ from haanim.engine.ast_evaluator import AstEvaluator
 from haanim.engine.automation_ids import automation_id as derive_automation_id
 from haanim.engine.callables import as_coroutine_function, event_arguments, signature_problem
 from haanim.engine.decorators import ActionInfo, FunctionMetadata, TriggerInfo, get_metadata
+from haanim.engine.device_entities import EntityDeclaration, get_declaration
+from haanim.engine.devices import DeviceRegistry, DeviceStore
 from haanim.engine.discovery import MAIN_FILENAME, has_main, last_modified, source_files
 from haanim.engine.errors import (
     ActionNotFoundError,
@@ -170,6 +172,7 @@ class AutomationContext:
         registry: AutomationRegistry,
         additional_imports: list[str] | None = None,
         allow_all_imports: bool = False,
+        device_store: DeviceStore | None = None,
     ) -> None:
         """Initialize an automation context.
 
@@ -183,6 +186,9 @@ class AutomationContext:
                 The automation's ``metadata.json`` can add more.
             allow_all_imports: If True, allow all imports. The automation's
                 ``metadata.json`` can also turn this on.
+            device_store: The automation's device entities, kept by the host's
+                device registry. Without it the context keeps its own store on
+                the host's storage, read when the automation first runs.
         """
         self.host = host
         self._status_manager = status_manager
@@ -233,6 +239,14 @@ class AutomationContext:
         # The persistent variables of the running automation; None while its code is not loaded into memory
         self.variables: VariableStore | None = None
 
+        # The device's entities: they outlive the automation's code
+        self._device_unread = device_store is None
+        self.device_store = device_store or DeviceRegistry(host.storage, host.clock, host.entities).store(
+            self.automation_id
+        )
+        # The declared entity classes of the running automation: object ID -> (declaration, instance)
+        self.entity_classes: dict[str, tuple[EntityDeclaration, Any]] = {}
+
     def _build_modules(self) -> None:
         """Build the modules the engine supplies to this automation.
 
@@ -245,7 +259,14 @@ class AutomationContext:
             HAAnim,
         )
 
-        self._haa = HAAnim(self.host, self.automation_id, self._registry, folder=self.folder)
+        self._haa = HAAnim(
+            self.host,
+            self.automation_id,
+            self._registry,
+            folder=self.folder,
+            device_store=self.device_store,
+            device_name=self.device_name,
+        )
         self.variables = self._haa.variables
         logging_module = create_logger_wrapper(self._logger)
         haanim_module = build_haanim_module(
@@ -282,6 +303,7 @@ class AutomationContext:
         self._startup_func = None
         self._shutdown_func = None
         self._startup_name = self._shutdown_name = ""
+        self.entity_classes = {}
         if self._metadata is not None:
             self._metadata.actions = []
             self._metadata.triggers = []
@@ -373,6 +395,10 @@ class AutomationContext:
         # The variables are in memory before any code runs: reading them is synchronous
         assert self.variables is not None
         await self.variables.load()
+        if self._device_unread:
+            await self.device_store.flush()
+            self.device_store = await self.device_store.registry.load(self.automation_id)
+            self._device_unread = False
         self._evaluator = AstEvaluator(
             name=self.automation_id,
             global_symbols=self._global_symbols,
@@ -388,6 +414,7 @@ class AutomationContext:
             self._evaluator.parse(self._source, filename=self.filename)
             await self._evaluator.execute()
             self._extract_definitions()
+            self._declare_entities()
         except BaseException:
             self.discard()
             raise
@@ -421,6 +448,35 @@ class AutomationContext:
             metadata = get_metadata(func)
             if metadata is not None:
                 self._process_function_metadata(getattr(func, "__name__", repr(func)), func, metadata)
+
+    def device_name(self) -> str:
+        """Return the name of the automation's device: the automation's name."""
+        return (self._metadata.name if self._metadata else None) or self.automation_id
+
+    def _declare_entities(self) -> None:
+        """Collect the declared entity classes and bring the device's stored entities in line with them.
+
+        Raises:
+            AutomationDefinitionError: If two classes declare one object ID.
+        """
+        declared: dict[str, EntityDeclaration] = {}
+        for cls in self._decorators.functions:
+            declaration = get_declaration(cls)
+            if declaration is None:
+                continue
+            other = declared.get(declaration.object_id)
+            if other is not None:
+                raise AutomationDefinitionError(
+                    f"Entity '{declaration.object_id}' is declared by both '{other.cls.__name__}' "
+                    f"and '{declaration.cls.__name__}'"
+                )
+            declared[declaration.object_id] = declaration
+
+        self.entity_classes = {
+            object_id: (declaration, declaration.cls()) for object_id, declaration in declared.items()
+        }
+        for warning in self.device_store.reconcile(list(declared.values())):
+            self._logger.warning(warning)
 
     def _process_function_metadata(
         self,

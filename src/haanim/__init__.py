@@ -20,6 +20,16 @@ from typing import TYPE_CHECKING, Any
 
 from haanim.const import ActionMode
 from haanim.engine.card import HAAnimCard
+from haanim.engine.device_api import DeviceEntity, HAAnimDevice
+from haanim.engine.device_entities import (
+    binary_sensor_entity,
+    button_entity,
+    number_entity,
+    select_entity,
+    sensor_entity,
+    switch_entity,
+    text_entity,
+)
 from haanim.engine.card_elements import (
     BadgeElement,
     ButtonElement,
@@ -108,6 +118,8 @@ __all__ = [
     "HAAnim",
     "HAAnimAutomationProxy",
     "HAAnimCard",
+    "HAAnimDevice",
+    "DeviceEntity",
     "CardElement",
     "CardLayout",
     "CardRow",
@@ -135,6 +147,13 @@ __all__ = [
     "on_cron",
     "on_event",
     "on_state",
+    "sensor_entity",
+    "binary_sensor_entity",
+    "switch_entity",
+    "number_entity",
+    "select_entity",
+    "button_entity",
+    "text_entity",
     "ActionMode",
     # Events
     "ActionEvent",

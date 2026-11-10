@@ -424,6 +424,7 @@ class Automation:
         """Write the persistent variables that have changed: always done before the namespace goes."""
         if self.context.variables is not None:
             await self.context.variables.flush()
+        await self.context.device_store.flush()
 
     def _record_failure(
         self, action: str, error_type: str, message: str, level: int = logging.ERROR

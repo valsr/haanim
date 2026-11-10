@@ -118,6 +118,23 @@ class DeviceStore:
         self.automation_id = automation_id
         self._registry = registry
         self._entities: dict[str, StoredEntity] = {}
+        self._seeds: dict[str, Any] = {}
+
+    def seed(self, states: dict[str, Any]) -> None:
+        """Give entities that do not exist yet the state they are created with instead of their initial one.
+
+        The test harness's way to start an automation with stored entity states.
+        """
+        self._seeds.update(states)
+
+    @property
+    def registry(self) -> DeviceRegistry:
+        """The registry that holds and saves this store."""
+        return self._registry
+
+    async def flush(self) -> None:
+        """Write this store's pending changes now."""
+        await self._registry.flush(self.automation_id)
 
     # --- Reading ------------------------------------------------------------------
 
@@ -213,12 +230,17 @@ class DeviceStore:
     def _create(self, declaration: EntityDeclaration) -> StoredEntity:
         """Create the entity of a new declaration."""
         stateful = PLATFORMS[declaration.platform].stateful
+        initial = declaration.initial
+        if stateful and declaration.object_id in self._seeds:
+            initial = validate_state(
+                declaration.platform, declaration.options, self._seeds.pop(declaration.object_id)
+            )
         return StoredEntity(
             key=declaration.object_id,
             object_id=declaration.object_id,
             platform=declaration.platform,
             options=_copy(declaration.as_stored()),
-            state=_copy(declaration.initial) if stateful else None,
+            state=_copy(initial) if stateful else None,
             attributes=_copy(declaration.attributes),
             declared=True,
             last_changed=self._registry.clock.now(),
@@ -344,6 +366,15 @@ class DeviceRegistry:
             for automation_id in self._saved_index:
                 for entity in self._stores[automation_id].entities():
                     self.sink.entity_changed(automation_id, entity.key)
+
+    async def load(self, automation_id: str) -> DeviceStore:
+        """Read one automation's saved store, replacing the store in memory, and return it."""
+        store = self.store(automation_id)
+        store.load_document(await self._storage.load(device_key(automation_id)))
+        if store.entities() and automation_id not in self._saved_index:
+            index = await self._storage.load(INDEX_KEY)
+            self._saved_index = sorted(index) if isinstance(index, list) else []
+        return store
 
     def store(self, automation_id: str) -> DeviceStore:
         """Return an automation's store, creating an empty one on first use."""

@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 import haanim
-from haanim.engine import decorators
+from haanim.engine import decorators, device_entities
 from haanim.engine.errors import PUBLIC_ERRORS
 from haanim.engine.haanim_api import HAAnim
 from haanim.engine.haanim_module import DECORATORS, EVENT_CLASSES, DecoratorRegistry, build_haanim_module
@@ -58,6 +58,11 @@ class TestSameNames:
         """Test a decorator of the package is the engine's function, with its signature."""
         assert getattr(haanim, name) is DECORATORS[name]
         assert getattr(haanim, name) is getattr(decorators, name)
+
+    @pytest.mark.parametrize("name", sorted(device_entities.DECORATORS))
+    def test_entity_decorators_are_the_engines(self, name: str) -> None:
+        """Test an entity decorator of the package is the engine's."""
+        assert getattr(haanim, name) is device_entities.DECORATORS[name]
 
     @pytest.mark.parametrize("cls", [*EVENT_CLASSES, *PUBLIC_ERRORS], ids=lambda cls: cls.__name__)
     def test_classes_are_the_runtimes(self, automation_module: Any, cls: type) -> None:

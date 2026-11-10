@@ -10,10 +10,13 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from haanim.engine.assets import AssetStore
 from haanim.engine.card import HAAnimCard
+from haanim.engine.device_api import HAAnimDevice
+from haanim.engine.devices import DeviceRegistry, DeviceStore
 from haanim.engine.durations import parse_duration
 from haanim.engine.expression_eval import parse_expression
 from haanim.engine.variables import VariableStore
@@ -385,6 +388,8 @@ class HAAnim:  # pylint: disable=too-many-public-methods  # The methods are the 
         variables: VariableStore | None = None,
         *,
         folder: Path | None = None,
+        device_store: DeviceStore | None = None,
+        device_name: Callable[[], str] | None = None,
     ) -> None:
         """Initialize HAAnim API.
 
@@ -396,6 +401,10 @@ class HAAnim:  # pylint: disable=too-many-public-methods  # The methods are the 
                 host's storage if omitted; it starts empty until it is loaded.
             folder: The automation's folder, which holds its ``assets/``.
                 Without it the automation has no assets.
+            device_store: The automation's device entities. An empty store on
+                the host's storage if omitted.
+            device_name: Returns the name of the automation's device; the
+                automation's ID if omitted.
         """
         self._host = host
         self._automation_id = automation_id
@@ -403,6 +412,13 @@ class HAAnim:  # pylint: disable=too-many-public-methods  # The methods are the 
         self._variables = variables or VariableStore(automation_id, host.storage, host.clock)
         self._assets = AssetStore(automation_id, folder, host.files, host.asset_signer)
         self._card = HAAnimCard(automation_id, self._assets, self._has_action, host.cards)
+        store = device_store or DeviceRegistry(host.storage, host.clock, host.entities).store(automation_id)
+        self._device = HAAnimDevice(store, device_name or (lambda: automation_id))
+
+    @property
+    def device(self) -> HAAnimDevice:
+        """The automation's device in Home Assistant, and the entities its classes declare."""
+        return self._device
 
     @property
     def variables(self) -> VariableStore:
