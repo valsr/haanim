@@ -543,7 +543,6 @@ class Automation:
             timeout=action.timeout,
         )
 
-
     async def entity_command(
         self, object_id: str, command: str, value: Any = None, context: Any = None
     ) -> None:
@@ -594,7 +593,7 @@ class Automation:
                 self.automation_id,
                 action_name,
                 hook,
-                DeviceEntity(self.context.device_store, object_id),
+                DeviceEntity(self.context.device_store, object_id, self.context.host.statistics, self._clock),
                 event,
                 mode=declaration.action_mode,
                 triggered=True,

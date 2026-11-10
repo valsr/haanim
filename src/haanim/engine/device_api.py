@@ -10,22 +10,40 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
 from haanim.engine.device_entities import get_declaration
 from haanim.engine.devices import DeviceStore, StoredEntity
-from haanim.engine.errors import NonExistingEntityError
+from haanim.engine.errors import NonExistingEntityError, StatisticsUnavailableError
+from haanim.engine.statistics import StatisticsMetadata, import_statistics, query_statistics
+from haanim.interfaces import Clock, StatisticsProvider
 
 
 class DeviceEntity:
     """One entity of the automation's device."""
 
-    __slots__ = ("_store", "_key")
+    __slots__ = ("_store", "_key", "_statistics", "_clock")
 
-    def __init__(self, store: DeviceStore, key: str) -> None:
-        """Initialize the proxy of the entity with a key in a store."""
+    def __init__(
+        self,
+        store: DeviceStore,
+        key: str,
+        statistics: StatisticsProvider | None = None,
+        clock: Clock | None = None,
+    ) -> None:
+        """Initialize the proxy of the entity with a key in a store.
+
+        Args:
+            store: The automation's entities.
+            key: The entity's key in the store.
+            statistics: Where long-term statistics are kept; None if the host keeps none.
+            clock: The clock that says which hours have ended; needed for statistics.
+        """
         self._store = store
         self._key = key
+        self._statistics = statistics
+        self._clock = clock
 
     def __repr__(self) -> str:
         return f"<DeviceEntity {self.entity_id}>"
@@ -95,19 +113,93 @@ class DeviceEntity:
         self._entity()
         self._store.set_attributes(self._key, **attributes)
 
+    # --- Long-term statistics -------------------------------------------------------
+
+    def _statistic_id(self, entity: StoredEntity) -> str:
+        automation_id = self._store.automation_id
+        default = entity.entity_id(automation_id)
+        if self._statistics is None:
+            return default
+        return self._statistics.entity_statistic_id(entity.platform, entity.unique_id(automation_id), default)
+
+    def _now(self) -> datetime:
+        if self._clock is None:
+            raise StatisticsUnavailableError()
+        return self._clock.now()
+
+    async def import_statistics(self, rows: list[dict[str, Any]]) -> int:
+        """Import hourly long-term statistics into this entity.
+
+        For a ``total`` or ``total_increasing`` sensor each row has ``start``
+        and ``usage``, and the running sums continue from the stored ones; for a
+        ``measurement`` sensor each row has ``start``, ``mean`` and optionally
+        ``min`` and ``max``. A later row for an hour replaces an earlier one.
+
+        Returns:
+            How many hours were imported.
+
+        Raises:
+            ValueError: If the entity cannot have statistics or a row is not valid.
+            StatisticsUnavailableError: If Home Assistant's recorder is not running.
+            StatisticsError: If the recorder fails.
+        """
+        entity = self._entity()
+        state_class = entity.options.get("state_class")
+        if entity.platform != "sensor" or not entity.declared or state_class is None:
+            raise ValueError(
+                f"Entity '{self._key}' cannot have statistics: only a declared sensor with a state_class can"
+                + ("" if entity.declared else " (it is a leftover)")
+            )
+        metadata = StatisticsMetadata(
+            statistic_id=self._statistic_id(entity),
+            name=entity.options.get("name"),
+            unit=entity.options.get("unit"),
+            has_sum=state_class != "measurement",
+        )
+        return await import_statistics(
+            self._statistics,
+            metadata,
+            rows,
+            total_increasing=state_class == "total_increasing",
+            now=self._now(),
+        )
+
+    async def statistics(self, start: Any, end: Any = None, period: str = "hour") -> list[dict[str, Any]]:
+        """Return this entity's long-term statistics of a period, oldest first.
+
+        Args:
+            start: The start, as a datetime or ISO text.
+            end: The end; now if omitted.
+            period: ``5minute``, ``hour``, ``day``, ``week`` or ``month``.
+        """
+        entity = self._entity()
+        return await query_statistics(
+            self._statistics, self._statistic_id(entity), start, end, period, self._now()
+        )
+
 
 class HAAnimDevice:
     """The automation's device in Home Assistant, and its entities."""
 
-    def __init__(self, store: DeviceStore, name: Callable[[], str]) -> None:
+    def __init__(
+        self,
+        store: DeviceStore,
+        name: Callable[[], str],
+        statistics: StatisticsProvider | None = None,
+        clock: Clock | None = None,
+    ) -> None:
         """Initialize the device of a store.
 
         Args:
             store: The automation's entities.
             name: Returns the automation's name.
+            statistics: Where long-term statistics are kept; None if the host keeps none.
+            clock: The clock that says which hours have ended.
         """
         self._store = store
         self._name = name
+        self._statistics = statistics
+        self._clock = clock
 
     def __repr__(self) -> str:
         return f"<HAAnimDevice {self.id}>"
@@ -125,7 +217,10 @@ class HAAnimDevice:
     @property
     def entities(self) -> list[DeviceEntity]:
         """Every entity of the device, leftovers included."""
-        return [DeviceEntity(self._store, entity.key) for entity in self._store.entities()]
+        return [
+            DeviceEntity(self._store, entity.key, self._statistics, self._clock)
+            for entity in self._store.entities()
+        ]
 
     def entity(self, key: str | type) -> DeviceEntity:
         """Return the proxy of an entity.
@@ -143,4 +238,4 @@ class HAAnimDevice:
             key = declaration.object_id
         if self._store.get(str(key)) is None:
             raise NonExistingEntityError(str(key))
-        return DeviceEntity(self._store, str(key))
+        return DeviceEntity(self._store, str(key), self._statistics, self._clock)

@@ -17,6 +17,7 @@ from haanim.engine.assets import AssetStore
 from haanim.engine.card import HAAnimCard
 from haanim.engine.device_api import HAAnimDevice
 from haanim.engine.devices import DeviceRegistry, DeviceStore
+from haanim.engine.statistics import query_statistics
 from haanim.engine.durations import parse_duration
 from haanim.engine.expression_eval import parse_expression
 from haanim.engine.variables import VariableStore
@@ -413,12 +414,39 @@ class HAAnim:  # pylint: disable=too-many-public-methods  # The methods are the 
         self._assets = AssetStore(automation_id, folder, host.files, host.asset_signer)
         self._card = HAAnimCard(automation_id, self._assets, self._has_action, host.cards)
         store = device_store or DeviceRegistry(host.storage, host.clock, host.entities).store(automation_id)
-        self._device = HAAnimDevice(store, device_name or (lambda: automation_id))
+        self._device = HAAnimDevice(
+            store, device_name or (lambda: automation_id), host.statistics, host.clock
+        )
 
     @property
     def device(self) -> HAAnimDevice:
         """The automation's device in Home Assistant, and the entities its classes declare."""
         return self._device
+
+    async def statistics(
+        self, entity_id: str, start: Any, end: Any = None, period: str = "hour"
+    ) -> list[dict[str, Any]]:
+        """Return the long-term statistics of any entity for a period, oldest first.
+
+        Args:
+            entity_id: The entity, such as ``"sensor.grid_energy"``.
+            start: The start, as a datetime or ISO text; a naive time is local.
+            end: The end; now if omitted.
+            period: ``5minute``, ``hour``, ``day``, ``week`` or ``month``.
+
+        Returns:
+            Dictionaries with ``start``, ``end`` and the statistic's fields:
+            ``mean``, ``min``, ``max``, or ``state``, ``sum`` and ``change``.
+            Empty if the entity has no statistics.
+
+        Raises:
+            ValueError: If the period is unknown or start is after end.
+            StatisticsUnavailableError: If Home Assistant's recorder is not running.
+            StatisticsError: If the recorder fails.
+        """
+        return await query_statistics(
+            self._host.statistics, entity_id, start, end, period, self._host.clock.now()
+        )
 
     @property
     def variables(self) -> VariableStore:

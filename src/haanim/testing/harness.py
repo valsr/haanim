@@ -55,6 +55,7 @@ from haanim.testing.fakes import (
     FakeEventBus,
     FakeServiceCaller,
     FakeStateProvider,
+    FakeStatistics,
     FakeStorage,
     FakeSunProvider,
     LocalFileSystem,
@@ -251,6 +252,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         states: dict[str, Any] | None = None,
         variables: dict[str, Any] | None = None,
         entities: dict[str, Any] | None = None,
+        statistics: dict[str, list[dict[str, Any]]] | bool | None = None,
         assets: dict[str, bytes | str] | None = None,
         sunrise: str | None = "07:00",
         sunset: str | None = "19:00",
@@ -274,6 +276,10 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
             entities: The stored states of the automation's entities before it
                 starts, by object ID: ``{"boost": True}``. An entity starts with
                 its stored state instead of its declaration's ``initial``.
+            statistics: Long-term statistics stored before the automation
+                starts: hourly rows by statistic ID,
+                ``{"sensor.grid": [{"start": datetime, "state": 5.0, "sum": 5.0}]}``.
+                False for a Home Assistant without statistics.
             assets: Assets served from memory, by name relative to ``assets/``,
                 in addition to the files in the folder's own ``assets/``.
             sunrise: Time of sunrise as ``HH:MM``; None for no sunrise.
@@ -292,6 +298,11 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         self._storage = FakeStorage()
         self._cards = FakeCardSink()
         self.entity_sink = FakeEntitySink()
+        self._statistics = (
+            None
+            if statistics is False
+            else FakeStatistics(statistics if isinstance(statistics, dict) else None)
+        )
         """What the automation's device entities told Home Assistant."""
         self._states = FakeStateProvider(self.clock)
         self._bus = FakeEventBus(self.clock)
@@ -305,6 +316,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
             storage=self._storage,
             cards=self._cards,
             entities=self.entity_sink,
+            statistics=self._statistics,
         )
         for entity_id, value in (states or {}).items():
             if isinstance(value, tuple):
@@ -468,7 +480,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         Raises:
             NonExistingEntityError: If the device has no such entity.
         """
-        return HAAnimDevice(self._context.device_store, self._context.device_name).entity(key)
+        return self._device().entity(key)
 
     async def command(self, object_id: str, command: str, value: Any = None) -> None:
         """Send a command to an entity, as Home Assistant does when its user operates it.
@@ -486,7 +498,18 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
     @property
     def entities(self) -> list[DeviceEntity]:
         """Every entity of the automation's device, leftovers included."""
-        return HAAnimDevice(self._context.device_store, self._context.device_name).entities
+        return self._device().entities
+
+    def _device(self) -> HAAnimDevice:
+        return HAAnimDevice(
+            self._context.device_store, self._context.device_name, self._statistics, self.clock
+        )
+
+    def statistics(self, statistic_id: str) -> list[dict[str, Any]]:
+        """Return the stored hourly long-term statistics of a statistic (an entity ID), oldest first."""
+        if self._statistics is None:
+            return []
+        return [dict(row) for row in self._statistics.rows.get(statistic_id, [])]
 
     async def restart(self) -> bool:
         """Stop and start the automation. Returns whether it started."""
