@@ -23,6 +23,14 @@ class FakeStatistics:
         """The stored hourly rows, by statistic ID, oldest first."""
         self.metadata: dict[str, StatisticsMetadata] = {}
         """The metadata of the last import, by statistic ID."""
+        self.not_recorded: set[str] = set()
+        """Statistic IDs Home Assistant has not recorded live yet: sums cannot be imported into them."""
+        self.query_units: list[str] = []
+        """The units queries asked for, oldest first."""
+
+    async def has_short_term(self, statistic_id: str, start: datetime) -> bool:  # noqa: ARG002
+        """Return whether the statistic is recorded live: unless it is in not_recorded."""
+        return statistic_id not in self.not_recorded
 
     def entity_statistic_id(self, platform: str, unique_id: str, default: str) -> str:  # noqa: ARG002
         """Return the default: there is no entity registry here."""
@@ -42,10 +50,18 @@ class FakeStatistics:
                 row["sum"] += delta
                 row["state"] = row.get("state", 0.0) + delta
 
-    async def query(
-        self, statistic_id: str, start: datetime, end: datetime, period: str, types: set[str]
+    async def query(  # pylint: disable=too-many-positional-arguments,too-many-locals
+        self,
+        statistic_id: str,
+        start: datetime,
+        end: datetime,
+        period: str,
+        types: set[str],
+        unit: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Return the rows of a period, oldest first."""
+        """Return the rows of a period, oldest first; values are in the one unit they were stored in."""
+        if unit is not None:
+            self.query_units.append(unit)
         if period == "5minute":
             return []
         stored = self.rows.get(statistic_id, [])

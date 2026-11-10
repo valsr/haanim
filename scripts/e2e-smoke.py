@@ -36,6 +36,8 @@ EXAMPLES = (
     "notifications",
 )
 STARTUP_SECONDS = 180
+# How long the backfill may wait for Home Assistant's first 5-minute compile of the energy sensor
+STATISTICS_WAIT_SECONDS = 420
 
 
 class Smoke:
@@ -216,9 +218,17 @@ async def run(base: str) -> None:
             "haanim/entities/list lists the device's entities",
         )
 
-        imported = await smoke.service(
-            "haanim", "run_action", True, automation_id="demo_entities", action="backfill"
-        )
+        # Sums can be imported once Home Assistant records the entity live: its first 5-minute compile
+        imported: Any = None
+        for _ in range(STATISTICS_WAIT_SECONDS // 10):
+            try:
+                imported = await smoke.service(
+                    "haanim", "run_action", True, automation_id="demo_entities", action="backfill"
+                )
+                break
+            except AssertionError as err:
+                imported = str(err)
+                await asyncio.sleep(10)
         check(imported == {"result": 24}, f"the backfill imports 24 hours of statistics: {imported}")
         statistics_id = "sensor.haanim_demo_entities_energy"
         _, periods = await smoke.command(

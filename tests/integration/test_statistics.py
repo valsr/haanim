@@ -7,17 +7,20 @@ from typing import Any
 
 import pytest
 from homeassistant.components.recorder import Recorder
+from homeassistant.components.recorder.db_schema import StatisticsShortTerm
 from homeassistant.components.recorder.models import StatisticMeanType
 from homeassistant.components.recorder.statistics import async_import_statistics, statistics_during_period
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.recorder import get_instance
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.components.recorder.common import async_wait_recording_done
 
 from custom_components.haanim.ha.host import build_host
 from tests.integration.test_device_entities import Setup, setup  # noqa: F401  pylint: disable=unused-import
 
 DAY = datetime(2026, 11, 1, tzinfo=UTC)
+ENERGY = "sensor.haanim_heat_energy"
 
 HEAT = """
 from datetime import datetime, timedelta, timezone
@@ -54,7 +57,36 @@ def mock_recorder_before_hass(async_test_recorder: Any) -> None:
     """Set up the recorder before Home Assistant, as the recorder tests of Home Assistant do."""
 
 
-async def stored(hass: HomeAssistant, statistic_id: str) -> list[dict[str, Any]]:
+def energy_metadata(statistic_id: str = ENERGY, unit: str = "kWh") -> Any:
+    """The metadata Home Assistant keeps for the energy sensor's statistics."""
+    return {
+        "mean_type": StatisticMeanType.NONE,
+        "has_sum": True,
+        "name": None,
+        "source": "recorder",
+        "statistic_id": statistic_id,
+        "unit_class": "energy",
+        "unit_of_measurement": unit,
+    }
+
+
+async def record_live(
+    hass: HomeAssistant, recorder: Recorder, statistic_id: str = ENERGY, unit: str = "kWh", total: float = 0.0
+) -> None:
+    """Store a 5-minute row of now, as Home Assistant's compile does for an entity it records live."""
+    now = dt_util.utcnow()
+    start = now.replace(minute=now.minute - now.minute % 5, second=0, microsecond=0) - timedelta(minutes=5)
+    recorder.async_import_statistics(
+        energy_metadata(statistic_id, unit),
+        [{"start": start, "state": total, "sum": total}],
+        StatisticsShortTerm,
+    )
+    await async_wait_recording_done(hass)
+
+
+async def stored(
+    hass: HomeAssistant, statistic_id: str, units: dict[str, str] | None = None
+) -> list[dict[str, Any]]:
     """The stored hourly rows of a statistic."""
     await async_wait_recording_done(hass)
     result = await get_instance(hass).async_add_executor_job(
@@ -64,21 +96,29 @@ async def stored(hass: HomeAssistant, statistic_id: str) -> list[dict[str, Any]]
         None,
         {statistic_id},
         "hour",
-        None,
+        units,
         {"sum", "mean", "min", "max"},
     )
     return result.get(statistic_id, [])
+
+
+def seed_hours(hass: HomeAssistant, unit: str, sums: list[float]) -> None:
+    """Store hourly sums of the energy sensor from DAY on."""
+    async_import_statistics(
+        hass,
+        energy_metadata(unit=unit),
+        [{"start": DAY + timedelta(hours=h), "state": total, "sum": total} for h, total in enumerate(sums)],
+    )
 
 
 async def test_import_and_query_sums(
     recorder_mock: Recorder, hass: HomeAssistant, setup: Setup
 ) -> None:  # noqa: F811
     manager = await setup({"heat": HEAT})
+    await record_live(hass, recorder_mock)
     assert await manager.async_call_action("heat", "backfill", {"usage": [(0, 1), (1, 1), (2, 1)]}) == 3
-    assert [row["sum"] for row in await stored(hass, "sensor.haanim_heat_energy")] == [1.0, 2.0, 3.0]
-    day = await manager.async_call_action(
-        "heat", "query", {"entity_id": "sensor.haanim_heat_energy", "period": "day"}
-    )
+    assert [row["sum"] for row in await stored(hass, ENERGY)] == [1.0, 2.0, 3.0]
+    day = await manager.async_call_action("heat", "query", {"entity_id": ENERGY, "period": "day"})
     assert [row["change"] for row in day] == [3.0]
 
 
@@ -86,23 +126,10 @@ async def test_later_live_rows_are_shifted(
     recorder_mock: Recorder, hass: HomeAssistant, setup: Setup
 ) -> None:  # noqa: F811
     manager = await setup({"heat": HEAT})
-    metadata: Any = {
-        "mean_type": StatisticMeanType.NONE,
-        "has_sum": True,
-        "name": None,
-        "source": "recorder",
-        "statistic_id": "sensor.haanim_heat_energy",
-        "unit_class": "energy",
-        "unit_of_measurement": "kWh",
-    }
-    async_import_statistics(
-        hass,
-        metadata,
-        [{"start": DAY + timedelta(hours=h), "state": 10.0 + h, "sum": 10.0 + h} for h in range(4)],
-    )
-    await async_wait_recording_done(hass)
+    seed_hours(hass, "kWh", [10.0, 11.0, 12.0, 13.0])
+    await record_live(hass, recorder_mock, total=13.0)
     await manager.async_call_action("heat", "backfill", {"usage": [(1, 5), (2, 5)]})
-    assert [row["sum"] for row in await stored(hass, "sensor.haanim_heat_energy")] == [10.0, 15.0, 20.0, 21.0]
+    assert [row["sum"] for row in await stored(hass, ENERGY)] == [10.0, 15.0, 20.0, 21.0]
 
 
 async def test_measurement_import(
@@ -118,7 +145,8 @@ async def test_renamed_entity_uses_its_new_id(
     recorder_mock: Recorder, hass: HomeAssistant, setup: Setup
 ) -> None:  # noqa: F811
     manager = await setup({"heat": HEAT})
-    er.async_get(hass).async_update_entity("sensor.haanim_heat_energy", new_entity_id="sensor.my_energy")
+    er.async_get(hass).async_update_entity(ENERGY, new_entity_id="sensor.my_energy")
+    await record_live(hass, recorder_mock, "sensor.my_energy")
     await manager.async_call_action("heat", "backfill", {"usage": [(0, 2)]})
     assert [row["sum"] for row in await stored(hass, "sensor.my_energy")] == [2.0]
 
@@ -135,3 +163,27 @@ async def test_query_unknown_entity_is_empty(
 
 async def test_host_has_a_provider_with_the_recorder(recorder_mock: Recorder, hass: HomeAssistant) -> None:
     assert build_host(hass, None, None).statistics is not None  # type: ignore[arg-type]
+
+
+async def test_entity_not_recorded_live_is_refused(
+    recorder_mock: Recorder, hass: HomeAssistant, setup: Setup  # noqa: F811
+) -> None:
+    """Before Home Assistant has recorded the entity, its live sum would restart at 0 after the import."""
+    manager = await setup({"heat": HEAT})
+    with pytest.raises(ValueError, match="recorded"):
+        await manager.async_call_action("heat", "backfill", {"usage": [(0, 1)]})
+    assert await stored(hass, ENERGY) == []
+
+
+async def test_display_unit_differs_from_declared(
+    recorder_mock: Recorder, hass: HomeAssistant, setup: Setup  # noqa: F811
+) -> None:
+    """Statistics kept in Wh (the display unit chosen in Home Assistant) take kWh usage, converted."""
+    manager = await setup({"heat": HEAT})
+    er.async_get(hass).async_update_entity_options(ENERGY, "sensor", {"unit_of_measurement": "Wh"})
+    await hass.async_block_till_done()
+    seed_hours(hass, "Wh", [10000.0, 11000.0, 12000.0, 13000.0])
+    await record_live(hass, recorder_mock, unit="Wh", total=13000.0)
+    await manager.async_call_action("heat", "backfill", {"usage": [(1, 5), (2, 5)]})
+    rows = await stored(hass, ENERGY, {"energy": "Wh"})
+    assert [row["sum"] for row in rows] == [10000.0, 15000.0, 20000.0, 21000.0]

@@ -293,10 +293,24 @@ class StatisticsProvider(Protocol):
     also have ``end`` and, for sums, ``change``.
     """
 
-    async def query(
-        self, statistic_id: str, start: datetime, end: datetime, period: str, types: set[str]
+    async def query(  # pylint: disable=too-many-positional-arguments
+        self,
+        statistic_id: str,
+        start: datetime,
+        end: datetime,
+        period: str,
+        types: set[str],
+        unit: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Return the rows of a period from start to end, oldest first; days, weeks and months in start's zone."""
+        """Return the rows of a period from start to end, oldest first.
+
+        Days, weeks and months are those of the host's time zone. With a unit,
+        the values are converted to it; otherwise they are in the entity's unit.
+        """
+        ...
+
+    async def has_short_term(self, statistic_id: str, start: datetime) -> bool:
+        """Return whether there are 5-minute rows from start on: the entity is recorded live."""
         ...
 
     async def import_rows(self, metadata: StatisticsMetadata, rows: list[dict[str, Any]]) -> None:

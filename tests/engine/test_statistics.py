@@ -58,8 +58,8 @@ async def test_later_rows_are_shifted(fake: FakeStatistics) -> None:
 
 async def test_gap_counts_as_no_usage(fake: FakeStatistics) -> None:
     rows = [{"start": H(3), "usage": 1}, {"start": H(0), "usage": 1}]
-    await import_statistics(fake, SUM, rows, total_increasing=True, now=NOW)
-    assert sums(fake) == [1, 2]
+    assert await import_statistics(fake, SUM, rows, total_increasing=True, now=NOW) == 4
+    assert sums(fake) == [1, 1, 1, 2]
 
 
 async def test_last_row_wins(fake: FakeStatistics) -> None:
@@ -201,3 +201,48 @@ async def test_query_bad_arguments(fake: FakeStatistics, start: datetime, end: d
 
 async def test_query_without_statistics_is_empty(fake: FakeStatistics) -> None:
     assert await query_statistics(fake, "sensor.nothing", H(0), H(5), "day", NOW) == []
+
+
+# --- Final review fixes -----------------------------------------------------------
+
+
+async def test_hour_not_yet_compiled_by_home_assistant_refused(fake: FakeStatistics) -> None:
+    """An hour that ended less than 15 minutes ago may still be compiled by Home Assistant: refused."""
+    now = datetime(2026, 11, 10, 12, 10, tzinfo=UTC)
+    with pytest.raises(ValueError, match="15 minutes"):
+        await import_statistics(
+            fake, SUM, [{"start": H(11, day=10), "usage": 1}], total_increasing=True, now=now
+        )
+    assert (
+        await import_statistics(
+            fake, SUM, [{"start": H(10, day=10), "usage": 1}], total_increasing=True, now=now
+        )
+        == 1
+    )
+
+
+async def test_sums_need_the_entity_recorded_live(fake: FakeStatistics) -> None:
+    """Without 5-minute statistics after the import, Home Assistant's live sum would restart at 0: refused."""
+    fake.not_recorded.add("sensor.energy")
+    with pytest.raises(ValueError, match="recorded"):
+        await import_statistics(fake, SUM, [{"start": H(0), "usage": 1}], total_increasing=True, now=NOW)
+    assert "sensor.energy" not in fake.rows
+    fake.not_recorded.add("sensor.outside")
+    assert (
+        await import_statistics(fake, MEAN, [{"start": H(0), "mean": 1}], total_increasing=False, now=NOW)
+        == 1
+    )
+
+
+async def test_stored_rows_in_a_gap_get_the_running_sum(fake: FakeStatistics) -> None:
+    """A stored hour inside the imported range but not imported keeps no old sum: no negative hour."""
+    fake.rows["sensor.energy"] = [row(H(h), 10 + h) for h in range(6)]
+    rows = [{"start": H(1), "usage": 5}, {"start": H(4), "usage": 1}]
+    assert await import_statistics(fake, SUM, rows, total_increasing=True, now=NOW) == 4
+    assert sums(fake) == [10, 15, 15, 15, 16, 17]
+
+
+async def test_base_is_read_in_the_declared_unit(fake: FakeStatistics) -> None:
+    """The stored sums are asked for in the entity's declared unit."""
+    await import_statistics(fake, SUM, [{"start": H(0), "usage": 1}], total_increasing=True, now=NOW)
+    assert fake.query_units == ["kWh"]

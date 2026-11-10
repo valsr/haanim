@@ -75,7 +75,7 @@ async def test_backfill() -> None:
         rows = automation.statistics("sensor.haanim_demo_entities_energy")
         assert len(rows) == 24
         assert rows[-1]["sum"] == pytest.approx(sum(PROFILE))
-        assert rows[-1]["start"] + timedelta(hours=1) <= automation.now
+        assert rows[-1]["start"] + timedelta(hours=1, minutes=15) <= automation.now
 
 
 PROFILE = [0.3] * 6 + [0.8, 1.2, 0.9] + [0.5] * 8 + [1.1, 1.6, 1.4, 1.0, 0.7] + [0.4] * 2

@@ -83,7 +83,8 @@ def count(event: ActionEvent) -> None:
 
 @action(description="Import the last 24 hours of energy use as long-term statistics.")
 async def backfill(event: ActionEvent) -> int:
-    last = haa.now().replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+    # The last hour that ended at least 15 minutes ago: Home Assistant compiles each hour just after it ends
+    last = (haa.now() - timedelta(minutes=15)).replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
     first = last - timedelta(hours=23)
     rows = [{"start": first + timedelta(hours=hour), "usage": PROFILE[hour]} for hour in range(24)]
     return await haa.device.entity(energy).import_statistics(rows)

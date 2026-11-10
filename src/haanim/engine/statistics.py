@@ -19,6 +19,8 @@ from haanim.interfaces import StatisticsProvider
 PERIODS = ("5minute", "hour", "day", "week", "month")
 EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 HOUR = timedelta(hours=1)
+# Home Assistant compiles an hour's statistics just after it ends; importing an hour before that conflicts
+COMPILE_MARGIN = timedelta(minutes=15)
 QUERY_TYPES = {"mean", "min", "max", "state", "sum", "change"}
 
 SUM_FIELDS = frozenset({"start", "usage"})
@@ -91,8 +93,11 @@ def parse_rows(  # pylint: disable=too-many-branches
         start = parse_time(row["start"], now)
         if (start.minute, start.second, start.microsecond) != (0, 0, 0):
             raise ValueError(f"start {start.isoformat()} is not the start of an hour")
-        if start + HOUR > now:
-            raise ValueError(f"the hour starting {start.isoformat()} has not ended")
+        if start + HOUR + COMPILE_MARGIN > now:
+            raise ValueError(
+                f"the hour starting {start.isoformat()} has not ended at least 15 minutes ago: "
+                "Home Assistant may still be compiling its statistics"
+            )
         if has_sum:
             unknown = set(row) - SUM_FIELDS
             if unknown or "usage" not in row:
@@ -131,7 +136,8 @@ async def import_statistics(  # pylint: disable=too-many-locals
     import changed the sum at that hour.
 
     Returns:
-        How many hours were imported.
+        How many hours were written: for sums, every hour from the first to
+        the last imported one.
 
     Raises:
         ValueError: If the rows are not valid; nothing is imported then.
@@ -147,23 +153,35 @@ async def import_statistics(  # pylint: disable=too-many-locals
             return len(parsed)
 
         first, last = parsed[0]["start"], parsed[-1]["start"]
-        history = await provider.query(metadata.statistic_id, EPOCH, last + HOUR, "hour", {"sum"})
+        # Home Assistant continues its live sum from its latest 5-minute row: without one it starts from 0
+        if not await provider.has_short_term(metadata.statistic_id, last + HOUR):
+            raise ValueError(
+                f"Home Assistant has not recorded {metadata.statistic_id} yet, so its live sum would not "
+                "continue from the imported one: import once it has been recorded for a few minutes"
+            )
+        history = await provider.query(
+            metadata.statistic_id, EPOCH, last + HOUR, "hour", {"sum"}, unit=metadata.unit
+        )
         stored = [(row["start"], row["sum"]) for row in history if row.get("sum") is not None]
         before = [total for start, total in stored if start < first]
         base = before[-1] if before else 0.0
         up_to_end = [total for start, total in stored if start <= last]
         old_end = up_to_end[-1] if up_to_end else base
 
+        # Every hour of the range gets a row, so a stored row in a gap keeps no old sum
+        usage = {row["start"]: row["usage"] for row in parsed}
         running = base
         sums: list[dict[str, Any]] = []
-        for row in parsed:
-            running += row["usage"]
-            sums.append({"start": row["start"], "state": running, "sum": running})
+        hour = first
+        while hour <= last:
+            running += usage.get(hour, 0.0)
+            sums.append({"start": hour, "state": running, "sum": running})
+            hour += HOUR
         await provider.import_rows(metadata, sums)
         if running != old_end:
             await provider.adjust_sums(metadata.statistic_id, last + HOUR, running - old_end, metadata.unit)
         return len(sums)
-    except StatisticsError:
+    except StatisticsError, ValueError:
         raise
     except Exception as err:
         raise StatisticsError(str(err) or type(err).__name__) from err

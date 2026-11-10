@@ -369,10 +369,16 @@ async def backfill(event):
     haa.set_message(f"{sum([day.get('change', 0) for day in week]):.1f} kWh this week")
 ```
 
-- Each row is a whole hour that has ended: `start` (a datetime, or ISO text; a time without a zone is local)
-  and, for `total` and `total_increasing`, `usage`: what was used in that hour. HAAnim continues the running
-  sum from the stored one and shifts the hours after the import, so the Energy dashboard shows no jump. For
-  `measurement`, a row has `mean`, and optionally `min` and `max`.
+- Each row is a whole hour that ended at least 15 minutes ago (Home Assistant compiles each hour just after
+  it ends): `start` (a datetime, or ISO text; a time without a zone is local) and, for `total` and
+  `total_increasing`, `usage`: what was used in that hour. HAAnim continues the running sum from the stored
+  one, fills hours missing between the first and last row with no usage, and shifts the hours after the
+  import, so the Energy dashboard shows no jump. For `measurement`, a row has `mean`, and optionally `min`
+  and `max`.
+- Sums can be imported only once Home Assistant records the entity live (a few minutes after it first has a
+  state): before that, Home Assistant's own sum would start again from zero after the import.
+- Values are in the entity's declared unit; statistics Home Assistant keeps in another display unit are
+  converted.
 - A later row for the same hour replaces an earlier one. Invalid rows raise `ValueError` and nothing is
   imported.
 - `haa.statistics(entity_id, start, end=None, period="hour")` reads the statistics of any entity, and
