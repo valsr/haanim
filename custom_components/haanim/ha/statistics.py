@@ -37,7 +37,7 @@ class HAStatistics:
         self._hass = hass
 
     def entity_statistic_id(self, platform: str, unique_id: str, default: str) -> str:
-        """Return an entity's current entity ID, which is its statistic ID; default if it is not registered."""
+        """Return an entity's current entity ID, its statistic ID; default if it is not registered."""
         return er.async_get(self._hass).async_get_entity_id(platform, DOMAIN, unique_id) or default
 
     async def query(
@@ -55,9 +55,10 @@ class HAStatistics:
             types,
         )
         rows = []
-        for row in result.get(statistic_id, []):
+        for found in result.get(statistic_id, []):
+            row: dict[str, Any] = dict(found)
             item: dict[str, Any] = {"start": _time(row["start"]), "end": _time(row["end"])}
-            item.update({key: row[key] for key in FIELDS if row.get(key) is not None})  # type: ignore[literal-required]
+            item.update({key: row[key] for key in FIELDS if row.get(key) is not None})
             rows.append(item)
         return rows
 

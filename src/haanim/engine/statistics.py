@@ -33,7 +33,7 @@ class StatisticsMetadata:
         statistic_id: The statistic's ID: the entity ID for an entity's statistics.
         name: The name shown for it.
         unit: The unit of the values.
-        has_sum: True for sum statistics (``total``, ``total_increasing``), False for a mean (``measurement``).
+        has_sum: True for sums (``total``, ``total_increasing``), False for a mean (``measurement``).
     """
 
     statistic_id: str
@@ -55,9 +55,8 @@ def parse_time(value: Any, now: datetime, what: str = "start") -> datetime:
             raise ValueError(f"{what} {value!r} is not a time") from None
     if not isinstance(value, datetime):
         raise ValueError(f"{what} must be a datetime or ISO text, not {value!r}")
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=now.tzinfo)
-    return value.astimezone(UTC)
+    moment: datetime = value if value.tzinfo is not None else value.replace(tzinfo=now.tzinfo)
+    return moment.astimezone(UTC)
 
 
 def _number(row: Mapping[str, Any], field: str) -> float:
@@ -69,7 +68,7 @@ def _number(row: Mapping[str, Any], field: str) -> float:
     return float(value)
 
 
-def parse_rows(
+def parse_rows(  # pylint: disable=too-many-branches
     rows: list[dict[str, Any]], *, has_sum: bool, now: datetime, allow_negative: bool = True
 ) -> list[dict[str, Any]]:
     """Check rows to import and return them sorted by hour, one per hour (the last row for an hour wins).
@@ -117,7 +116,7 @@ def parse_rows(
     return [by_hour[start] for start in sorted(by_hour)]
 
 
-async def import_statistics(
+async def import_statistics(  # pylint: disable=too-many-locals
     provider: StatisticsProvider | None,
     metadata: StatisticsMetadata,
     rows: list[dict[str, Any]],
@@ -170,7 +169,7 @@ async def import_statistics(
         raise StatisticsError(str(err) or type(err).__name__) from err
 
 
-async def query_statistics(
+async def query_statistics(  # pylint: disable=too-many-positional-arguments
     provider: StatisticsProvider | None,
     statistic_id: str,
     start: Any,
