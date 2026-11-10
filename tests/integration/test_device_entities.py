@@ -35,6 +35,7 @@ def warm(event):
     haa.device.entity("average_temp").set_attributes(source="test")
 """
 
+
 def device_of(hass: HomeAssistant, automation_id: str) -> dr.DeviceEntry | None:
     """Return an automation's device, or None."""
     devices = dr.async_get(hass).async_get_devices(identifiers={(DOMAIN, automation_id)})
@@ -104,7 +105,11 @@ async def test_device_and_entities_created(hass: HomeAssistant, setup: Setup) ->
     assert device.manufacturer == "HAAnim"
     assert device.name == "climate"
     registry = er.async_get(hass)
-    for entity_id in ("sensor.haanim_climate_average_temp", "binary_sensor.haanim_climate_door", "sensor.haanim_climate"):
+    for entity_id in (
+        "sensor.haanim_climate_average_temp",
+        "binary_sensor.haanim_climate_door",
+        "sensor.haanim_climate",
+    ):
         entry = registry.async_get(entity_id)
         assert entry is not None and entry.device_id == device.id, entity_id
     assert registry.async_get("sensor.haanim_climate_average_temp").unique_id == "haanim_climate_average_temp"  # type: ignore[union-attr]
@@ -123,7 +128,12 @@ async def test_set_state_writes_ha_state(hass: HomeAssistant, setup: Setup) -> N
 async def test_entities_exist_from_storage_before_automations_load(
     hass: HomeAssistant, setup: Setup, hass_storage: dict[str, Any]
 ) -> None:
-    hass_storage["haanim.devices"] = {"version": 1, "minor_version": 1, "key": "haanim.devices", "data": ["climate"]}
+    hass_storage["haanim.devices"] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": "haanim.devices",
+        "data": ["climate"],
+    }
     hass_storage["haanim.device.climate"] = {
         "version": 1,
         "minor_version": 1,
@@ -134,7 +144,13 @@ async def test_entities_exist_from_storage_before_automations_load(
                 "average_temp": {
                     "object_id": "average_temp",
                     "platform": "sensor",
-                    "options": {"name": "average temp", "icon": None, "initial": 20, "initial_attributes": {}, "unit": "°C"},
+                    "options": {
+                        "name": "average temp",
+                        "icon": None,
+                        "initial": 20,
+                        "initial_attributes": {},
+                        "unit": "°C",
+                    },
                     "state": 18.5,
                     "attributes": {},
                     "declared": True,
@@ -188,7 +204,12 @@ async def test_folder_removal_removes_device(hass: HomeAssistant, setup: Setup, 
 async def test_folder_gone_while_stopped_removes_device(
     hass: HomeAssistant, setup: Setup, hass_storage: dict[str, Any]
 ) -> None:
-    hass_storage["haanim.devices"] = {"version": 1, "minor_version": 1, "key": "haanim.devices", "data": ["gone"]}
+    hass_storage["haanim.devices"] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": "haanim.devices",
+        "data": ["gone"],
+    }
     hass_storage["haanim.device.gone"] = {
         "version": 1,
         "minor_version": 1,
@@ -211,7 +232,10 @@ async def test_folder_gone_while_stopped_removes_device(
     manager = await setup({"climate": CLIMATE})
     await hass.async_block_till_done()
     assert manager.devices.automation_ids() == ["climate"]
-    assert hass.states.get("sensor.haanim_gone_x") is None or er.async_get(hass).async_get("sensor.haanim_gone_x") is None
+    assert (
+        hass.states.get("sensor.haanim_gone_x") is None
+        or er.async_get(hass).async_get("sensor.haanim_gone_x") is None
+    )
 
 
 CONTROLS = """
@@ -253,9 +277,13 @@ class note:
 
 async def test_switch_runs_hooks(hass: HomeAssistant, setup: Setup) -> None:
     await setup({"heat": CONTROLS})
-    await hass.services.async_call("switch", "turn_on", {"entity_id": "switch.haanim_heat_boost"}, blocking=True)
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.haanim_heat_boost"}, blocking=True
+    )
     assert hass.states.get("switch.haanim_heat_boost").state == "on"  # type: ignore[union-attr]
-    await hass.services.async_call("switch", "turn_off", {"entity_id": "switch.haanim_heat_boost"}, blocking=True)
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": "switch.haanim_heat_boost"}, blocking=True
+    )
     assert hass.states.get("switch.haanim_heat_boost").state == "off"  # type: ignore[union-attr]
 
 
@@ -263,7 +291,9 @@ async def test_switch_without_hook_stays_off(
     hass: HomeAssistant, setup: Setup, caplog: pytest.LogCaptureFixture
 ) -> None:
     await setup({"heat": CONTROLS})
-    await hass.services.async_call("switch", "turn_on", {"entity_id": "switch.haanim_heat_lazy"}, blocking=True)
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.haanim_heat_lazy"}, blocking=True
+    )
     assert hass.states.get("switch.haanim_heat_lazy").state == "off"  # type: ignore[union-attr]
     assert '"lazy" has no turn_on hook; command ignored' in caplog.text
 
@@ -284,7 +314,10 @@ async def test_select_runs_hook(hass: HomeAssistant, setup: Setup) -> None:
     await setup({"heat": CONTROLS})
     assert hass.states.get("select.haanim_heat_mode").attributes["options"] == ["eco", "comfort"]  # type: ignore[union-attr]
     await hass.services.async_call(
-        "select", "select_option", {"entity_id": "select.haanim_heat_mode", "option": "comfort"}, blocking=True
+        "select",
+        "select_option",
+        {"entity_id": "select.haanim_heat_mode", "option": "comfort"},
+        blocking=True,
     )
     assert hass.states.get("select.haanim_heat_mode").state == "comfort"  # type: ignore[union-attr]
 
@@ -313,6 +346,8 @@ async def test_command_while_stopped_is_noop(
 ) -> None:
     manager = await setup({"heat": CONTROLS})
     await manager.async_stop_automation("heat")
-    await hass.services.async_call("switch", "turn_on", {"entity_id": "switch.haanim_heat_boost"}, blocking=True)
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.haanim_heat_boost"}, blocking=True
+    )
     assert hass.states.get("switch.haanim_heat_boost").state == "off"  # type: ignore[union-attr]
     assert '"boost" ignored turn_on: automation is not running' in caplog.text

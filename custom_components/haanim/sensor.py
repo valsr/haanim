@@ -6,7 +6,13 @@ read-only: automations are controlled through the panel, the services and the
 ``haa`` API.
 """
 
+# Home Assistant's entity classes define these properties as cached properties; ours read the store
+# pyright: reportIncompatibleVariableOverride=false
+
 from __future__ import annotations
+
+# Home Assistant calls the async_ command methods; the sync ones are not used
+# pylint: disable=abstract-method
 
 from typing import Any
 
@@ -18,7 +24,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.haanim.automation_manager import AutomationManager
 from custom_components.haanim.const import DOMAIN
-from custom_components.haanim.entities import DeclaredEntity, async_setup_declared_platform, device_info, state_text
+from custom_components.haanim.entities import (
+    DeclaredEntity,
+    async_setup_declared_platform,
+    device_info,
+    state_text,
+)
 
 STATE_OPTIONS = ["on", "off", "error"]
 
@@ -197,7 +208,9 @@ class DeclaredSensor(DeclaredEntity, SensorEntity):
         return SensorStateClass(value) if value else None
 
     @property
-    def suggested_display_precision(self) -> int | None:  # pyright: ignore[reportIncompatibleVariableOverride]
+    def suggested_display_precision(
+        self,
+    ) -> int | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The declared precision."""
         return self.declaration.get("precision")
 

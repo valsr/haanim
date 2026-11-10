@@ -9,7 +9,7 @@ import pytest
 from haanim.engine.errors import NonExistingEntityError
 from haanim.testing import AutomationHarness
 
-MAIN = '''
+MAIN = """
 from haanim import action, haa, sensor_entity, startup, switch_entity
 
 @sensor_entity(unit="°C", initial=20)
@@ -49,7 +49,7 @@ def label(event):
 @action
 def missing(event):
     haa.device.entity("nope")
-'''
+"""
 
 
 def write(folder: Path, source: str) -> Path:

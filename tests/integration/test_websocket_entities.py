@@ -34,7 +34,9 @@ async def with_leftover(hass: HomeAssistant, setup: Setup, tmp_path: Path) -> An
     return manager
 
 
-async def test_list(hass: HomeAssistant, hass_ws_client: Any, setup: Setup, tmp_path: Path) -> None:  # noqa: F811
+async def test_list(
+    hass: HomeAssistant, hass_ws_client: Any, setup: Setup, tmp_path: Path
+) -> None:  # noqa: F811
     await with_leftover(hass, setup, tmp_path)
     er.async_get(hass).async_update_entity("switch.haanim_heat_boost", new_entity_id="switch.my_boost")
     client = await hass_ws_client()
@@ -63,7 +65,9 @@ async def test_entity_count(hass: HomeAssistant, hass_ws_client: Any, setup: Set
     assert answer["result"]["entity_count"] == 6
 
 
-async def test_remove_leftover(hass: HomeAssistant, hass_ws_client: Any, setup: Setup, tmp_path: Path) -> None:  # noqa: F811
+async def test_remove_leftover(
+    hass: HomeAssistant, hass_ws_client: Any, setup: Setup, tmp_path: Path
+) -> None:  # noqa: F811
     manager = await with_leftover(hass, setup, tmp_path)
     client = await hass_ws_client()
     answer = await command(client, 1, "haanim/entities/remove", automation_id="heat", key="ring")
@@ -73,7 +77,9 @@ async def test_remove_leftover(hass: HomeAssistant, hass_ws_client: Any, setup: 
     assert manager.devices.store("heat").get("ring") is None
 
 
-async def test_remove_declared_is_refused(hass: HomeAssistant, hass_ws_client: Any, setup: Setup) -> None:  # noqa: F811
+async def test_remove_declared_is_refused(
+    hass: HomeAssistant, hass_ws_client: Any, setup: Setup
+) -> None:  # noqa: F811
     await setup({"heat": CONTROLS})
     client = await hass_ws_client()
     answer = await command(client, 1, "haanim/entities/remove", automation_id="heat", key="boost")
@@ -88,7 +94,9 @@ async def test_remove_unknown(hass: HomeAssistant, hass_ws_client: Any, setup: S
     assert answer["error"]["code"] == "not_found"
 
 
-async def test_purge_resets_state(hass: HomeAssistant, hass_ws_client: Any, setup: Setup) -> None:  # noqa: F811
+async def test_purge_resets_state(
+    hass: HomeAssistant, hass_ws_client: Any, setup: Setup
+) -> None:  # noqa: F811
     await setup({"heat": CONTROLS})
     await hass.services.async_call(
         "number", "set_value", {"entity_id": "number.haanim_heat_target", "value": 25}, blocking=True
@@ -111,7 +119,9 @@ async def test_purge_leftover_and_unknown(
     assert answer["error"]["code"] == "not_found"
 
 
-async def test_unknown_automation(hass: HomeAssistant, hass_ws_client: Any, setup: Setup) -> None:  # noqa: F811
+async def test_unknown_automation(
+    hass: HomeAssistant, hass_ws_client: Any, setup: Setup
+) -> None:  # noqa: F811
     await setup({"heat": CONTROLS})
     client = await hass_ws_client()
     answer = await command(client, 1, "haanim/entities/list", automation_id="nope")
@@ -126,7 +136,9 @@ async def test_subscribe(hass: HomeAssistant, hass_ws_client: Any, setup: Setup)
     first = await client.receive_json()
     assert first["type"] == "event"
     assert len(first["event"]["entities"]) == 6
-    await hass.services.async_call("switch", "turn_on", {"entity_id": "switch.haanim_heat_boost"}, blocking=True)
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.haanim_heat_boost"}, blocking=True
+    )
     update = await client.receive_json()
     boost = next(item for item in update["event"]["entities"] if item["key"] == "boost")
     assert boost["state"] is True

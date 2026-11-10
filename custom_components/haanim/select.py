@@ -1,6 +1,12 @@
 """Selects automations declare with ``@select_entity``; choosing an option runs its ``select_option`` hook."""
 
+# Home Assistant's entity classes define these properties as cached properties; ours read the store
+# pyright: reportIncompatibleVariableOverride=false
+
 from __future__ import annotations
+
+# Home Assistant calls the async_ command methods; the sync ones are not used
+# pylint: disable=abstract-method
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
@@ -21,7 +27,8 @@ class DeclaredSelect(DeclaredEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The stored state; None while unknown."""
-        return self.state_value
+        value: str | None = self.state_value
+        return value
 
     async def async_select_option(self, option: str) -> None:
         """Run the ``select_option`` hook."""

@@ -1,6 +1,12 @@
 """Numbers automations declare with ``@number_entity``; setting one runs its ``set_value`` hook."""
 
+# Home Assistant's entity classes define these properties as cached properties; ours read the store
+# pyright: reportIncompatibleVariableOverride=false
+
 from __future__ import annotations
+
+# Home Assistant calls the async_ command methods; the sync ones are not used
+# pylint: disable=abstract-method
 
 from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
@@ -17,7 +23,8 @@ class DeclaredNumber(DeclaredEntity, NumberEntity):
     @property
     def native_value(self) -> float | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The stored state; None while unknown."""
-        return self.state_value
+        value: float | None = self.state_value
+        return value
 
     @property
     def native_min_value(self) -> float:  # pyright: ignore[reportIncompatibleVariableOverride]

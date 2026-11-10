@@ -1,6 +1,12 @@
 """Switches automations declare with ``@switch_entity``; turning one on or off runs its hook."""
 
+# Home Assistant's entity classes define these properties as cached properties; ours read the store
+# pyright: reportIncompatibleVariableOverride=false
+
 from __future__ import annotations
+
+# Home Assistant calls the async_ command methods; the sync ones are not used
+# pylint: disable=abstract-method
 
 from typing import Any
 
@@ -18,7 +24,8 @@ class DeclaredSwitch(DeclaredEntity, SwitchEntity):
     @property
     def is_on(self) -> bool | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The stored state; None while unknown."""
-        return self.state_value
+        value: bool | None = self.state_value
+        return value
 
     @property
     def device_class(self) -> SwitchDeviceClass | None:  # pyright: ignore[reportIncompatibleVariableOverride]

@@ -10,7 +10,7 @@ import pytest
 
 from haanim.testing import AutomationHarness
 
-MAIN = '''
+MAIN = """
 from haanim import ActionMode, EntityCommandEvent, haa, number_entity, switch_entity
 
 @switch_entity(initial=False)
@@ -42,7 +42,7 @@ class slow:
     async def turn_on(self, entity, event):
         await haa.sleep(10)
         entity.set_state(True)
-'''
+"""
 
 
 def write(folder: Path) -> Path:

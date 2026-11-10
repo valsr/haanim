@@ -147,7 +147,7 @@ class DeviceStore:
         return self._entities.get(key)
 
     def find(self, platform: str, object_id: str) -> StoredEntity | None:
-        """Return the entity of a platform with an object ID, or None: how Home Assistant's entity finds its data."""
+        """Return the entity of a platform with an object ID, or None; how Home Assistant's entities look."""
         for entity in self._entities.values():
             if entity.platform == platform and entity.object_id == object_id:
                 return entity

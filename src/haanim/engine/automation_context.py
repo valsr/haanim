@@ -155,7 +155,7 @@ class AutomationMetadata:
     last_action_time: datetime | None = None
 
 
-class AutomationContext:
+class AutomationContext:  # pylint: disable=too-many-public-methods
     """Execution context for a single HAAnim automation.
 
     Manages the automation's symbol table, evaluator, and extracted metadata

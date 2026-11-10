@@ -207,7 +207,9 @@ async def ws_list_entities(hass: HomeAssistant, connection: ActiveConnection, ms
 
 @websocket_command({vol.Required("type"): f"{DOMAIN}/entities/subscribe", vol.Required("automation_id"): str})
 @async_response
-async def ws_subscribe_entities(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
+async def ws_subscribe_entities(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
     """Send the entities of an automation's device now and whenever one changes or goes away."""
     manager = await _manager_for(hass, connection, msg)
     if manager is None:
@@ -228,7 +230,11 @@ async def ws_subscribe_entities(hass: HomeAssistant, connection: ActiveConnectio
 
 
 @websocket_command(
-    {vol.Required("type"): f"{DOMAIN}/entities/remove", vol.Required("automation_id"): str, vol.Required("key"): str}
+    {
+        vol.Required("type"): f"{DOMAIN}/entities/remove",
+        vol.Required("automation_id"): str,
+        vol.Required("key"): str,
+    }
 )
 @async_response
 async def ws_remove_entity(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
@@ -248,7 +254,11 @@ async def ws_remove_entity(hass: HomeAssistant, connection: ActiveConnection, ms
 
 
 @websocket_command(
-    {vol.Required("type"): f"{DOMAIN}/entities/purge", vol.Required("automation_id"): str, vol.Required("key"): str}
+    {
+        vol.Required("type"): f"{DOMAIN}/entities/purge",
+        vol.Required("automation_id"): str,
+        vol.Required("key"): str,
+    }
 )
 @async_response
 async def ws_purge_entity(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:

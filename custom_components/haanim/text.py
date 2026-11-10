@@ -1,6 +1,12 @@
 """Texts automations declare with ``@text_entity``; setting one runs its ``set_value`` hook."""
 
+# Home Assistant's entity classes define these properties as cached properties; ours read the store
+# pyright: reportIncompatibleVariableOverride=false
+
 from __future__ import annotations
+
+# Home Assistant calls the async_ command methods; the sync ones are not used
+# pylint: disable=abstract-method
 
 from homeassistant.components.text import TextEntity, TextMode
 from homeassistant.config_entries import ConfigEntry
@@ -17,7 +23,8 @@ class DeclaredText(DeclaredEntity, TextEntity):
     @property
     def native_value(self) -> str | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """The stored state; None while unknown."""
-        return self.state_value
+        value: str | None = self.state_value
+        return value
 
     @property
     def native_min(self) -> int:  # pyright: ignore[reportIncompatibleVariableOverride]

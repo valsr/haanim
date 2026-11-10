@@ -459,7 +459,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
     # --- Device entities ----------------------------------------------------------
 
     def entity(self, key: str) -> DeviceEntity:
-        """Return an entity of the automation's device by its object ID; works while the automation is stopped.
+        """Return an entity of the automation's device by its object ID, also while the automation is stopped.
 
         Raises:
             NonExistingEntityError: If the device has no such entity.

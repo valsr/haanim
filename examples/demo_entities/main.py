@@ -20,7 +20,9 @@ from haanim import (
 )
 
 
-@sensor_entity(name="Minutes running", unit="min", state_class="total_increasing", icon="mdi:timer", initial=0)
+@sensor_entity(
+    name="Minutes running", unit="min", state_class="total_increasing", icon="mdi:timer", initial=0
+)
 class ticks:
     """Written by the automation: no hooks."""
 

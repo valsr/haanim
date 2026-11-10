@@ -26,6 +26,7 @@ COMMON_OPTIONS = frozenset({"name", "icon", "id", "attributes", "initial", "acti
 STATE_CLASSES = frozenset({"measurement", "total", "total_increasing"})
 
 # Home Assistant's device classes per platform; the engine cannot import Home Assistant
+# fmt: off
 _MEASURED = frozenset(
     {
         "absolute_humidity", "apparent_power", "aqi", "area", "atmospheric_pressure", "battery",
@@ -39,7 +40,7 @@ _MEASURED = frozenset(
         "volatile_organic_compounds_parts", "voltage", "volume", "volume_flow_rate", "volume_storage",
         "water", "weight", "wind_direction", "wind_speed",
     }
-)  # fmt: skip
+)
 DEVICE_CLASSES: dict[str, frozenset[str]] = {
     "sensor": _MEASURED | {"date", "enum", "timestamp", "uptime"},
     "number": _MEASURED,
@@ -50,10 +51,11 @@ DEVICE_CLASSES: dict[str, frozenset[str]] = {
             "opening", "plug", "power", "presence", "problem", "running", "safety", "smoke", "sound",
             "tamper", "update", "vibration", "window",
         }
-    ),  # fmt: skip
+    ),
     "switch": frozenset({"outlet", "switch"}),
     "button": frozenset({"identify", "restart", "update"}),
 }
+# fmt: on
 
 
 @dataclass(frozen=True)
@@ -75,9 +77,7 @@ PLATFORMS: dict[str, PlatformSpec] = {
     "sensor": PlatformSpec(frozenset({"device_class", "unit", "state_class", "precision"}), ()),
     "binary_sensor": PlatformSpec(frozenset({"device_class"}), ()),
     "switch": PlatformSpec(frozenset({"device_class"}), ("turn_on", "turn_off")),
-    "number": PlatformSpec(
-        frozenset({"min", "max", "step", "unit", "mode", "device_class"}), ("set_value",)
-    ),
+    "number": PlatformSpec(frozenset({"min", "max", "step", "unit", "mode", "device_class"}), ("set_value",)),
     "select": PlatformSpec(frozenset({"options"}), ("select_option",)),
     "button": PlatformSpec(frozenset({"device_class"}), ("press",), stateful=False),
     "text": PlatformSpec(frozenset({"min_length", "max_length", "pattern", "mode"}), ("set_value",)),
@@ -147,7 +147,9 @@ def _check_options(platform: str, where: str, options: Mapping[str, Any]) -> Non
         raise AutomationDefinitionError(f"{where}: '{device_class}' is not a device_class of a {platform}")
     state_class = options.get("state_class")
     if state_class is not None and state_class not in STATE_CLASSES:
-        raise AutomationDefinitionError(f"{where}: state_class must be one of {', '.join(sorted(STATE_CLASSES))}")
+        raise AutomationDefinitionError(
+            f"{where}: state_class must be one of {', '.join(sorted(STATE_CLASSES))}"
+        )
     mode = options.get("mode")
     if mode is not None and mode not in _MODES[platform]:
         raise AutomationDefinitionError(f"{where}: mode must be one of {', '.join(sorted(_MODES[platform]))}")
@@ -160,13 +162,19 @@ def _check_options(platform: str, where: str, options: Mapping[str, Any]) -> Non
             raise AutomationDefinitionError(f"{where}: step must be greater than 0")
     if platform == "select":
         choices = options.get("options")
-        if not isinstance(choices, (list, tuple)) or not choices or not all(isinstance(c, str) for c in choices):
+        if (
+            not isinstance(choices, (list, tuple))
+            or not choices
+            or not all(isinstance(c, str) for c in choices)
+        ):
             raise AutomationDefinitionError(f"{where}: options must be a non-empty list of strings")
     if platform == "text" and "pattern" in options:
         try:
             re.compile(options["pattern"])
         except (re.error, TypeError) as err:
-            raise AutomationDefinitionError(f"{where}: pattern is not a valid regular expression: {err}") from None
+            raise AutomationDefinitionError(
+                f"{where}: pattern is not a valid regular expression: {err}"
+            ) from None
 
 
 def _number(value: Any, what: str) -> float:
@@ -175,7 +183,7 @@ def _number(value: Any, what: str) -> float:
         raise ValueError(f"{what} must be a number, not a bool")
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         raise ValueError(f"{what} must be a number, not {value!r}") from None
 
 
@@ -184,7 +192,9 @@ def is_numeric_sensor(options: Mapping[str, Any]) -> bool:
     return options.get("unit") is not None or options.get("state_class") is not None
 
 
-def validate_state(platform: str, options: Mapping[str, Any], value: Any) -> Any:
+def validate_state(  # pylint: disable=too-many-return-statements,too-many-branches
+    platform: str, options: Mapping[str, Any], value: Any
+) -> Any:
     """Check a state against an entity's declaration and return it as it is stored.
 
     None (unknown) is always allowed, except for a button, which has no state.

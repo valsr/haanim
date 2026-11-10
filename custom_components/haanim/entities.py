@@ -151,7 +151,9 @@ class HAEntitySink:
         """Return an automation's name: the name of its device."""
         return self._manager.automation_name(automation_id) if self._manager else automation_id
 
-    async def command(self, automation_id: str, object_id: str, command: str, value: Any, context: Any) -> None:
+    async def command(
+        self, automation_id: str, object_id: str, command: str, value: Any, context: Any
+    ) -> None:
         """Send a command to an automation's entity."""
         if self._manager is not None:
             await self._manager.async_entity_command(automation_id, object_id, command, value, context)
@@ -235,7 +237,9 @@ class HAEntitySink:
         """Return an automation's device, or None."""
         if self._entry is None:
             return None
-        return dr.async_get(self._hass).async_get_device_by_identifier((DOMAIN, automation_id), self._entry.entry_id)
+        return dr.async_get(self._hass).async_get_device_by_identifier(
+            (DOMAIN, automation_id), self._entry.entry_id
+        )
 
     def device_id(self, automation_id: str) -> str | None:
         """Return the ID of an automation's device in Home Assistant, or None."""
