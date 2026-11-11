@@ -344,3 +344,39 @@ def test_a_failing_sink_does_not_reach_the_automation(
     store.set_state("temp", "a")
     assert store.get("temp").state == "a"  # type: ignore[union-attr]
     assert "Home Assistant refused the state" in caplog.text
+
+
+# --- find ---------------------------------------------------------------------------
+
+
+def test_find_follows_every_change(registry: DeviceRegistry) -> None:
+    """find() gives the entity Home Assistant looks up by platform and object ID, through every change."""
+    store = registry.store("climate")
+    store.reconcile([decl(switch_entity(), "boost"), decl(sensor_entity(), "temp")])
+    switch = store.find("switch", "boost")
+    assert switch is not None and switch.key == "boost"
+    assert store.find("sensor", "boost") is None
+
+    # boost moves to another platform: the switch is kept aside as a leftover, and still found
+    store.reconcile([decl(sensor_entity(), "boost"), decl(sensor_entity(), "temp")])
+    assert store.find("switch", "boost") is switch and switch.key == "boost@switch"
+    sensor = store.find("sensor", "boost")
+    assert sensor is not None and sensor is not switch and sensor.key == "boost"
+
+    # the switch is declared again: the leftover comes back under its key
+    store.reconcile([decl(switch_entity(), "boost"), decl(sensor_entity(), "temp")])
+    assert store.find("switch", "boost") is switch and switch.key == "boost"
+    assert store.find("sensor", "boost") is sensor and sensor.key == "boost@sensor"
+
+    store.remove("boost@sensor")
+    assert store.find("sensor", "boost") is None
+    assert store.find("switch", "boost") is switch
+
+
+async def test_find_after_loading(registry: DeviceRegistry) -> None:
+    store = registry.store("climate")
+    store.reconcile([decl(switch_entity(), "boost")])
+    await registry.flush()
+    loaded = await registry.load("climate")
+    found = loaded.find("switch", "boost")
+    assert found is not None and found.key == "boost" and found is loaded.get("boost")

@@ -137,6 +137,8 @@ class DeviceStore:
         self.automation_id = automation_id
         self._registry = registry
         self._entities: dict[str, StoredEntity] = {}
+        self._found: dict[tuple[str, str], StoredEntity] = {}
+        """find()'s index by platform and object ID; checked on every hit, rebuilt on a miss."""
         self._seeds: dict[str, Any] = {}
 
     def seed(self, states: dict[str, Any]) -> None:
@@ -166,11 +168,15 @@ class DeviceStore:
         return self._entities.get(key)
 
     def find(self, platform: str, object_id: str) -> StoredEntity | None:
-        """Return the entity of a platform with an object ID, or None; how Home Assistant's entities look."""
-        for entity in self._entities.values():
-            if entity.platform == platform and entity.object_id == object_id:
-                return entity
-        return None
+        """Return the entity of a platform with an object ID, or None; how Home Assistant's entities look.
+
+        Entities' properties look their entity up on every read, so this is an index lookup.
+        """
+        entity = self._found.get((platform, object_id))
+        if entity is not None and self._entities.get(entity.key) is entity and entity.platform == platform:
+            return entity
+        self._found = {(item.platform, item.object_id): item for item in self._entities.values()}
+        return self._found.get((platform, object_id))
 
     def _require(self, key: str) -> StoredEntity:
         entity = self._entities.get(key)
