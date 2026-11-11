@@ -146,7 +146,8 @@ class HAEntitySink:
         """Return what the engine holds of an entity, or None."""
         if self._registry is None:
             return None
-        return self._registry.store(automation_id).find(platform, object_id)
+        store = self._registry.get(automation_id)
+        return store.find(platform, object_id) if store is not None else None
 
     def automation_name(self, automation_id: str) -> str:
         """Return an automation's name: the name of its device."""
@@ -189,7 +190,8 @@ class HAEntitySink:
     def entity_changed(self, automation_id: str, key: str) -> None:
         """Create the entity if it is new, else write its state."""
         if self._registry is not None:
-            stored = self._registry.store(automation_id).get(key)
+            store = self._registry.get(automation_id)
+            stored = store.get(key) if store is not None else None
             if stored is not None:
                 entity = self._entities.get((automation_id, stored.platform, stored.object_id))
                 if entity is None:

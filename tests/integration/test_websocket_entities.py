@@ -87,6 +87,16 @@ async def test_remove_declared_is_refused(
     assert answer["error"] == {"code": "declared", "message": "delete the class first"}
 
 
+async def test_lookups_leave_no_store(hass: HomeAssistant, setup: Setup) -> None:  # noqa: F811
+    """What a stale entity reads of a device that is gone is nothing, and keeps nothing in memory for it."""
+    manager = await setup({"heat": CONTROLS})
+    sink = manager.entity_sink
+    assert sink is not None
+    assert sink.stored("ghost", "switch", "boost") is None
+    assert manager.devices.get("ghost") is None
+    assert sink.stored("heat", "switch", "boost") is not None
+
+
 async def test_remove_unknown(hass: HomeAssistant, hass_ws_client: Any, setup: Setup) -> None:  # noqa: F811
     await setup({"heat": CONTROLS})
     client = await hass_ws_client()

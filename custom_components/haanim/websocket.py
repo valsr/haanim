@@ -42,7 +42,8 @@ def _entities(hass: HomeAssistant, manager: AutomationManager, automation_id: st
     registry = er.async_get(hass)
     sink = manager.entity_sink
     items = []
-    for stored in manager.devices.store(automation_id).entities():
+    store = manager.devices.get(automation_id)
+    for stored in store.entities() if store is not None else []:
         entity_id = registry.async_get_entity_id(stored.platform, DOMAIN, stored.unique_id(automation_id))
         items.append(
             {
@@ -103,7 +104,7 @@ def _detail(
             {"name": action.name, "aliases": list(action.aliases), "description": action.description or ""}
             for action in manager.automation_actions(automation_id)
         ],
-        "entity_count": len(manager.devices.store(automation_id).entities()),
+        "entity_count": len(store.entities()) if (store := manager.devices.get(automation_id)) else 0,
     }
 
 
@@ -243,9 +244,9 @@ async def ws_remove_entity(hass: HomeAssistant, connection: ActiveConnection, ms
     manager = await _manager_for(hass, connection, msg)
     if manager is None:
         return
-    store = manager.devices.store(msg["automation_id"])
-    stored = store.get(msg["key"])
-    if stored is None:
+    store = manager.devices.get(msg["automation_id"])
+    stored = store.get(msg["key"]) if store is not None else None
+    if store is None or stored is None:
         connection.send_error(msg["id"], ERR_NOT_FOUND, f"No entity '{msg['key']}'")
     elif stored.declared:
         connection.send_error(msg["id"], ERR_DECLARED, "delete the class first")
@@ -267,9 +268,9 @@ async def ws_purge_entity(hass: HomeAssistant, connection: ActiveConnection, msg
     manager = await _manager_for(hass, connection, msg)
     if manager is None:
         return
-    store = manager.devices.store(msg["automation_id"])
-    stored = store.get(msg["key"])
-    if stored is None:
+    store = manager.devices.get(msg["automation_id"])
+    stored = store.get(msg["key"]) if store is not None else None
+    if store is None or stored is None:
         connection.send_error(msg["id"], ERR_NOT_FOUND, f"No entity '{msg['key']}'")
     elif not stored.declared:
         connection.send_error(msg["id"], ERR_LEFTOVER, "A leftover cannot be purged; remove it instead")

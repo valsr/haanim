@@ -255,6 +255,14 @@ async def test_load_all_tells_sink(storage: FakeStorage, clock: FakeClock) -> No
     assert sink.changes == [("changed", "a", "boost")]
 
 
+def test_get_does_not_create_a_store(registry: DeviceRegistry) -> None:
+    """Looking a store up gives None for an unknown automation, and leaves no empty store behind."""
+    assert registry.get("nobody") is None
+    assert registry.get("nobody") is None
+    store = registry.store("climate")
+    assert registry.get("climate") is store
+
+
 async def test_empty_store_is_not_indexed(registry: DeviceRegistry, storage: FakeStorage) -> None:
     registry.store("quiet")
     await registry.flush()

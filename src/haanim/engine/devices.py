@@ -400,6 +400,10 @@ class DeviceRegistry:
             self._saved_index = sorted(index) if isinstance(index, list) else []
         return store
 
+    def get(self, automation_id: str) -> DeviceStore | None:
+        """Return an automation's store, or None if it has none: unlike store(), it creates nothing."""
+        return self._stores.get(automation_id)
+
     def store(self, automation_id: str) -> DeviceStore:
         """Return an automation's store, creating an empty one on first use."""
         store = self._stores.get(automation_id)
