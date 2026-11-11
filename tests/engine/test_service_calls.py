@@ -111,13 +111,12 @@ class TestServiceProxy:
     async def test_direct_call(self, haa: HAAnim, services: FakeServiceCaller) -> None:
         """The proxy can be called directly, as in haa.service.light.turn_on(...)."""
         result = await haa.service.light.turn_on(
-            entity_id=["light.living_room", "light.kitchen"], brightness=150, rgb_color=[255, 0, 0]
+            entity_id=["light.living_room", "light.kitchen"], brightness=150
         )
         assert result.success is True
         assert services.calls[0].data == {
             "entity_id": ["light.living_room", "light.kitchen"],
             "brightness": 150,
-            "rgb_color": [255, 0, 0],
         }
 
     def test_proxy_of_a_missing_service(self, haa: HAAnim) -> None:

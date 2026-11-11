@@ -6,6 +6,7 @@ from typing import Final
 __all__ = [
     # Enums
     "ActionMode",
+    "ResponseSupport",
     # Device entities
     "EntityPlatform",
     "EntityCommand",
@@ -92,6 +93,17 @@ class ActionMode(Enum):
     DROP = "drop"
     QUEUE = "queue"
     CANCEL = "cancel"
+
+
+class ResponseSupport(StrEnum):
+    """Whether a service gives response data, as Home Assistant's ``SupportsResponse``."""
+
+    NONE = "none"
+    """It never responds; most services, such as ``light.turn_on``."""
+    OPTIONAL = "optional"
+    """It responds when asked."""
+    ONLY = "only"
+    """It must be asked for its response."""
 
 
 # --- Device entities --------------------------------------------------------------

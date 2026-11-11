@@ -60,6 +60,7 @@ from haanim.const import (  # pylint: disable=unused-import
     EntityPlatform,
     NumberMode,
     Period,
+    ResponseSupport,
     StateClass,
     TextMode,
     UnitOfElectricCurrent,
