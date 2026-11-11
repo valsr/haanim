@@ -66,7 +66,7 @@ async def notify(event):
 
 @action
 async def weather(event):
-    call = await haa.service.weather.get_forecasts(entity_id="weather.home", return_response=True)
+    call = await haa.service.weather.get_forecasts(entity_id="weather.home")
     return call.response_data
 
 @action

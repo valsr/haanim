@@ -6,7 +6,6 @@ from typing import Final
 __all__ = [
     # Enums
     "ActionMode",
-    "ResponseSupport",
     # Device entities
     "EntityPlatform",
     "EntityCommand",
@@ -79,6 +78,8 @@ __all__ = [
     "DISABLED_MODULE_MEMBERS",
     "DISABLED_LOOP_MEMBERS",
     "LOOP_GETTERS",
+    # Services
+    "ResponseSupport",
 ]
 
 

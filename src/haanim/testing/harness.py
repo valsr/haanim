@@ -27,6 +27,7 @@ from types import TracebackType
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from haanim.const import ResponseSupport
 from haanim.engine.action_dispatcher import ActionDispatcher
 from haanim.engine.action_pool import ActionWorkerPool
 from haanim.engine.automation_context import ActionDefinition, AutomationContext
@@ -62,7 +63,7 @@ from haanim.testing.fakes import (
     LocalFileSystem,
     make_host,
 )
-from haanim.testing.fake_services import AlwaysThereServices, ServiceCallRecord
+from haanim.testing.fake_services import AlwaysThereServices, Response, ServiceCallRecord
 from haanim.types import EventData
 
 __all__ = ["AutomationCall", "AutomationHarness", "HarnessCard", "HarnessError"]
@@ -756,9 +757,11 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         self,
         name: str,
         *,
-        response: dict[str, Any] | None = None,
+        response: Response = None,
         success: bool = True,
         reason: str = "failed",
+        supports_response: ResponseSupport | str | None = None,
+        fields: list[str] | None = None,
     ) -> None:
         """Decide what a service does when the automation calls it.
 
@@ -766,14 +769,31 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
 
         Args:
             name: The service as ``"domain.service"``.
-            response: The response data given to callers that ask for it.
+            response: The response data, or a function called with the call's
+                data as keyword arguments that returns it (it may be a coroutine
+                function). A function that raises makes the call fail with its message.
             success: With False the call fails: the automation gets a result
                 whose ``success`` is False and whose ``error`` has the reason.
             reason: The reason of that failure.
+            supports_response: Whether the service gives a response, as in Home
+                Assistant: ``"none"``, ``"optional"`` or ``"only"``. Defaults to
+                ``"optional"`` with a response and ``"none"`` without.
+            fields: The keys the service accepts; a call with another key fails,
+                as Home Assistant's schemas do. Targets such as ``entity_id`` are
+                always accepted. Without, any key is.
+
+        Raises:
+            ValueError: If a service that gives no response is given one.
         """
         domain, service = _split(name)
         self._services.restore(domain, service)
-        self._services.register(domain, service, response=response)
+        self._services.register(
+            domain,
+            service,
+            response=response,
+            supports_response=supports_response,
+            fields=dict.fromkeys(fields, {}) if fields else None,
+        )
         if not success:
             self._services.fail(domain, service, reason)
 

@@ -24,11 +24,6 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.sun import get_astral_event_next
 from homeassistant.util import dt as dt_util
 
-try:
-    from probatio.error import Invalid as _ProbatioInvalid
-except ImportError:  # pragma: no cover - Home Assistant before probatio
-    _ProbatioInvalid = vol.Invalid
-
 from custom_components.haanim.entities import HAEntitySink
 from custom_components.haanim.const import DOMAIN
 from custom_components.haanim.ha.assets import HAAssetSigner
@@ -47,6 +42,21 @@ STORAGE_VERSION = 1
 
 __all__ = ["HAClock", "HAFileSystem", "HAServiceCaller", "HASunProvider", "build_host"]
 
+
+
+def _call_errors() -> tuple[type[Exception], ...]:
+    """Return what a failed service call raises: Home Assistant's error, or a refusing schema's.
+
+    Home Assistant's schemas use two libraries, voluptuous and probatio.
+    """
+    try:
+        from probatio.error import Invalid  # pylint: disable=import-outside-toplevel
+    except ImportError:  # pragma: no cover - Home Assistant before probatio
+        return (HomeAssistantError, vol.Invalid)
+    return (HomeAssistantError, vol.Invalid, Invalid)
+
+
+CALL_ERRORS = _call_errors()
 
 class HAServiceCaller:
     """Service discovery and calls through Home Assistant's service registry."""
@@ -121,7 +131,7 @@ class HAServiceCaller:
                 blocking=True,
                 return_response=return_response,
             )
-        except (HomeAssistantError, vol.Invalid, _ProbatioInvalid) as err:
+        except CALL_ERRORS as err:
             # Data the service's schema refuses raises the schema library's error.
             raise ServiceCallError(domain, service, str(err)) from err
         return response if isinstance(response, dict) else None

@@ -119,6 +119,15 @@ class TestServiceProxy:
             "brightness": 150,
         }
 
+    @pytest.mark.parametrize("value", [True, False])
+    async def test_return_response_is_refused(
+        self, haa: HAAnim, services: FakeServiceCaller, value: bool
+    ) -> None:
+        """A return_response argument would be sent as a field, which the service refuses."""
+        with pytest.raises(TypeError, match="remove return_response"):
+            await haa.service.weather.get_forecast(return_response=value)
+        assert services.calls == []
+
     def test_proxy_of_a_missing_service(self, haa: HAAnim) -> None:
         """Getting a proxy never raises; a missing service has no description or parameters."""
         proxy = haa.service.light.dim

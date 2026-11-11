@@ -130,7 +130,12 @@ class HAAnimServiceProxy:
 
         Raises:
             NonExistingServiceError: If the service doesn't exist.
+            TypeError: If given ``return_response``, which would be sent as a field.
         """
+        if "return_response" in params:
+            raise TypeError(
+                "service calls return the response whenever the service gives one; remove return_response"
+            )
         clock = self._host.clock
         call_time = clock.now()
         if not self._host.services.has_service(self._domain, self._name):

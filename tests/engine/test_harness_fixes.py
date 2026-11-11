@@ -193,3 +193,71 @@ async def test_a_failing_shutdown_fails_the_test(tmp_path: Path) -> None:
     with pytest.raises(HarnessError, match="cleanup failed"):
         async with AutomationHarness(folder):
             pass
+
+
+# --- Service stubs ------------------------------------------------------------------
+
+SERVICES = """
+from haanim import action, haa
+
+@action
+async def months(event):
+    rows = []
+    for start, end in (("2025-01", "2025-02"), ("2025-02", "2025-03")):
+        result = await haa.service.recorder.get_statistics(start=start, end=end, period="month")
+        rows += result.response_data["rows"]
+    return rows
+
+@action
+async def store(event):
+    result = await haa.service.recorder.import_statistics(statistic_id="sensor.x", stats=[], **event.data)
+    return result.success, result.error
+
+@action
+async def stray(event):
+    await haa.service.recorder.import_statistics(statistic_id="sensor.x", stats=[], return_response=True)
+"""
+
+ROWS = {"2025-01": 10, "2025-02": 20, "2025-03": 30}
+
+
+async def test_a_stub_computes_the_response_per_call(tmp_path: Path) -> None:
+    def window(start: str, end: str, **_: object) -> dict[str, object]:
+        return {"rows": [value for month, value in ROWS.items() if start <= month < end]}
+
+    folder = automation(tmp_path, {"main.py": SERVICES})
+    async with AutomationHarness(folder) as harness:
+        harness.stub_service("recorder.get_statistics", response=window)
+        assert await harness.call("months") == [10, 20]
+
+
+async def test_a_raising_stub_fails_the_call(tmp_path: Path) -> None:
+    def refuse(**_: object) -> None:
+        raise ValueError("no such statistic")
+
+    folder = automation(tmp_path, {"main.py": SERVICES})
+    async with AutomationHarness(folder) as harness:
+        harness.stub_service("recorder.import_statistics", response=refuse, supports_response="optional")
+        assert await harness.call("store") == (False, "no such statistic")
+
+
+async def test_a_stub_with_fields_refuses_other_keys(tmp_path: Path) -> None:
+    folder = automation(tmp_path, {"main.py": SERVICES})
+    async with AutomationHarness(folder) as harness:
+        harness.stub_service("recorder.import_statistics", fields=["statistic_id", "stats"])
+        assert await harness.call("store") == (True, None)
+        assert await harness.call("store", unit="kWh") == (False, "not a valid option: unit")
+
+
+async def test_return_response_fails_the_test(tmp_path: Path) -> None:
+    folder = automation(tmp_path, {"main.py": SERVICES})
+    async with AutomationHarness(folder) as harness:
+        with pytest.raises(TypeError, match="remove return_response"):
+            await harness.call("stray")
+
+
+async def test_a_service_without_responses_cannot_be_given_one(tmp_path: Path) -> None:
+    folder = automation(tmp_path, {"main.py": SERVICES})
+    async with AutomationHarness(folder) as harness:
+        with pytest.raises(ValueError, match="gives no response"):
+            harness.stub_service("recorder.import_statistics", response={"ok": True}, supports_response="none")
