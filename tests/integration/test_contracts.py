@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import pytest
-import voluptuous as vol
+import probatio as vol
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, issue_registry

@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-import voluptuous as vol
+import probatio as vol
 
 from custom_components.haanim.const import (
     CONFIG_ACTION_QUEUE_SIZE,

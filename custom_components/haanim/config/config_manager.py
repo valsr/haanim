@@ -11,7 +11,7 @@ import os
 from collections.abc import Mapping
 from typing import Any
 
-import voluptuous as vol
+import probatio as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant

@@ -8,7 +8,8 @@ from __future__ import annotations
 # Home Assistant calls the async_ command methods; the sync ones are not used
 # pylint: disable=abstract-method
 
-from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
+from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.binary_sensor.const import BinarySensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback

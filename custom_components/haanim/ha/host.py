@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypeVar
 
-import voluptuous as vol
+import probatio as vol
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry
@@ -47,16 +47,17 @@ __all__ = ["HAClock", "HAFileSystem", "HAServiceCaller", "HASunProvider", "build
 def _call_errors() -> tuple[type[Exception], ...]:
     """Return what a failed service call raises: Home Assistant's error, or a refusing schema's.
 
-    Home Assistant's schemas use two libraries, voluptuous and probatio.
+    Home Assistant's schemas use probatio; an integration's own may still use voluptuous.
     """
     try:
-        from probatio.error import Invalid  # pylint: disable=import-outside-toplevel
-    except ImportError:  # pragma: no cover - Home Assistant before probatio
+        from voluptuous import Invalid  # pylint: disable=import-outside-toplevel
+    except ImportError:  # pragma: no cover - voluptuous is no longer installed
         return (HomeAssistantError, vol.Invalid)
     return (HomeAssistantError, vol.Invalid, Invalid)
 
 
 CALL_ERRORS = _call_errors()
+
 
 class HAServiceCaller:
     """Service discovery and calls through Home Assistant's service registry."""

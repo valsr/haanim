@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2026-11-09
 
+It needs Home Assistant 2026.10 or newer.
+
 ### Added
 
 - Each automation is a device in Home Assistant, with its status sensor on it.
@@ -34,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   title, and `add_row(..., limit=...)` for a rolling log.
 - Constants for automations: `EntityPlatform`, `EntityCommand`, `StateClass`, `NumberMode`, `TextMode`, `Period`,
   and common units (`UnitOfEnergy`, `UnitOfTemperature`, ... and `PERCENTAGE`) with Home Assistant's names and values.
+
+### Changed
+
+- The integration builds its schemas with `probatio`, as Home Assistant does since 2026.10.
 
 ### Fixed
 
@@ -77,7 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2026-10-06
 
 The first published release: the integration is installable with HACS and the `haanim` package is on PyPI.
-It needs Home Assistant 2026.11 or newer; the package needs Python 3.14.
+It needs Home Assistant 2026.9 or newer; the package needs Python 3.14.
 
 ### Added
 

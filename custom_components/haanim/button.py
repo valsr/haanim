@@ -8,7 +8,8 @@ from __future__ import annotations
 # Home Assistant calls the async_ command methods; the sync ones are not used
 # pylint: disable=abstract-method
 
-from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
+from homeassistant.components.button import ButtonEntity
+from homeassistant.components.button.const import ButtonDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
