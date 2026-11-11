@@ -42,6 +42,8 @@ async def test_refresh_reads_again() -> None:
 async def test_services_change_entities() -> None:
     """Warmer and Cooler call input_number.set_value with the new value; Fan calls input_boolean.toggle."""
     async with AutomationHarness(DEMO, states=STATES) as automation:
+        # As in Home Assistant, set_value takes a value besides its target, and refuses other keys
+        automation.stub_service("input_number.set_value", fields=["value"])
         assert await automation.press("warmer") == 22.5
         assert await automation.press("cooler") == 20.5
         assert await automation.call("change_temperature", by=5) == 26.5
