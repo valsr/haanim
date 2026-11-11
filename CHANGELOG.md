@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `state_class` (usage per hour for sums, which continue from and join up with the stored ones), and
   `haa.statistics()` and `entity.statistics()` read the statistics of any entity.
 - The `demo_entities` example, with a backfill of energy statistics.
+- The `demo_statistics` example reads long-term statistics by day and by month; `demo_generators` shows
+  generators and async generators.
 - Async generators: `yield` in an `async def`, `async for`, async comprehensions and async generator
   expressions, with `asend`, `athrow` and `aclose`.
 - Generators: `yield`, `yield from` and generator expressions, lazy and with `send`, `throw` and `close`.

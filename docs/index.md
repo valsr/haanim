@@ -26,10 +26,14 @@ async def morning(event: TimeEvent):
   `QUEUE` and `CANCEL` execution modes and timeouts.
 - **`haa`**: entities, service calls, `sleep` and `wait_for`, persistent variables, assets, and calling
   other automations.
+- **A device per automation**, with its status sensor (`sensor.haanim_<id>`: `on`, `off`, `error`) and the
+  entities the automation declares: sensors, binary sensors, switches, numbers, selects, buttons and text,
+  whose commands run the automation's code.
+- **Long-term statistics**: read those of any entity, and import past hours into the automation's own sensors.
 - **A dashboard card** per automation, which the automation fills itself: text, HTML, images and camera
-  pictures, values, entities, icons, gauges, badges, graphs and buttons, laid out in rows.
-- **A panel** in the sidebar with every automation's controls, actions and log.
-- **A sensor per automation** (`sensor.haanim_<id>`: `on`, `off`, `error`).
+  pictures, values, entities, icons, gauges, badges, tables, graphs and buttons, laid out in rows.
+- **A panel** in the sidebar with every automation's controls, actions, entities and log.
+- **Python as you write it**: functions, classes, comprehensions, generators and async generators.
 - **Hot reload**: edit a file and the automation is reloaded.
 - **A test harness**: test an automation with `pytest`, with no Home Assistant running.
 

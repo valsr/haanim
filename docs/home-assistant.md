@@ -22,8 +22,8 @@ content and can hide each of the fixed parts: see [The card](AUTOMATIONS.md#the-
 
 - **Automations**: every automation with its state, version and status message, and the controls that
   apply to it: Enable or Disable, Start, Stop, Restart. A click on a row opens the automation.
-- **An automation's page**: its state, controls and metadata, and three tabs: **Preview** (its card),
-  **Actions** (run any of them) and **Logs**.
+- **An automation's page**: its state, controls and metadata, and four tabs: **Preview** (its card),
+  **Actions** (run any of them), **Entities** (see [below](#the-device-and-its-entities)) and **Logs**.
 - **Configuration**: the integration's version and options.
 - **Reload all** rescans the automations folder now.
 
@@ -37,11 +37,25 @@ of actions that failed.
   where the automation logs under `custom_components.haanim.automation.<id>`.
 - **Clear** empties the log shown. Home Assistant's own log file is not touched.
 
-## The entity
+## The device and its entities
 
-Each automation has a sensor, `sensor.haanim_<id>`, whose state is `on`, `off` or `error`. Its attributes
-include the status message, whether the automation is enabled, the actions that are running, the last action
-and the last error, so dashboards and Home Assistant's own automations can follow a HAAnim automation.
+Each automation is a device in Home Assistant, named after the automation, under **Settings → Devices &
+services → HAAnim**.
+
+- **The status sensor**, `sensor.haanim_<id>`, whose state is `on`, `off` or `error`. Its attributes include
+  the status message, whether the automation is enabled, the actions that are running, the last action and
+  the last error, so dashboards and Home Assistant's own automations can follow a HAAnim automation.
+- **The entities the automation declares**: sensors, binary sensors, switches, numbers, selects, buttons and
+  text, as `<platform>.haanim_<id>_<name>`. HAAnim keeps their state, which survives restarts. What users do
+  with them in Home Assistant (turn a switch on, set a number, press a button) runs the automation's code; see
+  [Device entities](AUTOMATIONS.md#device-entities) in the guide.
+- **Long-term statistics**: a declared sensor with a `state_class` has statistics, which the Energy dashboard
+  and statistics graphs show, and which the automation can fill with past hours.
+
+The **Entities** tab of the automation's page lists the device's entities. **Remove** deletes one the
+automation no longer declares (its class was deleted or renamed), and **Purge data** resets a declared one to
+its initial state, for instance after changing its options during development. Deleting the automation's
+folder removes its device and all its entities.
 
 ## Services
 

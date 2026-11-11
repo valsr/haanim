@@ -32,10 +32,17 @@ async def morning(event: TimeEvent):
   `QUEUE` and `CANCEL` execution modes, timeouts and a concurrency limit.
 - **`haa`**: entity access, service calls, `sleep` and `wait_for`, persistent variables, assets, calling and
   controlling other automations.
-- **A sensor per automation** (`sensor.haanim_<id>`: `on`, `off`, `error`) with status attributes.
+- **A device per automation**, with its status sensor (`sensor.haanim_<id>`: `on`, `off`, `error`) and the
+  entities the automation declares as classes: sensors, binary sensors, switches, numbers, selects, buttons and
+  text. HAAnim keeps their state across restarts, and a command from Home Assistant (turning a switch on,
+  pressing a button) runs the automation's code.
+- **Long-term statistics**: read those of any entity by hour, day, week or month, and import past hours into
+  the automation's own sensors, for instance energy readings a provider publishes a day late.
 - **A dashboard card** (`custom:haanim-card`) that the automation titles and fills with text, images,
-  values, live entities and buttons, plus a management panel in the sidebar with each automation's
-  controls, actions and log.
+  values, tables, graphs, live entities and buttons, plus a management panel in the sidebar with each
+  automation's controls, actions, entities and log.
+- **Python as you write it**: functions, classes, comprehensions, generators and async generators, with
+  constants for units, state classes and statistics periods.
 - **Hot reload**: edit a file and the automation is reloaded.
 - **A test harness**: test an automation with `pytest`, with no Home Assistant running.
 
@@ -119,8 +126,9 @@ async def test_greeting():
 ```
 
 The harness runs the automation with the same interpreter and triggers as Home Assistant, against a fake Home
-Assistant whose clock only moves when the test moves it. Installing the package does not install Home
-Assistant.
+Assistant whose clock only moves when the test moves it, in the time zone the test chooses. Its services behave
+as Home Assistant's do: most give no response, and a stub can check the keys a call passes and answer each call
+from its data. Installing the package does not install Home Assistant.
 
 ## Services
 

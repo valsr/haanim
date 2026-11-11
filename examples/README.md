@@ -19,7 +19,9 @@ Put the card of a demo on a dashboard (`type: custom:haanim-card`, `automation_i
 | ---------------- | ------------------------------------------------------------------------------------------ |
 | `demo_basics/`   | Where to start: text, a value and buttons on a card; actions with data, a result and a confirmation; the title and the status message; hiding the card's fixed parts; an event and a cron trigger |
 | `demo_controls/` | The elements that show a state: values, entities, icons, gauges (bar and dial) and badges, driven by the automation or following an entity |
-| `demo_entities/` | The automation's own device: a sensor it updates, and a switch, a number, a select and a button users operate in Home Assistant |
+| `demo_entities/` | The automation's own device: a sensor it updates, and a switch, a number, a select and a button users operate in Home Assistant; a backfill of energy into long-term statistics |
+| `demo_statistics/` | Long-term statistics of `sensor.temperature` read with `haa.statistics()`: the last week by day and this year by month, in a table and a graph |
+| `demo_generators/` | Generators: a lazy day of readings, a pipeline, `yield from`, `sum` and `max` over generator expressions; an async generator that awaits between readings, read with `async for`, stopped with `break` and closed with `aclose()` |
 | `demo_layout/`   | Rows and cells: `split_row()`, rows that are not full, a table made of rows and a table element, and moving, removing and rebuilding |
 | `demo_graphs/`   | Graphs of plain numbers, of pairs, over time, of states as a timeline, and of the history of entities; changing a graph in place |
 | `demo_images/`   | Images from `assets/` and from an address; width, height, alignment and caption; the live picture of a camera |
@@ -29,6 +31,7 @@ Put the card of a demo on a dashboard (`type: custom:haanim-card`, `automation_i
 
 The demos use a few entities: `sensor.temperature`, `input_number.temperature`, `input_boolean.fan`, `sun.sun`
 and `camera.demo`. Where one is missing the card says so; nothing fails.
+`demo_statistics` shows statistics once `sensor.temperature` has a `state_class` of `measurement` and Home Assistant has compiled its first hour.
 
 ## Testing an example
 

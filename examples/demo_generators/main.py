@@ -51,7 +51,7 @@ def days(count: int):
         yield from wave(24)
 
 
-def day_table() -> list[list[object]]:
+def day_table() -> list[list[str | float]]:
     """Hour, reading and three-hour average, from three generators walked side by side."""
     return [
         [f"{hour:02d}:00", reading, average]
@@ -72,9 +72,10 @@ def summary() -> str:
 
 def temperature() -> float | None:
     """The temperature as a number; None while the sensor has none."""
+    state = haa.state(SENSOR)
     try:
-        return float(haa.state(SENSOR))
-    except (TypeError, ValueError):
+        return float(state) if state is not None else None
+    except ValueError:
         return None
 
 

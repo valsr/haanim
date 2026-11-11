@@ -5,6 +5,9 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import pytest
+
+from haanim import ActionDroppedError
 from haanim.testing import AutomationHarness
 
 DEMO = Path(__file__).parents[1] / "demo_generators"
@@ -50,3 +53,14 @@ async def test_without_the_sensor() -> None:
         watching = asyncio.create_task(automation.call("watch", seconds=1))
         await automation.advance_time(seconds=1)
         assert await watching == [None]
+
+
+async def test_a_second_watch_is_dropped() -> None:
+    """While watching, another Watch is refused (DROP), so only one loop reads at a time."""
+    async with AutomationHarness(DEMO, states={"sensor.temperature": "21.5"}) as automation:
+        first = asyncio.create_task(automation.call("watch", seconds=2))
+        await automation.clock.settle()
+        with pytest.raises(ActionDroppedError):
+            await automation.call("watch", seconds=2)
+        await automation.advance_time(seconds=2)
+        assert await first == [21.5, 21.5]

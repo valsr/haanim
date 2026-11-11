@@ -7,7 +7,11 @@ dashboard card through one object, `haa`.
 
 - Time, interval, cron, event and state triggers, with constraints
 - Actions with execution modes, timeouts and return values, callable as services
-- One sensor per automation, a management panel, and a `custom:haanim-card` the automation fills itself
+- A device per automation, with its status sensor and the sensors, switches, numbers, selects, buttons and text
+  entities the automation declares
+- Long-term statistics: read those of any entity, import past hours into the automation's own sensors
+- A management panel, and a `custom:haanim-card` the automation fills itself, with tables and graphs
+- Generators and async generators, as in Python
 - Hot reload of changed files
 - A test harness: test automations with `pytest`, without Home Assistant
 
