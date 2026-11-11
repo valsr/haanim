@@ -269,7 +269,7 @@ async def test_remove_device_drops_document_and_index(
     registry.store("b").reconcile([decl(switch_entity(), "boost")])
     await registry.flush()
     await registry.remove_device("a")
-    assert storage.peek("device.a") is None
+    assert "device.a" not in storage.keys(), "the document is removed, not saved as null"
     assert storage.peek("devices") == ["b"]
     assert registry.automation_ids() == ["b"]
     assert ("device_removed", "a", "") in sink.changes

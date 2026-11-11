@@ -743,6 +743,14 @@ class FakeStorage:
         self._documents[key] = json.dumps(data)
         self.saves.append(key)
 
+    async def remove(self, key: str) -> None:
+        """Remove the document saved under a key, if there is one."""
+        self._documents.pop(key, None)
+
+    def keys(self) -> list[str]:
+        """Return the keys documents are saved under, sorted."""
+        return sorted(self._documents)
+
     def peek(self, key: str) -> Any:
         """Return what is stored under a key without going through the event loop."""
         text = self._documents.get(key)

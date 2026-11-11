@@ -378,12 +378,6 @@ function renderImage(block, context, id) {
     );
 }
 
-/**
- * Render one content block.
- *
- * `context` has `states` (entity states by ID), `images` (loaded asset URLs), `history` (fetched entity
- * history by graph block ID) and `now`.
- */
 /** A cell of a table as text: booleans are a check and a cross, an empty cell nothing. */
 function tableCell(value) {
     if (value === null || value === undefined) return '';
@@ -427,6 +421,12 @@ function renderTable(block, open) {
     );
 }
 
+/**
+ * Render one content block.
+ *
+ * `context` has `states` (entity states by ID), `images` (loaded asset URLs), `history` (fetched entity
+ * history by graph block ID) and `now`.
+ */
 export function renderBlock(block, context = {}) {
     const id = escapeHtml(block.id);
     const open = `<div class="block block-${escapeHtml(block.type)}" data-block="${id}">`;

@@ -543,14 +543,19 @@ class AutomationManager:  # pylint: disable=too-many-public-methods
     ) -> None:
         """Run the hook of a declared entity for a command sent from Home Assistant.
 
-        A command to an automation that is not loaded is logged and does nothing.
+        A command to an automation that is not loaded, or for an entity it no longer
+        declares (a reload can drop one while Home Assistant sends it a command), is
+        logged and does nothing.
         """
         try:
             automation = self._automation(automation_id)
         except NonExistingAutomationError:
             _LOGGER.warning('"%s" ignored %s: automation is not running', object_id, command)
             return
-        await automation.entity_command(object_id, command, value, context)
+        try:
+            await automation.entity_command(object_id, command, value, context)
+        except KeyError:
+            _LOGGER.warning('"%s" ignored %s: the automation does not declare it', object_id, command)
 
     def automation_actions(self, automation_id: str) -> list[ActionDefinition]:
         """Return the actions of an automation; none while its code is not running.

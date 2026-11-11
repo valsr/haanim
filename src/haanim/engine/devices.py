@@ -416,7 +416,7 @@ class DeviceRegistry:
         if self._stores.pop(automation_id, None) is None and automation_id not in self._saved_index:
             return
         self._dirty.discard(automation_id)
-        await self._storage.save(device_key(automation_id), None)
+        await self._storage.remove(device_key(automation_id))
         await self._save_index()
         if self.sink is not None:
             self.sink.device_removed(automation_id)

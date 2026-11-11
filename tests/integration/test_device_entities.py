@@ -355,6 +355,17 @@ async def test_command_while_stopped_is_noop(
     assert '"boost" ignored turn_on: automation is not running' in caplog.text
 
 
+async def test_command_for_an_entity_no_longer_declared_is_ignored(
+    hass: HomeAssistant, setup: Setup, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A command that arrives for an entity a reload just dropped is logged and does nothing."""
+    manager = await setup({"heat": CONTROLS})
+    await manager.async_entity_command("heat", "gone", "turn_on")
+    await manager.async_entity_command("heat", "boost", "press")
+    assert '"gone" ignored turn_on: the automation does not declare it' in caplog.text
+    assert '"boost" ignored press: the automation does not declare it' in caplog.text
+
+
 # --- Final review fixes -----------------------------------------------------------
 
 KITCHEN = """

@@ -967,6 +967,15 @@ class TestStorageBackendContract:
         """Test a key nothing was saved under gives None."""
         assert await storage.load("enabled") is None
 
+    async def test_remove(self, storage: StorageBackend) -> None:
+        """Test a removed document is gone, and removing a key with no document does nothing."""
+        await storage.save("device.a", {"x": 1})
+        await storage.remove("device.a")
+        assert await storage.load("device.a") is None
+        await storage.remove("device.a")
+        await storage.save("device.a", [2])
+        assert await storage.load("device.a") == [2]
+
     @pytest.mark.parametrize(
         "document",
         [

@@ -290,6 +290,10 @@ class HAStorage:
         """Save a copy of a document."""
         await self._store(key).async_save(copy.deepcopy(data))
 
+    async def remove(self, key: str) -> None:
+        """Delete the document's file, if there is one."""
+        await self._store(key).async_remove()
+
 
 CardListener = Callable[[dict[str, Any]], None]
 

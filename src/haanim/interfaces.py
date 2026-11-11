@@ -371,6 +371,10 @@ class StorageBackend(Protocol):
         """
         ...
 
+    async def remove(self, key: str) -> None:
+        """Remove the document saved under a key, if there is one."""
+        ...
+
 
 class IssueReporter(Protocol):
     """Problems the owner has to fix, shown to them until they are fixed.

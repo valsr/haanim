@@ -8,6 +8,7 @@ collects the declared classes after ``main.py`` has run.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections.abc import Callable, Mapping
@@ -219,6 +220,9 @@ def _check_options(  # pylint: disable=too-many-branches
             or not all(isinstance(c, str) for c in choices)
         ):
             raise AutomationDefinitionError(f"{where}: options must be a non-empty list of strings")
+    _check_display(where, options)
+    if platform == EntityPlatform.TEXT:
+        _check_lengths(where, options)
     if platform == EntityPlatform.TEXT and OPTION_PATTERN in options:
         try:
             re.compile(options[OPTION_PATTERN])
@@ -226,6 +230,49 @@ def _check_options(  # pylint: disable=too-many-branches
             raise AutomationDefinitionError(
                 f"{where}: pattern is not a valid regular expression: {err}"
             ) from None
+
+
+def _whole(value: Any) -> bool:
+    """Return whether a value is a whole number (and not a bool)."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _check_display(where: str, options: Mapping[str, Any]) -> None:
+    """Raise AutomationDefinitionError unless the unit is text and the precision a whole number >= 0."""
+    unit = options.get(OPTION_UNIT)
+    if unit is not None and not isinstance(unit, str):
+        raise AutomationDefinitionError(f"{where}: unit must be text, not {unit!r}")
+    precision = options.get(OPTION_PRECISION)
+    if precision is not None and not (_whole(precision) and precision >= 0):
+        raise AutomationDefinitionError(
+            f"{where}: precision must be a whole number of 0 or more, not {precision!r}"
+        )
+
+
+def _check_lengths(where: str, options: Mapping[str, Any]) -> None:
+    """Raise AutomationDefinitionError unless a text's lengths are whole numbers from 0 to 255, in order."""
+    for name in (OPTION_MIN_LENGTH, OPTION_MAX_LENGTH):
+        value = options.get(name, 0)
+        if not (_whole(value) and TEXT_MIN_LENGTH <= value <= TEXT_MAX_LENGTH):
+            raise AutomationDefinitionError(
+                f"{where}: {name} must be a whole number from {TEXT_MIN_LENGTH} to {TEXT_MAX_LENGTH}, "
+                f"not {value!r}"
+            )
+    low = options.get(OPTION_MIN_LENGTH, TEXT_MIN_LENGTH)
+    high = options.get(OPTION_MAX_LENGTH, TEXT_MAX_LENGTH)
+    if low > high:
+        raise AutomationDefinitionError(f"{where}: min_length {low} is greater than max_length {high}")
+
+
+def _check_attributes(where: str, attributes: Any) -> dict[str, Any]:
+    """Return the declared attributes; raise AutomationDefinitionError unless they are JSON with text keys."""
+    if not isinstance(attributes, Mapping) or not all(isinstance(key, str) for key in attributes):
+        raise AutomationDefinitionError(f"{where}: attributes must be a dictionary with text keys")
+    try:
+        json.dumps(attributes)
+    except (TypeError, ValueError) as err:
+        raise AutomationDefinitionError(f"{where}: attributes must be JSON values: {err}") from None
+    return dict(attributes)
 
 
 def _number(value: Any, what: str) -> float:
@@ -351,7 +398,7 @@ def _entity_decorator(platform: str) -> Callable[..., Any]:
             name=str(common.get(OPTION_NAME) or cls.__name__.replace("_", " ")),
             icon=common.get(OPTION_ICON),
             options=options,
-            attributes=dict(common.get(OPTION_ATTRIBUTES) or {}),
+            attributes=_check_attributes(where, common.get(OPTION_ATTRIBUTES) or {}),
             initial=common.get(OPTION_INITIAL),
             action_mode=action_mode,
             cls=cls,

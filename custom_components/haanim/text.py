@@ -52,7 +52,7 @@ class DeclaredText(DeclaredEntity, TextEntity):
     @property
     def mode(self) -> TextMode:  # pyright: ignore[reportIncompatibleVariableOverride]
         """How the frontend shows the text."""
-        return TextMode(self.declaration.get(OPTION_MODE, EntityPlatform.TEXT))
+        return TextMode(self.declaration.get(OPTION_MODE, TextMode.TEXT))
 
     async def async_set_value(self, value: str) -> None:
         """Run the ``set_value`` hook."""
