@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypeVar
 
+import voluptuous as vol
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry
@@ -23,12 +24,18 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.sun import get_astral_event_next
 from homeassistant.util import dt as dt_util
 
+try:
+    from probatio.error import Invalid as _ProbatioInvalid
+except ImportError:  # pragma: no cover - Home Assistant before probatio
+    _ProbatioInvalid = vol.Invalid
+
 from custom_components.haanim.entities import HAEntitySink
 from custom_components.haanim.const import DOMAIN
 from custom_components.haanim.ha.assets import HAAssetSigner
 from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.ha.state import StateManager
 from custom_components.haanim.ha.statistics import HAStatistics
+from haanim.const import ResponseSupport
 from haanim.engine.errors import ServiceCallError
 from haanim.interfaces import Host
 from haanim.types import ServiceInfo
@@ -78,6 +85,9 @@ class HAServiceCaller:
                         name=name,
                         description=description.get("description", "") or "",
                         fields=dict(description.get("fields", {}) or {}),
+                        supports_response=ResponseSupport(
+                            self._hass.services.supports_response(domain, name).value
+                        ),
                     )
                 )
         return result
@@ -96,7 +106,8 @@ class HAServiceCaller:
         ``return_response`` for the others, and HAAnim's proxy always asks.
 
         Raises:
-            ServiceCallError: If Home Assistant reports the call as failed.
+            ServiceCallError: If Home Assistant reports the call as failed or the
+                service's schema refuses the data.
         """
         if return_response and self._hass.services.has_service(domain, service):
             return_response = (
@@ -110,7 +121,8 @@ class HAServiceCaller:
                 blocking=True,
                 return_response=return_response,
             )
-        except HomeAssistantError as err:
+        except (HomeAssistantError, vol.Invalid, _ProbatioInvalid) as err:
+            # Data the service's schema refuses raises the schema library's error.
             raise ServiceCallError(domain, service, str(err)) from err
         return response if isinstance(response, dict) else None
 

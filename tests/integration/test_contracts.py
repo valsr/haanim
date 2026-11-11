@@ -16,9 +16,10 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import pytest
+import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import issue_registry
+from homeassistant.helpers import config_validation as cv, issue_registry
 
 from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.const import DOMAIN
@@ -328,9 +329,14 @@ class RegisterService(Protocol):
         *,
         response: dict[str, Any] | None = None,
         fail: str | None = None,
-        responds: bool = True,
+        supports: str = "optional",
+        fields: list[str] | None = None,
     ) -> None:
-        """Register the service; ``fail`` makes calls to it fail with that reason, ``responds=False`` gives no response."""
+        """Register the service.
+
+        ``fail`` makes calls to it fail with that reason; ``supports`` is whether it responds
+        (``"none"``, ``"optional"``, ``"only"``); ``fields`` are the keys it accepts, besides targets.
+        """
 
 
 @dataclass
@@ -355,9 +361,16 @@ def service_setup(request: pytest.FixtureRequest, hass: HomeAssistant) -> Servic
             *,
             response: dict[str, Any] | None = None,
             fail: str | None = None,
-            responds: bool = True,
+            supports: str = "optional",
+            fields: list[str] | None = None,
         ) -> None:
-            fake.register(domain, service, response=response)
+            fake.register(
+                domain,
+                service,
+                response=None if supports == "none" else response,
+                supports_response=supports,
+                fields=dict.fromkeys(fields, {}) if fields else None,
+            )
             if fail is not None:
                 fake.fail(domain, service, fail)
 
@@ -371,7 +384,8 @@ def service_setup(request: pytest.FixtureRequest, hass: HomeAssistant) -> Servic
         *,
         response: dict[str, Any] | None = None,
         fail: str | None = None,
-        responds: bool = True,
+        supports: str = "optional",
+        fields: list[str] | None = None,
     ) -> None:
         async def handler(call: ServiceCall) -> dict[str, Any] | None:
             received.append(dict(call.data))
@@ -379,8 +393,10 @@ def service_setup(request: pytest.FixtureRequest, hass: HomeAssistant) -> Servic
                 raise HomeAssistantError(fail)
             return response if call.return_response else None
 
-        supports = SupportsResponse.OPTIONAL if responds else SupportsResponse.NONE
-        hass.services.async_register(domain, service, handler, supports_response=supports)
+        schema = cv.make_entity_service_schema({vol.Optional(name): object for name in fields}) if fields else None
+        hass.services.async_register(
+            domain, service, handler, schema=schema, supports_response=SupportsResponse(supports)
+        )
 
     return ServiceSetup(HAServiceCaller(hass), register_real, lambda: received)
 
@@ -425,7 +441,7 @@ class TestServiceCallerContract:
 
         HAAnim's proxy always asks for a response; most services (light.turn_on, notify, ...) have none.
         """
-        service_setup.register("contract", "do", responds=False)
+        service_setup.register("contract", "do", supports="none")
         result = await service_setup.caller.async_call("contract", "do", {"level": 3}, return_response=True)
         assert result is None
         assert service_setup.received() == [{"level": 3}]
@@ -437,6 +453,49 @@ class TestServiceCallerContract:
             await service_setup.caller.async_call("contract", "do")
         assert (exc_info.value.domain, exc_info.value.service) == ("contract", "do")
         assert "device offline" in exc_info.value.reason
+
+    def test_services_report_response_support(self, service_setup: ServiceSetup) -> None:
+        """Test services() says whether each service responds."""
+        for support in ("none", "optional", "only"):
+            service_setup.register("contract", support, response={"ok": True}, supports=support)
+        listed = {
+            info.name: info.supports_response
+            for info in service_setup.caller.services()
+            if info.domain == "contract"
+        }
+        assert listed == {"none": "none", "optional": "optional", "only": "only"}
+
+    @pytest.mark.parametrize(
+        ("support", "asked", "expected"),
+        [
+            ("none", True, None),
+            ("none", False, None),
+            ("optional", True, {"ok": True}),
+            ("optional", False, None),
+            ("only", True, {"ok": True}),
+        ],
+    )
+    async def test_response_by_support(
+        self, service_setup: ServiceSetup, support: str, asked: bool, expected: dict[str, Any] | None
+    ) -> None:
+        """Test what each kind of service returns, asked for a response or not."""
+        service_setup.register("contract", "do", response={"ok": True}, supports=support)
+        result = await service_setup.caller.async_call("contract", "do", {"level": 1}, return_response=asked)
+        assert result == expected
+        assert service_setup.received() == [{"level": 1}]
+
+    async def test_service_that_only_responds_must_be_asked(self, service_setup: ServiceSetup) -> None:
+        """Test a service that only responds fails when called without asking, and is not run."""
+        service_setup.register("contract", "do", response={"ok": True}, supports="only")
+        with pytest.raises(ServiceCallError):
+            await service_setup.caller.async_call("contract", "do", {"level": 1})
+
+    async def test_stray_key_is_refused(self, service_setup: ServiceSetup) -> None:
+        """Test a key the service does not accept fails the call; targets are always accepted."""
+        service_setup.register("contract", "do", supports="none", fields=["level"])
+        with pytest.raises(ServiceCallError, match="return_response"):
+            await service_setup.caller.async_call("contract", "do", {"level": 1, "return_response": True})
+        await service_setup.caller.async_call("contract", "do", {"level": 1, "entity_id": "light.hall"})
 
     async def test_missing_service_raises_service_call_error(self, service_setup: ServiceSetup) -> None:
         """Test calling a service that is not registered raises ServiceCallError."""

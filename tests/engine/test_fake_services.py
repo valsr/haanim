@@ -117,7 +117,7 @@ async def test_declared_fields_reject_other_keys() -> None:
     """As Home Assistant's schema does: a stray return_response field is refused."""
     services = FakeServiceCaller()
     services.register("recorder", "import_statistics", fields={"statistic_id": {}, "stats": {}})
-    with pytest.raises(ServiceCallError, match="extra keys not allowed: return_response"):
+    with pytest.raises(ServiceCallError, match="not a valid option: return_response"):
         await services.async_call(
             "recorder", "import_statistics", {"statistic_id": "sensor.x", "stats": [], "return_response": True}
         )

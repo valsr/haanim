@@ -86,7 +86,7 @@ class FakeServiceCaller:
         if key in self._failures:
             raise ServiceCallError(domain, service, self._failures[key])
         if info.fields and (extra := sorted(set(data) - set(info.fields) - TARGET_FIELDS)):
-            raise ServiceCallError(domain, service, f"extra keys not allowed: {', '.join(extra)}")
+            raise ServiceCallError(domain, service, f"not a valid option: {', '.join(extra)}")
         if info.supports_response is ResponseSupport.ONLY and not return_response:
             raise ServiceCallError(domain, service, "the service must be called asking for its response")
         response = await self._respond(key, data)
