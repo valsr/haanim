@@ -171,10 +171,14 @@ async def import_statistics(  # pylint: disable=too-many-locals
                 f"Home Assistant has not recorded {metadata.statistic_id} yet, so its live sum would not "
                 "continue from the imported one: import once it has been recorded for a few minutes"
             )
-        history = await provider.query(
-            metadata.statistic_id, EPOCH, last + HOUR, Period.HOUR, {STAT_SUM}, unit=metadata.unit
-        )
-        stored = [(row[STAT_START], row[STAT_SUM]) for row in history if row.get(STAT_SUM) is not None]
+        # The sum before the import continues it: look back a day, then a month, then everything
+        for since in (first - timedelta(days=1), first - timedelta(days=31), EPOCH):
+            history = await provider.query(
+                metadata.statistic_id, since, last + HOUR, Period.HOUR, {STAT_SUM}, unit=metadata.unit
+            )
+            stored = [(row[STAT_START], row[STAT_SUM]) for row in history if row.get(STAT_SUM) is not None]
+            if any(start < first for start, _ in stored):
+                break
         before = [total for start, total in stored if start < first]
         base = before[-1] if before else 0.0
         up_to_end = [total for start, total in stored if start <= last]

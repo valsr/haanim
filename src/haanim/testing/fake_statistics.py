@@ -38,6 +38,8 @@ class FakeStatistics:
         """Statistic IDs Home Assistant has not recorded live yet: sums cannot be imported into them."""
         self.query_units: list[str] = []
         """The units queries asked for, oldest first."""
+        self.queries: list[tuple[str, datetime, datetime]] = []
+        """The statistic ID, start and end of every query, oldest first."""
 
     async def has_short_term(self, statistic_id: str, start: datetime) -> bool:  # noqa: ARG002
         """Return whether the statistic is recorded live: unless it is in not_recorded."""
@@ -73,6 +75,7 @@ class FakeStatistics:
         """Return the rows of a period, oldest first; values are in the one unit they were stored in."""
         if unit is not None:
             self.query_units.append(unit)
+        self.queries.append((statistic_id, start, end))
         if period == Period.FIVE_MINUTES:
             return []
         stored = self.rows.get(statistic_id, [])

@@ -49,6 +49,22 @@ async def test_sums_continue_from_far_older_history(fake: FakeStatistics) -> Non
     assert sums(fake) == [100.0, 101.0]
 
 
+async def test_sums_read_only_recent_history(fake: FakeStatistics) -> None:
+    """With a stored sum shortly before the import, years of history are not read to find it."""
+    fake.rows["sensor.energy"] = [row(H(0) - timedelta(days=400), 1)] + [
+        row(H(0) - timedelta(hours=back), 100 - back) for back in range(48, 0, -1)
+    ]
+    await import_statistics(fake, SUM, [{"start": H(0), "usage": 1}], total_increasing=True, now=NOW)
+    assert sums(fake)[-1] == 100.0
+    assert [start for _, start, _ in fake.queries] == [H(0) - timedelta(days=1)]
+
+
+async def test_sums_continue_from_year_old_history(fake: FakeStatistics) -> None:
+    fake.rows["sensor.energy"] = [row(H(0) - timedelta(days=400), 50)]
+    await import_statistics(fake, SUM, [{"start": H(0), "usage": 1}], total_increasing=True, now=NOW)
+    assert sums(fake) == [50.0, 51.0]
+
+
 async def test_later_rows_are_shifted(fake: FakeStatistics) -> None:
     fake.rows["sensor.energy"] = [row(H(0), 10), row(H(1), 11), row(H(2), 12), row(H(3), 13)]
     rows = [{"start": H(1), "usage": 5}, {"start": H(2), "usage": 5}]
@@ -245,4 +261,4 @@ async def test_stored_rows_in_a_gap_get_the_running_sum(fake: FakeStatistics) ->
 async def test_base_is_read_in_the_declared_unit(fake: FakeStatistics) -> None:
     """The stored sums are asked for in the entity's declared unit."""
     await import_statistics(fake, SUM, [{"start": H(0), "usage": 1}], total_increasing=True, now=NOW)
-    assert fake.query_units == ["kWh"]
+    assert fake.query_units and set(fake.query_units) == {"kWh"}
