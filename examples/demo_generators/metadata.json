@@ -1,0 +1,6 @@
+{
+  "name": "Demo: generators",
+  "description": "Generators that compute a day of readings lazily, and an async generator that reads the temperature every second.",
+  "author": "HAAnim",
+  "version": "1.0.0"
+}

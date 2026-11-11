@@ -1,0 +1,6 @@
+{
+  "name": "Demo: statistics",
+  "description": "Long-term statistics of an entity: day by day for the last week or month by month for this year, in a table and a graph.",
+  "author": "HAAnim",
+  "version": "1.0.0"
+}
