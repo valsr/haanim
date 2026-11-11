@@ -55,15 +55,14 @@ from haanim.testing.fakes import (
     FakeClock,
     FakeEntitySink,
     FakeEventBus,
-    FakeServiceCaller,
     FakeStateProvider,
     FakeStatistics,
     FakeStorage,
     FakeSunProvider,
     LocalFileSystem,
-    ServiceCallRecord,
     make_host,
 )
+from haanim.testing.fake_services import AlwaysThereServices, ServiceCallRecord
 from haanim.types import EventData
 
 __all__ = ["AutomationCall", "AutomationHarness", "HarnessCard", "HarnessError"]
@@ -137,44 +136,6 @@ class HarnessCard:
             if block["id"] == block_id:
                 return block
         raise KeyError(block_id)
-
-
-class _Services(FakeServiceCaller):
-    """Services that all exist unless a test says one is missing."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._missing: set[tuple[str, str]] = set()
-
-    def has_service(self, domain: str, service: str) -> bool:
-        """Return whether the service exists: every one does that was not marked missing."""
-        return (domain, service) not in self._missing
-
-    async def async_call(
-        self,
-        domain: str,
-        service: str,
-        data: dict[str, Any] | None = None,
-        *,
-        return_response: bool = False,
-    ) -> dict[str, Any] | None:
-        """Record the call; a service nobody stubbed succeeds without a response."""
-        key = (domain, service)
-        if key not in self._missing and key not in self._services:
-            self.register(domain, service)
-        return await super().async_call(domain, service, data, return_response=return_response)
-
-    def remove(self, domain: str, service: str) -> None:
-        """Make a service not exist."""
-        key = (domain, service)
-        self._missing.add(key)
-        self._services.pop(key, None)
-        self._responses.pop(key, None)
-        self._failures.pop(key, None)
-
-    def restore(self, domain: str, service: str) -> None:
-        """Make a service exist again."""
-        self._missing.discard((domain, service))
 
 
 class _Files(LocalFileSystem):
@@ -316,7 +277,7 @@ class AutomationHarness:  # pylint: disable=too-many-instance-attributes,too-man
         self._initial_variables = dict(variables) if variables is not None else None
         started_at = _start_time(now, time_zone)
         self.clock = FakeClock(started_at)
-        self._services = _Services()
+        self._services = AlwaysThereServices()
         self._sun = FakeSunProvider(sunrise, sunset)
         self._storage = FakeStorage()
         self._cards = FakeCardSink()

@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from haanim.engine.errors import NonExistingAutomationError, ServiceCallError
+from haanim.engine.errors import NonExistingAutomationError
 from haanim.interfaces import (
     AssetSigner,
     AutomationTimes,
@@ -28,8 +28,9 @@ from haanim.interfaces import (
     StatisticsProvider,
     StorageBackend,
 )
+from haanim.testing.fake_services import FakeServiceCaller, ServiceCallRecord
 from haanim.testing.fake_statistics import FakeStatistics
-from haanim.types import EventData, ServiceInfo, StateChangedEvent, StateVal
+from haanim.types import EventData, StateChangedEvent, StateVal
 
 if TYPE_CHECKING:
     from haanim.engine.automation_context import AutomationContext
@@ -445,106 +446,6 @@ class FakeEventBus:
     def fired_types(self) -> list[str]:
         """Return the type of every fired event, oldest first."""
         return [event.event_type for event in self.fired]
-
-
-@dataclass(frozen=True)
-class ServiceCallRecord:
-    """One service call made through a FakeServiceCaller.
-
-    Args:
-        domain: Service domain.
-        service: Service name.
-        data: Data passed to the call.
-        return_response: Whether the caller asked for response data.
-    """
-
-    domain: str
-    service: str
-    data: dict[str, Any] = field(default_factory=dict)
-    return_response: bool = False
-
-
-class FakeServiceCaller:
-    """Services held in memory, recording every call."""
-
-    def __init__(self) -> None:
-        """Initialize with no services registered."""
-        self._services: dict[tuple[str, str], ServiceInfo] = {}
-        self._responses: dict[tuple[str, str], dict[str, Any] | None] = {}
-        self._failures: dict[tuple[str, str], str] = {}
-        self.calls: list[ServiceCallRecord] = []
-        """Every call made, oldest first, including calls that failed."""
-
-    # --- ServiceCaller protocol -------------------------------------------------
-
-    def has_service(self, domain: str, service: str) -> bool:
-        """Return whether the service is registered."""
-        return (domain, service) in self._services
-
-    def services(self) -> list[ServiceInfo]:
-        """Return a description of every registered service."""
-        return list(self._services.values())
-
-    async def async_call(
-        self,
-        domain: str,
-        service: str,
-        data: dict[str, Any] | None = None,
-        *,
-        return_response: bool = False,
-    ) -> dict[str, Any] | None:
-        """Record the call and return the stubbed response.
-
-        Raises:
-            ServiceCallError: If the service is not registered or was set to fail.
-        """
-        key = (domain, service)
-        self.calls.append(ServiceCallRecord(domain, service, dict(data or {}), return_response))
-        if key not in self._services:
-            raise ServiceCallError(domain, service, "service not found")
-        if key in self._failures:
-            raise ServiceCallError(domain, service, self._failures[key])
-        return self._responses.get(key) if return_response else None
-
-    # --- Test controls ----------------------------------------------------------
-
-    def register(
-        self,
-        domain: str,
-        service: str,
-        *,
-        description: str = "",
-        fields: dict[str, Any] | None = None,
-        response: dict[str, Any] | None = None,
-    ) -> None:
-        """Register a service, replacing any previous registration.
-
-        Args:
-            domain: Service domain.
-            service: Service name.
-            description: Description reported by ``services()``.
-            fields: Parameter details reported by ``services()``.
-            response: Response data returned to callers that ask for it.
-        """
-        key = (domain, service)
-        self._services[key] = ServiceInfo(domain, service, description, dict(fields or {}))
-        self._responses[key] = response
-        self._failures.pop(key, None)
-
-    def fail(self, domain: str, service: str, reason: str = "failed") -> None:
-        """Make calls to a registered service raise ``ServiceCallError``.
-
-        Raises:
-            KeyError: If the service is not registered.
-        """
-        key = (domain, service)
-        if key not in self._services:
-            raise KeyError(f"{domain}.{service} is not registered")
-        self._failures[key] = reason
-
-    def calls_to(self, domain: str, service: str) -> list[ServiceCallRecord]:
-        """Return the calls made to one service, oldest first."""
-        return [call for call in self.calls if (call.domain, call.service) == (domain, service)]
 
 
 class FakeSunProvider:
