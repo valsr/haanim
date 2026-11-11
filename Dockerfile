@@ -1,4 +1,4 @@
-FROM docker.io/homeassistant/home-assistant:2026.11.1
+FROM docker.io/homeassistant/home-assistant:2026.11
 
 # Set environment variables
 ENV TZ=America/Toronto

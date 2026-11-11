@@ -45,7 +45,7 @@ can. Only install automations you trust.
 
 ## Installation
 
-HAAnim needs Home Assistant 2026.9 or newer.
+HAAnim needs Home Assistant 2026.11 or newer.
 
 1. Install the integration with HACS: **HACS → ⋮ → Custom repositories**, add
    `https://github.com/valsr/haanim` as an **Integration**, then download HAAnim.
@@ -104,7 +104,7 @@ types for `from haanim import ...`, and the test harness. It is not needed in Ho
 pip install haanim pytest pytest-asyncio
 ```
 
-The package needs Python 3.14, the Python that Home Assistant 2026.9 runs on.
+The package needs Python 3.14, the Python that Home Assistant 2026.11 runs on.
 
 ```python
 from haanim.testing import AutomationHarness
@@ -168,14 +168,14 @@ uv run python scripts/build-integration.py    # dist/haanim.zip: what a GitHub r
 
 The repository:
 
-| Path                        | What is there                                                              |
-| --------------------------- | -------------------------------------------------------------------------- |
+| Path                        | What is there                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------- |
 | `src/haanim/`               | The engine: interpreter, triggers, dispatcher, `haa`. No Home Assistant imports |
-| `src/haanim/testing/`       | The test harness and the fakes it is built on                              |
-| `custom_components/haanim/` | The integration: entity, services, options, websocket commands, frontend   |
-| `examples/`                 | Example automations and their harness tests                                |
-| `tests/`                    | `engine/` (no Home Assistant), `integration/`, `frontend/`                 |
-| `docs/`                     | The documentation (built with MkDocs) and notes on the development environment |
+| `src/haanim/testing/`       | The test harness and the fakes it is built on                                   |
+| `custom_components/haanim/` | The integration: entity, services, options, websocket commands, frontend        |
+| `examples/`                 | Example automations and their harness tests                                     |
+| `tests/`                    | `engine/` (no Home Assistant), `integration/`, `frontend/`                      |
+| `docs/`                     | The documentation (built with MkDocs) and notes on the development environment  |
 
 See [CONTRIBUTING.md](https://github.com/valsr/haanim/blob/main/CONTRIBUTING.md) before sending a pull request.
 

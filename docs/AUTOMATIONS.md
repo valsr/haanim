@@ -255,8 +255,8 @@ forecast = await haa.service.weather.get_forecasts(entity_id="weather.home", typ
 print(forecast.response_data)
 ```
 
-A service's response, if it gives one, is always in `response_data` (an empty dictionary otherwise); do not pass
-`return_response`, which would reach the service as one of its fields.
+A service's response, if it gives one, is always in `response_data` (an empty dictionary otherwise). Passing
+`return_response` raises `TypeError`: it would reach the service as one of its fields.
 
 A service that does not exist raises `NonExistingServiceError`. A call that fails does not raise: the result
 has `success` set to `False` and the reason in `error`.
@@ -775,7 +775,7 @@ async def test_morning_routine_only_when_home():
 | Wait for the automation to finish reacting  | `await wait_idle()`; a long calculation: `wait_idle(max_steps=5_000_000)` |
 | Call actions                                | `await call("name", level=3)`, with `caller=` or `source="trigger"` |
 | See what it did                             | `service_calls()`, `events()`, `logs()`, `message`, `state`, `variables`, `last_error` |
-| Decide what services do                     | `stub_service("weather.get_forecasts", response={...})`, `success=False`, `remove_service` |
+| Decide what services do                     | `stub_service("weather.get_forecasts", response={...})`, `success=False`, `fields=[...]`, `remove_service` |
 | Stand in for other automations              | `stub_automation("notifications", send_message="sent")`, `automation_calls()` |
 | Check the card and press its buttons        | `card.title`, `card.blocks`, `card.block(id)`, `card.layout`, `await press(id)` |
 | Drive the lifecycle                         | `start=False`, then `load()`, `start()`, `stop()`, `reload()`   |
@@ -783,6 +783,28 @@ async def test_morning_routine_only_when_home():
 | Provide assets and stored variables         | `assets={"logo.png": b"..."}`, `variables={"count": 3}`         |
 | Provide and read long-term statistics       | `statistics={"sensor.grid": [rows]}`, `statistics("sensor.haanim_x_energy")` |
 | Operate the device's entities               | `entity("boost").state`, `entities`, `await command("boost", "turn_on")`, `entities={"boost": True}` |
+
+Services behave as in Home Assistant. A service stubbed without a response gives none, as most services; one
+with `response=` gives it when asked, and `supports_response="only"` makes it fail unless asked. With
+`fields=["statistic_id", "stats"]` a call with any other key fails, as the service's schema refuses it
+(`entity_id` and the other targets are always accepted). A response that depends on the call is a function
+of its data:
+
+```python
+from haanim.testing import AutomationHarness
+
+ROWS = [{"start": "2025-01", "sum": 10}, {"start": "2025-02", "sum": 20}]
+
+def window(start, end, **_):
+    return {"rows": [row for row in ROWS if start <= row["start"] < end]}
+
+async def test_monthly_totals():
+    async with AutomationHarness("my_automation") as harness:
+        harness.stub_service("recorder.get_statistics", response=window)
+        ...
+```
+
+A function that raises makes the call fail with its message.
 
 Time stands still in the harness until the test advances it, so a test of "five minutes later" takes
 milliseconds. The clock runs in `time_zone` (UTC by default), and starts on Monday 2025-01-06 at noon unless

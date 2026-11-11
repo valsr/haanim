@@ -39,6 +39,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a trigger, an entity command or `@shutdown` ran that fails now fails the test (`expect_failures=True` to
   collect failures in `failures` instead); and an automation's `from .package import module` works, with or
   without `__init__.py`.
+- Test harness: services behave as in Home Assistant. One stubbed without a response gives none even when asked
+  (`supports_response="optional"` or `"only"` says otherwise); `stub_service(..., fields=[...])` refuses other
+  keys, as the service's schema does; and `response=` may be a function of the call's data, for answers that
+  depend on the call. The contract tests cover services that give no response.
+- `return_response=` passed to a service call raises `TypeError`: it reached the service as a field, which the
+  service refused.
+- A service call whose data the service's schema refuses gives a failed result with the reason; it was reported
+  as an unexpected error.
 - `except StopIteration` in automation code caught nothing: Python turned it into `RuntimeError` on its way
   through the interpreter. It now behaves as in Python.
 - Automation code run synchronously by Python code (a `key=` function of `sorted`, a generator pulled by `any`)
@@ -67,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2026-10-06
 
 The first published release: the integration is installable with HACS and the `haanim` package is on PyPI.
-It needs Home Assistant 2026.9 or newer; the package needs Python 3.14.
+It needs Home Assistant 2026.11 or newer; the package needs Python 3.14.
 
 ### Added
 
