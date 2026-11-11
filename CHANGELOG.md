@@ -43,6 +43,9 @@ It needs Home Assistant 2026.10 or newer.
 
 ### Fixed
 
+- After the integration was reloaded (an option changed), open cards and the panel's log stopped updating
+  until the page was reopened, and a panel whose subscription failed showed "Loading…" for good. They now
+  subscribe again on their own.
 - Test harness: `time_zone=` sets the zone the automation runs in even without `now=` (it was UTC); an action
   a trigger, an entity command or `@shutdown` ran that fails now fails the test (`expect_failures=True` to
   collect failures in `failures` instead); and an automation's `from .package import module` works, with or

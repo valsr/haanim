@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import probatio as vol
@@ -31,10 +32,46 @@ from custom_components.haanim.log_buffer import AutomationLogBuffer, entry_item
 from custom_components.haanim.log_levels import AutomationLogLevels
 from custom_components.haanim.options import option_values
 
+SUBSCRIPTIONS = f"{DOMAIN}_subscriptions"
+"""Key in ``hass.data``: the live subscriptions, ended when the integration unloads."""
+
 ERR_NOT_FOUND = "not_found"
 ERR_NOT_READY = "not_ready"
 ERR_DECLARED = "declared"
 ERR_LEFTOVER = "leftover"
+
+
+def _track(
+    hass: HomeAssistant, connection: ActiveConnection, msg_id: int, unsubscribe: Callable[[], None]
+) -> None:
+    """Keep a subscription, so the integration can end it when it unloads."""
+    tracked: dict[tuple[int, int], tuple[ActiveConnection, Callable[[], None]]] = hass.data.setdefault(
+        SUBSCRIPTIONS, {}
+    )
+    key = (id(connection), msg_id)
+    tracked[key] = (connection, unsubscribe)
+
+    @callback
+    def end() -> None:
+        tracked.pop(key, None)
+        unsubscribe()
+
+    connection.subscriptions[msg_id] = end
+
+
+@callback
+def async_end_subscriptions(hass: HomeAssistant) -> None:
+    """End every subscription with an ``{"ended": true}`` event: what it follows is going away.
+
+    The panel and the card subscribe again, and get what the reloaded integration has.
+    """
+    tracked: dict[tuple[int, int], tuple[ActiveConnection, Callable[[], None]]] = hass.data.pop(
+        SUBSCRIPTIONS, {}
+    )
+    for (_, msg_id), (connection, unsubscribe) in tracked.items():
+        unsubscribe()
+        connection.subscriptions.pop(msg_id, None)
+        connection.send_message(event_message(msg_id, {"ended": True}))
 
 
 def _entities(hass: HomeAssistant, manager: AutomationManager, automation_id: str) -> dict[str, Any]:
@@ -163,7 +200,7 @@ async def ws_subscribe_card(hass: HomeAssistant, connection: ActiveConnection, m
     def forward(content: dict[str, Any]) -> None:
         connection.send_message(event_message(msg["id"], content))
 
-    connection.subscriptions[msg["id"]] = sink.subscribe(msg["automation_id"], forward)
+    _track(hass, connection, msg["id"], sink.subscribe(msg["automation_id"], forward))
     connection.send_result(msg["id"])
     forward(sink.content(msg["automation_id"]))
 
@@ -183,7 +220,7 @@ async def ws_subscribe_logs(hass: HomeAssistant, connection: ActiveConnection, m
     def forward(change: dict[str, Any]) -> None:
         connection.send_message(event_message(msg["id"], change))
 
-    connection.subscriptions[msg["id"]] = buffer.subscribe(msg["automation_id"], forward)
+    _track(hass, connection, msg["id"], buffer.subscribe(msg["automation_id"], forward))
     connection.send_result(msg["id"])
     # The frontend's subscription helper only passes events on, so the kept records go as the first event
     connection.send_message(event_message(msg["id"], {"records": buffer.records(msg["automation_id"])}))
@@ -226,7 +263,7 @@ async def ws_subscribe_entities(
     def forward() -> None:
         connection.send_message(event_message(msg["id"], _entities(hass, manager, automation_id)))
 
-    connection.subscriptions[msg["id"]] = sink.subscribe(automation_id, forward)
+    _track(hass, connection, msg["id"], sink.subscribe(automation_id, forward))
     connection.send_result(msg["id"])
     forward()
 

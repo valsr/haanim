@@ -282,6 +282,11 @@ export class HAAnimCard extends HTMLElement {
     }
 
     _onCard(message) {
+        if (message.ended) {
+            // The integration is being reloaded: keep what is shown, and subscribe again at the next update
+            this._stop();
+            return;
+        }
         this._blocks = message.blocks || [];
         this._title = message.title || null;
         this._options = message.options || null;

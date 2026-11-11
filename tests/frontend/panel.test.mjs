@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { describe, mock, test } from 'node:test';
 
 import { FakeHass, clicked, installDom, settle } from './fake-dom.mjs';
 
@@ -334,6 +334,7 @@ describe('haanim-panel', () => {
         panel.hass = hass;
         await settle();
         assert.match(header.innerHTML, /Climate/);
+        panel.disconnectedCallback(); // it would try again every two seconds while the page is open
     });
 
     test('the configuration tab shows the version and the options', async () => {
@@ -458,6 +459,66 @@ describe('haanim-panel', () => {
         panel.dispatched = [];
         panel.shadowRoot.fire('click', clicked({ 'more-info': 'sensor.haanim_climate_old' }));
         assert.deepEqual(panel.dispatched.map((event) => [event.type, event.detail]), [['hass-more-info', { entityId: 'sensor.haanim_climate_old' }]]);
+    });
+
+    test('ended subscriptions are followed again a moment later: the integration was reloaded', async () => {
+        mock.timers.enable({ apis: ['setTimeout'] });
+        try {
+            const { hass, parts } = await opened('/automation/climate/entities');
+            hass.push('haanim/entities/subscribe', { device_id: null, entities: [] });
+            hass.push('haanim/entities/subscribe', { ended: true });
+            hass.push('haanim/logs/subscribe', { ended: true });
+            await settle();
+            assert.equal(hass.active('haanim/entities/subscribe').length, 0);
+            assert.equal(hass.active('haanim/logs/subscribe').length, 0);
+            assert.doesNotMatch(parts['detail-entities'].innerHTML, /Loading/, 'what was shown stays until the new one');
+            mock.timers.tick(2000);
+            await settle();
+            assert.equal(hass.active('haanim/entities/subscribe').length, 1);
+            assert.equal(hass.active('haanim/logs/subscribe').length, 1);
+        } finally {
+            mock.timers.reset();
+        }
+    });
+
+    test('a subscription that fails is tried again until it works', async () => {
+        mock.timers.enable({ apis: ['setTimeout'] });
+        try {
+            const hass = new FakeHass(states());
+            hass.failSubscribe = new Error('not ready');
+            hass.answers['haanim/automations/get'] = detail;
+            const panel = new HAAnimPanel();
+            for (const id of DETAIL_IDS) panel.shadowRoot.stub(id);
+            panel.shadowRoot.stub('detail-card', { setConfig() {} });
+            panel.route = { prefix: '/haanim', path: '/automation/climate/entities' };
+            panel.hass = hass;
+            await settle();
+            mock.timers.tick(2000);
+            await settle();
+            assert.equal(hass.subscriptions.length, 0);
+            hass.failSubscribe = null;
+            mock.timers.tick(2000);
+            await settle();
+            assert.equal(hass.active('haanim/entities/subscribe').length, 1);
+            assert.equal(hass.active('haanim/logs/subscribe').length, 1);
+        } finally {
+            mock.timers.reset();
+        }
+    });
+
+    test('leaving the page cancels following again', async () => {
+        mock.timers.enable({ apis: ['setTimeout'] });
+        try {
+            const { panel, hass } = await opened('/automation/climate/entities');
+            hass.push('haanim/entities/subscribe', { ended: true });
+            panel.route = { prefix: '/haanim', path: '' };
+            await settle();
+            mock.timers.tick(2000);
+            await settle();
+            assert.equal(hass.active('haanim/entities/subscribe').length, 0);
+        } finally {
+            mock.timers.reset();
+        }
     });
 
     test('leaving the page stops following the entities', async () => {

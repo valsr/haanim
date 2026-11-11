@@ -30,7 +30,7 @@ from custom_components.haanim.automation_manager import AutomationManager
 from custom_components.haanim.log_buffer import AutomationLogBuffer
 from custom_components.haanim.log_levels import AutomationLogLevels
 from custom_components.haanim.options import engine_options
-from custom_components.haanim.websocket import async_register_websocket
+from custom_components.haanim.websocket import async_end_subscriptions, async_register_websocket
 from haanim.engine.triggers import TriggerManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -258,6 +258,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
     # Get managers
     data = hass.data[DOMAIN].get(entry.entry_id, {})
+
+    # The panel and the cards subscribe again once the integration is back
+    async_end_subscriptions(hass)
 
     # Stop and unload the automations first, while triggers and services still work
     if "manager" in data:

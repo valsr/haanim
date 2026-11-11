@@ -33,6 +33,8 @@ import {
 } from './haanim-render.js';
 
 const DOMAIN = 'haanim';
+/** How long the panel waits before it subscribes again: after an ended subscription or a failed one. */
+const RESUBSCRIBE_MS = 2000;
 
 const STYLES = `
     :host { display: block; min-height: 100vh; background: var(--primary-background-color); }
@@ -156,6 +158,19 @@ export class HAAnimPanel extends HTMLElement {
     disconnectedCallback() {
         this._stopLog();
         this._stopEntities();
+        clearTimeout(this._retryLog);
+        clearTimeout(this._retryEntities);
+    }
+
+    /**
+     * Follow again a moment later, if the same page is still open: the subscription ended (the integration
+     * was reloaded) or could not start (it is not set up yet).
+     */
+    _followAgain(view, timer, follow) {
+        clearTimeout(this[timer]);
+        this[timer] = setTimeout(() => {
+            if (view === this._view) follow.call(this);
+        }, RESUBSCRIBE_MS);
     }
 
     /** What the pages depend on: the state, the flags and the message of every automation entity. */
@@ -239,6 +254,7 @@ export class HAAnimPanel extends HTMLElement {
             }
         } catch (error) {
             this._unsubscribeEntities = null;
+            this._followAgain(view, '_retryEntities', this._followEntities);
         }
     }
 
@@ -254,6 +270,11 @@ export class HAAnimPanel extends HTMLElement {
 
     _onEntities(view, message) {
         if (view !== this._view) return;
+        if (message.ended) {
+            this._stopEntities();
+            this._followAgain(view, '_retryEntities', this._followEntities);
+            return;
+        }
         this._entities = message;
         this._fill('detail-entities', renderEntities(this._entities));
     }
@@ -286,6 +307,7 @@ export class HAAnimPanel extends HTMLElement {
             }
         } catch (error) {
             this._unsubscribeLog = null;
+            this._followAgain(view, '_retryLog', this._followLog);
         }
     }
 
@@ -301,6 +323,11 @@ export class HAAnimPanel extends HTMLElement {
 
     _onLog(view, message) {
         if (view !== this._view) return;
+        if (message.ended) {
+            this._stopLog();
+            this._followAgain(view, '_retryLog', this._followLog);
+            return;
+        }
         if (message.records) {
             this._records = message.records.slice(-MAX_LOG_RECORDS);
         } else if (message.record) {

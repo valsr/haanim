@@ -96,6 +96,18 @@ describe('haanim-card', () => {
         assert.equal(card.hass, hass);
     });
 
+    test('an ended subscription keeps the card, and subscribes again when Home Assistant next updates', async () => {
+        const { card, hass } = await mounted();
+        hass.push('haanim/card/subscribe', { blocks: [], title: 'Climate: 1 alert' });
+        hass.push('haanim/card/subscribe', { ended: true });
+        await settle();
+        assert.equal(hass.active('haanim/card/subscribe').length, 0);
+        assert.match(card.shadowRoot.innerHTML, /Climate: 1 alert/);
+        card.hass = hass;
+        await settle();
+        assert.equal(hass.active('haanim/card/subscribe').length, 1);
+    });
+
     test('has no controls at the top, and draws neither the actions nor the log', async () => {
         const { card } = await mounted();
         assert.doesNotMatch(card.shadowRoot.innerHTML, /data-haanim="(enable|disable|start|stop|restart)"/);
