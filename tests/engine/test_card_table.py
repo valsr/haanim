@@ -71,6 +71,8 @@ def test_rows_are_copies(card: HAAnimCard) -> None:  # noqa: F811
         ({"rows": [["Kitchen", 1, 2]] * (MAX_TABLE_ROWS + 1)}, ValueError, "rows"),
         ({"units": ["", "°C"]}, ValueError, "units"),
         ({"rows": "Kitchen"}, TypeError, "rows"),
+        ({"columns": "Room"}, TypeError, "columns must be a list"),
+        ({"columns": 3}, TypeError, "columns must be a list"),
     ],
 )
 def test_invalid(
@@ -94,6 +96,14 @@ def test_add_row_with_limit_drops_the_oldest(card: HAAnimCard) -> None:  # noqa:
     for n in range(5):
         element.add_row([n], limit=3)
     assert element.rows == [[2], [3], [4]]
+
+
+@pytest.mark.parametrize("limit", [0, -1])
+def test_add_row_with_a_limit_below_one_is_refused(card: HAAnimCard, limit: int) -> None:  # noqa: F811
+    element = card.create_table("log", columns=["N"], rows=[[1]])
+    with pytest.raises(ValueError, match="limit must be at least 1"):
+        element.add_row([2], limit=limit)
+    assert element.rows == [[1]], "nothing is added"
 
 
 def test_add_row_beyond_the_maximum_is_refused(card: HAAnimCard) -> None:  # noqa: F811

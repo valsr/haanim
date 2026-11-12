@@ -16,6 +16,9 @@ classes and decorators, so editors and type checkers see the real signatures.
 for type checking only.
 """
 
+# __all__ re-exports the constants by name, so it repeats part of haanim.const.__all__ on purpose
+# pylint: disable=duplicate-code
+
 from typing import TYPE_CHECKING, Any
 
 from haanim.const import (
