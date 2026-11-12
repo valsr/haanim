@@ -43,7 +43,6 @@ STORAGE_VERSION = 1
 __all__ = ["HAClock", "HAFileSystem", "HAServiceCaller", "HASunProvider", "build_host"]
 
 
-
 def _call_errors() -> tuple[type[Exception], ...]:
     """Return what a failed service call raises: Home Assistant's error, or a refusing schema's.
 

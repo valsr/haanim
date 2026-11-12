@@ -16,7 +16,9 @@ from tests.integration.test_device_entities import (  # noqa: F401  pylint: disa
 
 async def subscribe(client: Any, message_id: int, kind: str, automation_id: str) -> None:
     """Subscribe, check the answer, and read the first event."""
-    await client.send_json({"id": message_id, "type": f"haanim/{kind}/subscribe", "automation_id": automation_id})
+    await client.send_json(
+        {"id": message_id, "type": f"haanim/{kind}/subscribe", "automation_id": automation_id}
+    )
     answer = await client.receive_json()
     assert answer["success"] is True, answer
     await client.receive_json()

@@ -42,7 +42,9 @@ async def test_a_service_without_responses_returns_none_when_asked() -> None:
 
 async def test_a_service_that_only_responds_must_be_asked() -> None:
     services = FakeServiceCaller()
-    services.register("weather", "get_forecast", response={"ok": True}, supports_response=ResponseSupport.ONLY)
+    services.register(
+        "weather", "get_forecast", response={"ok": True}, supports_response=ResponseSupport.ONLY
+    )
     with pytest.raises(ServiceCallError, match="must be called asking for its response"):
         await services.async_call("weather", "get_forecast", {})
     assert await services.async_call("weather", "get_forecast", {}, return_response=True) == {"ok": True}
@@ -70,7 +72,10 @@ async def test_a_function_computes_the_response_from_the_call() -> None:
     services = FakeServiceCaller()
     services.register("recorder", "get_statistics", response=window)
     result = await services.async_call(
-        "recorder", "get_statistics", {"start": "2025-01", "end": "2025-02", "period": "month"}, return_response=True
+        "recorder",
+        "get_statistics",
+        {"start": "2025-01", "end": "2025-02", "period": "month"},
+        return_response=True,
     )
     assert result == {"rows": ["2025-01", "2025-02"]}
     assert describe(services, "get_statistics") is ResponseSupport.OPTIONAL
@@ -119,7 +124,9 @@ async def test_declared_fields_reject_other_keys() -> None:
     services.register("recorder", "import_statistics", fields={"statistic_id": {}, "stats": {}})
     with pytest.raises(ServiceCallError, match="not a valid option: return_response"):
         await services.async_call(
-            "recorder", "import_statistics", {"statistic_id": "sensor.x", "stats": [], "return_response": True}
+            "recorder",
+            "import_statistics",
+            {"statistic_id": "sensor.x", "stats": [], "return_response": True},
         )
     await services.async_call("recorder", "import_statistics", {"statistic_id": "sensor.x", "stats": []})
 
@@ -127,7 +134,9 @@ async def test_declared_fields_reject_other_keys() -> None:
 async def test_targets_are_always_allowed() -> None:
     services = FakeServiceCaller()
     services.register("light", "turn_on", fields={"brightness": {}})
-    await services.async_call("light", "turn_on", {"entity_id": "light.hall", "area_id": "hall", "brightness": 3})
+    await services.async_call(
+        "light", "turn_on", {"entity_id": "light.hall", "area_id": "hall", "brightness": 3}
+    )
 
 
 async def test_without_declared_fields_any_key_is_accepted() -> None:

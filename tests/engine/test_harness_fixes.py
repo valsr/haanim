@@ -260,4 +260,6 @@ async def test_a_service_without_responses_cannot_be_given_one(tmp_path: Path) -
     folder = automation(tmp_path, {"main.py": SERVICES})
     async with AutomationHarness(folder) as harness:
         with pytest.raises(ValueError, match="gives no response"):
-            harness.stub_service("recorder.import_statistics", response={"ok": True}, supports_response="none")
+            harness.stub_service(
+                "recorder.import_statistics", response={"ok": True}, supports_response="none"
+            )

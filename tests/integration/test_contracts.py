@@ -393,7 +393,9 @@ def service_setup(request: pytest.FixtureRequest, hass: HomeAssistant) -> Servic
                 raise HomeAssistantError(fail)
             return response if call.return_response else None
 
-        schema = cv.make_entity_service_schema({vol.Optional(name): object for name in fields}) if fields else None
+        schema = (
+            cv.make_entity_service_schema({vol.Optional(name): object for name in fields}) if fields else None
+        )
         hass.services.async_register(
             domain, service, handler, schema=schema, supports_response=SupportsResponse(supports)
         )
