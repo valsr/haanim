@@ -4,18 +4,26 @@ from __future__ import annotations
 
 import ast
 import inspect
+import logging
 import types
-from collections.abc import Callable, Coroutine, Generator
+import weakref
+from collections.abc import AsyncGenerator, Callable, Coroutine, Generator
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from haanim.engine.symbol_table import SCOPE_FUNCTION, SymbolTable
+from haanim.engine.validation import yields_in
 
 if TYPE_CHECKING:
     from haanim.engine.ast_evaluator import AstEvaluator
 
 # How long a function called from outside the interpreter may run before a warning is logged.
 NATIVE_CALL_WARNING_SECONDS = 1.0
+
+# A synchronous run of automation code that goes on longer than this is stopped: it blocks the host.
+# The step limit also stops it when the clock does not move (in tests).
+NATIVE_CALL_LIMIT_SECONDS = 10.0
+NATIVE_CALL_STEP_LIMIT = 5_000_000
 
 # Attribute of the Python function that holds the EvalFunction it belongs to.
 FUNCTION_ATTRIBUTE = "__haanim_function__"
@@ -46,21 +54,310 @@ class Checkpoint:
     """Awaitable that gives the event loop one turn.
 
     This is where an action can be suspended, cancelled or timed out without
-    an ``await`` in the automation's code.
+    an ``await`` in the automation's code. It counts how often it was passed:
+    the test harness tells a computing action from a waiting one by it.
     """
+
+    def __init__(self) -> None:
+        """Initialize with nothing passed."""
+        self.passed = 0
 
     def __await__(self) -> Generator[None]:
         """Yield to whatever is running the coroutine, once."""
+        self.passed += 1
         yield
 
 
 CHECKPOINT = Checkpoint()
 
+_LOGGER = logging.getLogger(__name__)
+
+
+class CarriedStopIteration(Exception):
+    """A ``StopIteration`` on its way through the interpreter's frames.
+
+    Python turns a ``StopIteration`` that leaves a coroutine into
+    ``RuntimeError`` (PEP 479), and the interpreter's frames are coroutines.
+    It travels wrapped in this, and automation code only ever sees ``stop``.
+    """
+
+    def __init__(self, stop: StopIteration) -> None:
+        """Carry a StopIteration."""
+        super().__init__(stop)
+        self.stop = stop
+
+
+class CarriedGeneratorExit(BaseException):
+    """A ``GeneratorExit`` on its way into a generator body that is being closed.
+
+    Python closes a coroutine awaiting another by calling the inner one's
+    ``close()``, which fails when its cleanup reaches a checkpoint. Thrown as
+    this instead, it goes down the interpreter's frames by ``throw()``, and
+    automation code sees ``exit`` (``except GeneratorExit`` catches it, and
+    ``except Exception`` does not).
+    """
+
+    def __init__(self) -> None:
+        """Carry a GeneratorExit."""
+        self.exit = GeneratorExit()
+        super().__init__()
+
+
+class _Yielded:
+    """What a generator body hands up through its coroutine at a ``yield``: the value."""
+
+    __slots__ = ("value",)
+
+    def __init__(self, value: Any) -> None:
+        """Hold a yielded value."""
+        self.value = value
+
+
+class YieldPoint:
+    """Awaitable for a ``yield`` in a generator body: passes the value up, returns what is sent back."""
+
+    __slots__ = ("value",)
+
+    def __init__(self, value: Any) -> None:
+        """Hold the value to yield."""
+        self.value = value
+
+    def __await__(self) -> Generator[Any, Any, Any]:
+        """Hand the value up to the driving generator; return what is sent back into the body."""
+        sent = yield _Yielded(self.value)
+        return sent
+
+
+AUTOMATION_GENERATORS: weakref.WeakSet[Generator[Any, Any, Any]] = weakref.WeakSet()
+"""Every generator automation code made: how the interpreter knows its own generators."""
+
+
+def is_automation_generator(obj: Any) -> bool:
+    """Return whether an object is a generator automation code made."""
+    try:
+        return obj in AUTOMATION_GENERATORS
+    except TypeError:  # not hashable, so not a generator
+        return False
+
+
+def drive_generator(
+    body: Callable[[], Coroutine[Any, Any, Any]], name: str, watch: NativeCallWatch | None = None
+) -> Generator[Any, Any, Any]:
+    """Return a Python generator that runs the coroutine of a generator body.
+
+    The body's checkpoints are passed over; each ``yield`` (a ``YieldPoint``)
+    hands its value to whoever called ``next()`` or ``send()``; ``send``,
+    ``throw`` and ``close`` go back into the body at that ``yield``.
+    """
+    generator = _drive(body, name, watch)
+    AUTOMATION_GENERATORS.add(generator)
+    return generator
+
+
+def _drive(
+    body: Callable[[], Coroutine[Any, Any, Any]], name: str, watch: NativeCallWatch | None
+) -> Generator[Any, Any, Any]:
+    """The generator ``drive_generator`` returns.
+
+    The body's coroutine is made on the first ``next()``: a generator closed
+    before it starts leaves no coroutine that was never awaited.
+    """
+    coro = body()
+    value_in: Any = None
+    error_in: BaseException | None = None
+    while True:
+        try:
+            message = coro.throw(error_in) if error_in is not None else coro.send(value_in)
+        except StopIteration as stop:
+            return stop.value
+        except CarriedStopIteration as carried:
+            # As in Python, a StopIteration leaving a generator body is an error
+            raise RuntimeError("generator raised StopIteration") from carried.stop
+        value_in, error_in = None, None
+        if message is None:
+            if watch is not None:
+                error_in = watch()
+            continue
+        if isinstance(message, _Yielded):
+            try:
+                value_in = yield message.value
+                if watch is not None:
+                    # Resumed: the limit is on each run between returns to the interpreter
+                    watch.restart()
+            except GeneratorExit:
+                if await_chain_is_broken(coro):
+                    _warn_collected(name)
+                else:
+                    _close_body(coro, watch)
+                raise
+            except BaseException as err:  # pylint: disable=broad-exception-caught
+                error_in = err
+            continue
+        coro.close()
+        raise RuntimeError(f"Generator '{name}' cannot wait for anything")
+
+
+def await_chain_is_broken(coro: Coroutine[Any, Any, Any]) -> bool:
+    """Return whether something a suspended coroutine awaits, down its chain, has already finished.
+
+    That happens when the garbage collector finalizes a generator caught in a
+    reference cycle after the coroutines of its body: the body can no longer
+    be resumed, so its cleanup cannot run.
+    """
+    awaiting: Any = coro
+    while awaiting is not None:
+        if inspect.iscoroutine(awaiting):
+            if awaiting.cr_frame is None:
+                return True
+            awaiting = awaiting.cr_await
+        elif inspect.isgenerator(awaiting):
+            if awaiting.gi_frame is None:
+                return True
+            awaiting = awaiting.gi_yieldfrom
+        else:
+            return False
+    return False
+
+
+def _warn_collected(name: str) -> None:
+    """Log that a generator's cleanup could not run because it was collected in a reference cycle."""
+    _LOGGER.warning(
+        "Generator '%s' was garbage-collected in a reference cycle, so its finally did not run;"
+        " close it when done with it (close(), aclose() or contextlib.aclosing)",
+        name,
+    )
+
+
+def _close_body(coro: Coroutine[Any, Any, Any], watch: NativeCallWatch | None) -> None:
+    """Close a generator body suspended at a ``yield``: raise GeneratorExit there and run its cleanup.
+
+    The body's ``finally`` blocks may loop and call functions, which are
+    checkpoints: they are passed over, as while the generator runs.
+    ``coro.close()`` cannot do this; it fails at the first checkpoint.
+    """
+    pending: BaseException | None = CarriedGeneratorExit()
+    while True:
+        try:
+            message = coro.throw(pending) if pending is not None else coro.send(None)
+        except StopIteration, GeneratorExit, CarriedGeneratorExit:
+            return
+        except CarriedStopIteration as carried:
+            raise RuntimeError("generator raised StopIteration") from carried.stop
+        pending = None
+        if message is None:
+            if watch is not None:
+                pending = watch()
+            continue
+        try:
+            coro.close()
+        except RuntimeError:
+            pass
+        raise RuntimeError("generator ignored GeneratorExit")
+
+
+AUTOMATION_ASYNC_GENERATORS: weakref.WeakSet[AsyncGenerator[Any, Any]] = weakref.WeakSet()
+"""Every async generator automation code made."""
+
+
+def is_automation_async_generator(obj: Any) -> bool:
+    """Return whether an object is an async generator automation code made."""
+    try:
+        return obj in AUTOMATION_ASYNC_GENERATORS
+    except TypeError:
+        return False
+
+
+class _Forward:
+    """Awaitable that hands what a body yielded (a future, or None at a checkpoint) on to the event loop."""
+
+    __slots__ = ("message",)
+
+    def __init__(self, message: Any) -> None:
+        """Hold the message for the event loop."""
+        self.message = message
+
+    def __await__(self) -> Generator[Any, Any, Any]:
+        """Yield the message to the event loop; return what it sends back."""
+        return (yield self.message)
+
+
+def drive_async_generator(
+    body: Callable[[], Coroutine[Any, Any, Any]], name: str
+) -> AsyncGenerator[Any, Any]:
+    """Return a Python async generator that runs the coroutine of an async generator body.
+
+    Each ``yield`` (a ``YieldPoint``) hands its value to whoever awaited
+    ``__anext__()`` or ``asend()``; everything else the body awaits reaches the
+    event loop through the generator, so the body runs on the loop as any
+    automation code does.
+    """
+    generator = _adrive(body, name)
+    AUTOMATION_ASYNC_GENERATORS.add(generator)
+    return generator
+
+
+async def _adrive(body: Callable[[], Coroutine[Any, Any, Any]], name: str) -> AsyncGenerator[Any, Any]:
+    """The async generator ``drive_async_generator`` returns; the body's coroutine is made on first use."""
+    coro = body()
+    value_in: Any = None
+    error_in: BaseException | None = None
+    while True:
+        try:
+            message = coro.throw(error_in) if error_in is not None else coro.send(value_in)
+        except StopIteration:
+            return
+        except CarriedStopIteration as carried:
+            raise RuntimeError("async generator raised StopIteration") from carried.stop
+        except StopAsyncIteration as err:
+            raise RuntimeError("async generator raised StopAsyncIteration") from err
+        value_in, error_in = None, None
+        if isinstance(message, _Yielded):
+            try:
+                value_in = yield message.value
+            except GeneratorExit:
+                if await_chain_is_broken(coro):
+                    _warn_collected(name)
+                else:
+                    await _aclose_body(coro)
+                raise
+            except BaseException as err:  # pylint: disable=broad-exception-caught
+                error_in = err
+        else:
+            try:
+                value_in = await _Forward(message)
+            except BaseException as err:  # pylint: disable=broad-exception-caught
+                # Cancellation and a future's exception go into the body, at its await
+                error_in = err
+
+
+async def _aclose_body(coro: Coroutine[Any, Any, Any]) -> None:
+    """Close an async generator body suspended at a ``yield``; its cleanup may await, loop and call."""
+    pending: BaseException | None = CarriedGeneratorExit()
+    value_in: Any = None
+    while True:
+        try:
+            message = coro.throw(pending) if pending is not None else coro.send(value_in)
+        except StopIteration, GeneratorExit, CarriedGeneratorExit:
+            return
+        except CarriedStopIteration as carried:
+            raise RuntimeError("async generator raised StopIteration") from carried.stop
+        pending, value_in = None, None
+        if isinstance(message, _Yielded):
+            try:
+                coro.close()
+            except RuntimeError:
+                pass
+            raise RuntimeError("async generator ignored GeneratorExit")
+        try:
+            value_in = await _Forward(message)
+        except BaseException as err:  # pylint: disable=broad-exception-caught
+            pending = err
+
 
 def run_to_completion(
     coro: Coroutine[Any, Any, Any],
     name: str,
-    on_checkpoint: Callable[[], None] | None = None,
+    on_checkpoint: Callable[[], BaseException | None] | None = None,
 ) -> Any:
     """Run a coroutine of a ``def`` function to its end without an event loop.
 
@@ -71,7 +368,7 @@ def run_to_completion(
     Args:
         coro: The coroutine to run.
         name: Function name for the error message.
-        on_checkpoint: Called at every skipped checkpoint.
+        on_checkpoint: Called at every skipped checkpoint; an error it returns is raised in the code.
 
     Returns:
         The coroutine's result.
@@ -79,47 +376,112 @@ def run_to_completion(
     Raises:
         RuntimeError: If the coroutine waits for something.
     """
-    try:
-        while True:
-            if coro.send(None) is not None:
-                coro.close()
-                raise RuntimeError(
-                    f"Function '{name}' cannot wait for anything: it was called from outside the interpreter"
-                )
-            if on_checkpoint is not None:
-                on_checkpoint()
-    except StopIteration as stop:
-        return stop.value
+    error: BaseException | None = None
+    while True:
+        try:
+            # The watch's error is raised inside the code, so its finally blocks run
+            message = coro.throw(error) if error is not None else coro.send(None)
+        except StopIteration as done:
+            return done.value
+        except CarriedStopIteration as carried:
+            # Leaving an ordinary function, it reaches the native caller as itself
+            raise carried.stop from None
+        error = None
+        if message is not None:
+            coro.close()
+            raise RuntimeError(
+                f"Function '{name}' cannot wait for anything: it was called from outside the interpreter"
+            )
+        if on_checkpoint is not None:
+            error = on_checkpoint()
+
+
+class SynchronousRun:
+    """Steps and start time of automation code running synchronously, which blocks the event loop."""
+
+    def __init__(self) -> None:
+        """Start counting."""
+        self.steps = 0
+        self.started: datetime | None = None
+
+    def tick(self, clock: Any) -> tuple[int, float]:
+        """Count a checkpoint; return the steps and the seconds since the first one (0 without a clock)."""
+        self.steps += 1
+        if clock is None:
+            return self.steps, 0.0
+        now = clock.now()
+        if self.started is None:
+            self.started = now
+        return self.steps, (now - self.started).total_seconds()
+
+
+class NativeSection:
+    """The run native code has while the interpreter waits for it to return.
+
+    While native code the interpreter called (``any``, ``sorted``, ...) runs,
+    nothing returns to the event loop, however often it pulls a generator or
+    calls back into automation code: the watches inside count against this run.
+    """
+
+    current: SynchronousRun | None = None
+    """The run of the native code running now; None while the interpreter has control."""
+
+    @classmethod
+    def enter(cls) -> SynchronousRun | None:
+        """Start a run unless one is going on; return the run started, for leave()."""
+        if cls.current is not None:
+            return None
+        cls.current = SynchronousRun()
+        return cls.current
+
+    @classmethod
+    def leave(cls, run: SynchronousRun | None) -> None:
+        """End the run enter() started."""
+        if run is not None:
+            cls.current = None
 
 
 class NativeCallWatch:
-    """Warns when a function called from outside the interpreter runs long.
+    """Watches automation code run synchronously, outside the interpreter's control: a call or a generator.
 
-    Such a call runs without yielding to the event loop, so it blocks the host
-    for as long as it takes. The time is read at the skipped checkpoints only.
+    Such a run does not yield to the event loop, so it blocks the host for as
+    long as it takes. It is warned about after ``NATIVE_CALL_WARNING_SECONDS``
+    and stopped after ``NATIVE_CALL_LIMIT_SECONDS`` or ``NATIVE_CALL_STEP_LIMIT``
+    checkpoints. The time is read at the skipped checkpoints only.
+
+    Inside a native section the run is the section's, whatever the generators
+    in it yield; outside one, it is this watch's since it started or restarted.
     """
 
-    def __init__(self, function: EvalFunction) -> None:
-        """Initialize the watch for one call.
+    def __init__(self, function: Any) -> None:
+        """Initialize the watch for one run.
 
         Args:
-            function: The function being called.
+            function: What runs: anything with ``name``, ``lineno`` and ``engine``.
         """
         self._function = function
-        self._started: datetime | None = None
+        self._run = SynchronousRun()
         self._warned = False
 
-    def __call__(self) -> None:
-        """Check the elapsed time at a skipped checkpoint."""
-        clock = self._function.engine.clock
-        if clock is None or self._warned:
-            return
-        now = clock.now()
-        if self._started is None:
-            self._started = now
-        elif (now - self._started).total_seconds() > NATIVE_CALL_WARNING_SECONDS:
+    def restart(self) -> None:
+        """Start counting again: the code returned to the interpreter (a generator yielded)."""
+        self._run = SynchronousRun()
+        self._warned = False
+
+    def __call__(self) -> BaseException | None:
+        """Check at a skipped checkpoint; return the error that stops the run, or None."""
+        run = NativeSection.current or self._run
+        steps, elapsed = run.tick(self._function.engine.clock)
+        if elapsed > NATIVE_CALL_WARNING_SECONDS and not self._warned:
             self._warned = True
             self._function.engine.warn_blocking(self._function)
+        if elapsed > NATIVE_CALL_LIMIT_SECONDS or steps > NATIVE_CALL_STEP_LIMIT:
+            return TimeoutError(
+                f"function '{self._function.name}' ran for more than {NATIVE_CALL_LIMIT_SECONDS:g} seconds"
+                " without returning to the interpreter, and was stopped:"
+                " it blocks Home Assistant while it runs"
+            )
+        return None
 
 
 class EvalFunction:
@@ -171,13 +533,28 @@ class EvalFunction:
         self.kw_defaults = kw_defaults or {}
         self._positional = [arg.arg for arg in (*args.posonlyargs, *args.args)]
         self._keyword_only = [arg.arg for arg in args.kwonlyargs]
+        has_yield = isinstance(body, list) and bool(yields_in(body))
+        self.is_generator = has_yield and not is_async
+        self.is_async_generator = has_yield and is_async
         self.function = self._build_function(doc)
 
     def _build_function(self, doc: str | None) -> Callable[..., Any]:
         """Create the Python callable for this function."""
         function: Callable[..., Any]
 
-        if self.is_async:
+        if self.is_generator:
+
+            def generator_function(*args: Any, **kwargs: Any) -> Any:
+                return self.make_generator(*args, **kwargs)
+
+            function = generator_function
+        elif self.is_async_generator:
+
+            def async_generator_function(*args: Any, **kwargs: Any) -> Any:
+                return self.make_async_generator(*args, **kwargs)
+
+            function = async_generator_function
+        elif self.is_async:
 
             async def async_function(*args: Any, **kwargs: Any) -> Any:
                 return await self.invoke(*args, **kwargs)
@@ -293,6 +670,25 @@ class EvalFunction:
             else:
                 raise TypeError(f"{self.name}() got an unexpected keyword argument '{name}'")
         return extra_kwargs
+
+    def make_generator(self, *args: Any, **kwargs: Any) -> Any:
+        """Return the generator a call of a generator function gives: nothing of the body runs yet."""
+        scope = self.bind(args, kwargs)
+        return drive_generator(lambda: self._run_body(scope), self.name, NativeCallWatch(self))
+
+    def make_async_generator(self, *args: Any, **kwargs: Any) -> Any:
+        """Return the async generator a call of an async generator function gives; its body has not run."""
+        scope = self.bind(args, kwargs)
+        return drive_async_generator(lambda: self._run_body(scope), self.name)
+
+    async def _run_body(self, scope: SymbolTable) -> Any:
+        """Run a generator's body; its ``return`` value ends the generator."""
+        try:
+            for stmt in self.body:  # type: ignore[union-attr]
+                await self.engine.aeval(stmt, scope)
+        except ReturnValue as ret:
+            return ret.value
+        return None
 
     async def invoke(self, *args: Any, **kwargs: Any) -> Any:
         """Run the function body on the event loop.

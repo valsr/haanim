@@ -26,6 +26,7 @@ EXAMPLES = (
     "demo_basics",
     "demo_calls",
     "demo_controls",
+    "demo_entities",
     "demo_errors",
     "demo_graphs",
     "demo_html",
@@ -35,6 +36,8 @@ EXAMPLES = (
     "notifications",
 )
 STARTUP_SECONDS = 180
+# How long the backfill may wait for Home Assistant's first 5-minute compile of the energy sensor
+STATISTICS_WAIT_SECONDS = 420
 
 
 class Smoke:
@@ -190,6 +193,53 @@ async def run(base: str) -> None:
             "the entity has its attributes",
         )
 
+        # --- The device and the entities an automation declares ---------------------------------
+        for entity_id in (
+            "sensor.haanim_demo_entities_ticks",
+            "sensor.haanim_demo_entities_energy",
+            "switch.haanim_demo_entities_boost",
+            "number.haanim_demo_entities_target",
+            "select.haanim_demo_entities_mode",
+            "button.haanim_demo_entities_reset",
+        ):
+            check(entity_id in by_id, f"declared entity {entity_id} exists")
+        check(
+            by_id["sensor.haanim_demo_entities_ticks"]["attributes"].get("unit_of_measurement") == "min",
+            "the declared sensor has its unit",
+        )
+        await smoke.service("switch", "turn_on", entity_id="switch.haanim_demo_entities_boost")
+        _, states = await smoke.command("get_states")
+        boost = {state["entity_id"]: state for state in states}["switch.haanim_demo_entities_boost"]
+        check(boost["state"] == "on", f"turning the switch on runs its hook: {boost['state']}")
+        await smoke.service("switch", "turn_off", entity_id="switch.haanim_demo_entities_boost")
+        _, listed_entities = await smoke.command("haanim/entities/list", automation_id="demo_entities")
+        check(
+            len(listed_entities["entities"]) == 6 and listed_entities["device_id"],
+            "haanim/entities/list lists the device's entities",
+        )
+
+        # Sums can be imported once Home Assistant records the entity live: its first 5-minute compile
+        imported: Any = None
+        for _ in range(STATISTICS_WAIT_SECONDS // 10):
+            try:
+                imported = await smoke.service(
+                    "haanim", "run_action", True, automation_id="demo_entities", action="backfill"
+                )
+                break
+            except AssertionError as err:
+                imported = str(err)
+                await asyncio.sleep(10)
+        check(imported == {"result": 24}, f"the backfill imports 24 hours of statistics: {imported}")
+        statistics_id = "sensor.haanim_demo_entities_energy"
+        _, periods = await smoke.command(
+            "recorder/statistics_during_period",
+            start_time="2000-01-01T00:00:00Z",
+            statistic_ids=[statistics_id],
+            period="hour",
+        )
+        hours = periods.get(statistics_id, [])
+        check(len(hours) >= 24, f"the recorder has the imported hours: {len(hours)}")
+
         # --- Services ------------------------------------------------------------------------
         listed = await smoke.service("haanim", "list_automations", True)
         check(
@@ -295,6 +345,15 @@ async def run(base: str) -> None:
         result = await smoke.service("haanim", "run_action", True, automation_id="demo_layout", action="move")
         check(result == {"result": "second"}, "the layout demo moves an element to another row")
         await smoke.service("haanim", "run_action", automation_id="demo_layout", action="rebuild")
+        layout_card, _ = await smoke.command("haanim/card/subscribe", automation_id="demo_layout")
+        layout = await smoke.event(
+            layout_card, lambda event: "blocks" in event, "the card of the layout demo"
+        )
+        tables = [block for block in layout["blocks"] if block["type"] == "table"]
+        check(
+            len(tables) == 1 and tables[0]["columns"] == ["Room", "Temperature", "State"],
+            "the layout demo's card has a table element",
+        )
         html = await smoke.service(
             "haanim", "run_action", True, automation_id="demo_html", action="set_note", data={}
         )

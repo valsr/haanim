@@ -10,10 +10,15 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from haanim.const import Period
 from haanim.engine.assets import AssetStore
 from haanim.engine.card import HAAnimCard
+from haanim.engine.device_api import HAAnimDevice
+from haanim.engine.devices import DeviceRegistry, DeviceStore
+from haanim.engine.statistics import query_statistics
 from haanim.engine.durations import parse_duration
 from haanim.engine.expression_eval import parse_expression
 from haanim.engine.variables import VariableStore
@@ -125,7 +130,12 @@ class HAAnimServiceProxy:
 
         Raises:
             NonExistingServiceError: If the service doesn't exist.
+            TypeError: If given ``return_response``, which would be sent as a field.
         """
+        if "return_response" in params:
+            raise TypeError(
+                "service calls return the response whenever the service gives one; remove return_response"
+            )
         clock = self._host.clock
         call_time = clock.now()
         if not self._host.services.has_service(self._domain, self._name):
@@ -385,6 +395,8 @@ class HAAnim:  # pylint: disable=too-many-public-methods  # The methods are the 
         variables: VariableStore | None = None,
         *,
         folder: Path | None = None,
+        device_store: DeviceStore | None = None,
+        device_name: Callable[[], str] | None = None,
     ) -> None:
         """Initialize HAAnim API.
 
@@ -396,6 +408,10 @@ class HAAnim:  # pylint: disable=too-many-public-methods  # The methods are the 
                 host's storage if omitted; it starts empty until it is loaded.
             folder: The automation's folder, which holds its ``assets/``.
                 Without it the automation has no assets.
+            device_store: The automation's device entities. An empty store on
+                the host's storage if omitted.
+            device_name: Returns the name of the automation's device; the
+                automation's ID if omitted.
         """
         self._host = host
         self._automation_id = automation_id
@@ -403,6 +419,40 @@ class HAAnim:  # pylint: disable=too-many-public-methods  # The methods are the 
         self._variables = variables or VariableStore(automation_id, host.storage, host.clock)
         self._assets = AssetStore(automation_id, folder, host.files, host.asset_signer)
         self._card = HAAnimCard(automation_id, self._assets, self._has_action, host.cards)
+        store = device_store or DeviceRegistry(host.storage, host.clock, host.entities).store(automation_id)
+        self._device = HAAnimDevice(
+            store, device_name or (lambda: automation_id), host.statistics, host.clock
+        )
+
+    @property
+    def device(self) -> HAAnimDevice:
+        """The automation's device in Home Assistant, and the entities its classes declare."""
+        return self._device
+
+    async def statistics(
+        self, entity_id: str, start: Any, end: Any = None, period: str = Period.HOUR
+    ) -> list[dict[str, Any]]:
+        """Return the long-term statistics of any entity for a period, oldest first.
+
+        Args:
+            entity_id: The entity, such as ``"sensor.grid_energy"``.
+            start: The start, as a datetime or ISO text; a naive time is local.
+            end: The end; now if omitted.
+            period: ``5minute``, ``hour``, ``day``, ``week`` or ``month``.
+
+        Returns:
+            Dictionaries with ``start``, ``end`` and the statistic's fields:
+            ``mean``, ``min``, ``max``, or ``state``, ``sum`` and ``change``.
+            Empty if the entity has no statistics.
+
+        Raises:
+            ValueError: If the period is unknown or start is after end.
+            StatisticsUnavailableError: If Home Assistant's recorder is not running.
+            StatisticsError: If the recorder fails.
+        """
+        return await query_statistics(
+            self._host.statistics, entity_id, start, end, period, self._host.clock.now()
+        )
 
     @property
     def variables(self) -> VariableStore:

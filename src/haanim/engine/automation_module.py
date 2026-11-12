@@ -86,31 +86,47 @@ class ModuleLoader:
             raise AutomationSecurityError("Relative import reaches outside the automation")
 
         if node.module:
-            # from .helper import name
-            module = await self._load(package.joinpath(*node.module.split(".")), node)
+            # from .helper import name, or from .package import submodule
+            location = package.joinpath(*node.module.split("."))
+            module = await self._load(location, node, folder_is_package=True)
             for alias in node.names:
-                try:
+                if module is not None and hasattr(module, alias.name):
                     obj = getattr(module, alias.name)
-                except AttributeError:
-                    raise ImportError(f"cannot import name '{alias.name}' from '.{node.module}'") from None
+                elif self._has_module(location / alias.name):
+                    # As in Python, a name the package does not define is one of its submodules
+                    obj = await self._load(location / alias.name, node)
+                else:
+                    raise ImportError(f"cannot import name '{alias.name}' from '.{node.module}'")
                 scope.set(alias.asname or alias.name, obj)
         else:
             # from . import helper
             for alias in node.names:
                 scope.set(alias.asname or alias.name, await self._load(package / alias.name, node))
 
-    async def _load(self, location: Path, node: ast.ImportFrom) -> AutomationModule:
+    def _has_module(self, location: Path) -> bool:
+        """Return whether a module (a ``.py`` file, or a folder with ``__init__.py``) is at a location."""
+        return self._files.exists(location.with_name(location.name + ".py")) or self._files.exists(
+            location / "__init__.py"
+        )
+
+    async def _load(
+        self, location: Path, node: ast.ImportFrom, *, folder_is_package: bool = False
+    ) -> AutomationModule | None:
         """Load a file of the automation as a module, once.
 
         Args:
             location: Path of the module without its ``.py`` suffix.
             node: The import statement, for the error message.
+            folder_is_package: Accept a folder without ``__init__.py``: it is a
+                package with no code of its own, and None is returned for it.
 
         Returns:
             The module. The same object is returned on every import of the file.
         """
         candidates = [location.with_name(location.name + ".py"), location / "__init__.py"]
         path = next((candidate for candidate in candidates if self._files.exists(candidate)), None)
+        if path is None and folder_is_package and self._files.is_dir(location):
+            return None
         if path is None:
             dotted = "." * node.level + (node.module or location.name)
             raise ModuleNotFoundError(f"No module named '{dotted}' in automation '{self._name}'")

@@ -12,10 +12,11 @@ from collections.abc import Callable
 from typing import Any
 
 from haanim import const, events
-from haanim.engine import decorators
+from haanim.engine import decorators, device_entities
 from haanim.engine.errors import PUBLIC_ERRORS
 from haanim.engine import card_elements
 from haanim.engine.card import HAAnimCard
+from haanim.engine.device_api import DeviceEntity, HAAnimDevice
 from haanim.engine.haanim_api import HAAnim, HAAnimAutomationProxy, HAAnimServiceCall, HAAnimServiceProxy
 from haanim.entity import HAAnimEntity
 from haanim.engine.logging_wrapper import LoggerWrapper
@@ -44,6 +45,7 @@ EVENT_CLASSES = (
     events.EventTriggerEvent,
     events.ManualEvent,
     events.AutomationEvent,
+    events.EntityCommandEvent,
 )
 
 
@@ -134,15 +136,33 @@ def build_haanim_module(
         "hass": hass,
         "logging": logging_wrapper,
         "ActionMode": const.ActionMode,
+        "EntityPlatform": const.EntityPlatform,
+        "EntityCommand": const.EntityCommand,
+        "StateClass": const.StateClass,
+        "NumberMode": const.NumberMode,
+        "TextMode": const.TextMode,
+        "Period": const.Period,
+        "UnitOfEnergy": const.UnitOfEnergy,
+        "UnitOfPower": const.UnitOfPower,
+        "UnitOfTemperature": const.UnitOfTemperature,
+        "UnitOfTime": const.UnitOfTime,
+        "UnitOfVolume": const.UnitOfVolume,
+        "UnitOfPressure": const.UnitOfPressure,
+        "UnitOfElectricCurrent": const.UnitOfElectricCurrent,
+        "UnitOfElectricPotential": const.UnitOfElectricPotential,
+        "PERCENTAGE": const.PERCENTAGE,
         "HAAnim": HAAnim,
         "HAAnimAutomationProxy": HAAnimAutomationProxy,
         "HAAnimCard": HAAnimCard,
+        "HAAnimDevice": HAAnimDevice,
+        "DeviceEntity": DeviceEntity,
         **{name: getattr(card_elements, name) for name in CARD_CLASSES},
         "HAAnimEntity": HAAnimEntity,
         "HAAnimServiceCall": HAAnimServiceCall,
         "HAAnimServiceProxy": HAAnimServiceProxy,
     }
     names.update({name: registry.bind(decorator) for name, decorator in DECORATORS.items()})
+    names.update({name: registry.bind(decorator) for name, decorator in device_entities.DECORATORS.items()})
     names.update({event_class.__name__: event_class for event_class in EVENT_CLASSES})
     names.update({error_class.__name__: error_class for error_class in PUBLIC_ERRORS})
     names.update(helpers or {})

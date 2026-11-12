@@ -7,7 +7,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import voluptuous as vol
+import probatio as vol
 
 from custom_components.haanim.const import DOMAIN
 from custom_components.haanim.ha.services import (

@@ -123,6 +123,7 @@ class TestDetail:
                 {"name": "alert", "aliases": ["bump"], "description": "Count one alert."},
                 {"name": "strip", "aliases": [], "description": ""},
             ],
+            "entity_count": 0,
         }
 
     async def test_detail_after_an_action(
@@ -279,6 +280,10 @@ class TestWithoutIntegration:
             ("haanim/card/subscribe", {"automation_id": "climate"}),
             ("haanim/logs/subscribe", {"automation_id": "climate"}),
             ("haanim/config/get", {}),
+            ("haanim/entities/list", {"automation_id": "climate"}),
+            ("haanim/entities/subscribe", {"automation_id": "climate"}),
+            ("haanim/entities/remove", {"automation_id": "climate", "key": "x"}),
+            ("haanim/entities/purge", {"automation_id": "climate", "key": "x"}),
         ],
     )
     async def test_not_ready(

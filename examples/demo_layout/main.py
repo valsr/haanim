@@ -10,7 +10,7 @@ another, take an element off the card and put it back, and build the whole
 card again.
 """
 
-from haanim import ActionEvent, CardRow, action, haa, startup
+from haanim import ActionEvent, CardRow, UnitOfTemperature, action, haa, startup
 
 TABLE = [("Kitchen", "21.5 °C", "Heating", "warning"), ("Bedroom", "18.0 °C", "Idle", "disabled")]
 
@@ -70,6 +70,17 @@ def build() -> None:
         line.add_element(card.create_text(f"room_{index}", room))
         line.add_element(card.create_text(f"temperature_{index}", temperature))
         line.add_element(card.create_badge(f"state_{index}", state, color=color))
+
+    # The same rooms as a table element: one element, its values set from data
+    card.add_element(card.create_text("t_table_element", "The same as a table element:"))
+    card.add_element(
+        card.create_table(
+            "rooms",
+            columns=["Room", "Temperature", "State"],
+            units=["", UnitOfTemperature.CELSIUS, ""],
+            rows=[[room, float(temperature.split()[0]), state] for room, temperature, state, _ in TABLE],
+        )
+    )
 
     card.add_element(note)
     buttons = layout.split_row(3)

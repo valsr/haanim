@@ -24,17 +24,20 @@ DESIGN = REPO_ROOT / "_design.md"
 
 
 def test_the_examples() -> None:
-    """Test the examples are the ones the README lists: three automations and eight demos."""
+    """Test the examples are the ones the README lists: three automations and eleven demos."""
     assert NAMES == [
         "climate",
         "demo_basics",
         "demo_calls",
         "demo_controls",
+        "demo_entities",
         "demo_errors",
+        "demo_generators",
         "demo_graphs",
         "demo_html",
         "demo_images",
         "demo_layout",
+        "demo_statistics",
         "motion_light",
         "notifications",
     ]

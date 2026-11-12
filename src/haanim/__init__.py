@@ -16,10 +16,40 @@ classes and decorators, so editors and type checkers see the real signatures.
 for type checking only.
 """
 
+# __all__ re-exports the constants by name, so it repeats part of haanim.const.__all__ on purpose
+# pylint: disable=duplicate-code
+
 from typing import TYPE_CHECKING, Any
 
-from haanim.const import ActionMode
+from haanim.const import (
+    PERCENTAGE,
+    ActionMode,
+    EntityCommand,
+    EntityPlatform,
+    NumberMode,
+    Period,
+    StateClass,
+    TextMode,
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfPower,
+    UnitOfPressure,
+    UnitOfTemperature,
+    UnitOfTime,
+    UnitOfVolume,
+)
 from haanim.engine.card import HAAnimCard
+from haanim.engine.device_api import DeviceEntity, HAAnimDevice
+from haanim.engine.device_entities import (
+    binary_sensor_entity,
+    button_entity,
+    number_entity,
+    select_entity,
+    sensor_entity,
+    switch_entity,
+    text_entity,
+)
 from haanim.engine.card_elements import (
     BadgeElement,
     ButtonElement,
@@ -32,6 +62,7 @@ from haanim.engine.card_elements import (
     HtmlElement,
     IconElement,
     ImageElement,
+    TableElement,
     TextElement,
     ValueElement,
 )
@@ -63,6 +94,8 @@ from haanim.engine.errors import (
     NonExistingServiceError,
     PoolExhaustedError,
     QueueFullError,
+    StatisticsError,
+    StatisticsUnavailableError,
 )
 from haanim.engine.haanim_api import HAAnim, HAAnimAutomationProxy, HAAnimServiceCall, HAAnimServiceProxy
 from haanim.engine.logging_wrapper import LoggerWrapper
@@ -71,6 +104,7 @@ from haanim.events import (
     ActionEvent,
     AutomationEvent,
     CronEvent,
+    EntityCommandEvent,
     EventTriggerEvent,
     IntervalEvent,
     ManualEvent,
@@ -78,7 +112,7 @@ from haanim.events import (
     TimeEvent,
 )
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 RUNTIME_ONLY = ("haa", "hass", "logging")
 """Names an automation imports that exist only while it runs: the interpreter supplies them."""
@@ -108,6 +142,8 @@ __all__ = [
     "HAAnim",
     "HAAnimAutomationProxy",
     "HAAnimCard",
+    "HAAnimDevice",
+    "DeviceEntity",
     "CardElement",
     "CardLayout",
     "CardRow",
@@ -121,6 +157,7 @@ __all__ = [
     "BadgeElement",
     "GraphElement",
     "ButtonElement",
+    "TableElement",
     "HAAnimEntity",
     "HAAnimServiceCall",
     "HAAnimServiceProxy",
@@ -135,7 +172,30 @@ __all__ = [
     "on_cron",
     "on_event",
     "on_state",
+    "sensor_entity",
+    "binary_sensor_entity",
+    "switch_entity",
+    "number_entity",
+    "select_entity",
+    "button_entity",
+    "text_entity",
     "ActionMode",
+    # Constants of device entities, statistics and units
+    "EntityPlatform",
+    "EntityCommand",
+    "StateClass",
+    "NumberMode",
+    "TextMode",
+    "Period",
+    "UnitOfEnergy",
+    "UnitOfPower",
+    "UnitOfTemperature",
+    "UnitOfTime",
+    "UnitOfVolume",
+    "UnitOfPressure",
+    "UnitOfElectricCurrent",
+    "UnitOfElectricPotential",
+    "PERCENTAGE",
     # Events
     "ActionEvent",
     "TimeEvent",
@@ -145,6 +205,7 @@ __all__ = [
     "EventTriggerEvent",
     "ManualEvent",
     "AutomationEvent",
+    "EntityCommandEvent",
     # Errors
     "PUBLIC_ERRORS",
     "HAAnimError",
@@ -163,4 +224,6 @@ __all__ = [
     "ActionCancelledError",
     "NonExistingEntityError",
     "NonExistingServiceError",
+    "StatisticsUnavailableError",
+    "StatisticsError",
 ]

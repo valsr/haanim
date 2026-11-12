@@ -220,6 +220,7 @@ CASES: dict[str, tuple[str, Any]] = {
         "module",
     ),
     "class body sees its own names": ("class A:\n    a = 1\n    b = a + 1\nr = A.b", 2),
+    "class records the line it is defined on": ("x = 1\n\nclass A:\n    pass\nr = A.__firstlineno__", 3),
     "class attributes exclude outer names": (
         "outer = 1\nclass A:\n    inner = 2\nr = (hasattr(A, 'outer'), hasattr(A, 'inner'), A.__name__)",
         (False, True, "A"),
@@ -621,7 +622,7 @@ class TestAwaitRule:
 
     def test_compiler_error_is_listed_with_unsupported_constructs(self) -> None:
         """Both kinds of problem are reported together, in source order."""
-        source = "def gen():\n    yield 1\n\nawait gen()\n"
+        source = "def gen():\n    f = lambda: (yield)\n\nawait gen()\n"
 
         with pytest.raises(AutomationSyntaxError) as raised:
             validate_source(source, filename="main.py")

@@ -74,8 +74,61 @@ turns the allowlist off for the automation. Both add to the integration's option
 
 Automation code is run by HAAnim's interpreter, on Home Assistant's event loop. Blocking calls
 (`time.sleep`, file and network I/O, threads, subprocesses) are not available; use `await haa.sleep()` and
-services instead. Generators (`yield`) are not supported. Loops and function calls yield to the event loop
-regularly, so a long loop does not freeze Home Assistant.
+services instead. Loops and function calls yield to the event loop regularly, so a long loop does not freeze
+Home Assistant.
+
+Generators work as in Python: functions with `yield` and `yield from`, and generator expressions. They are
+lazy, and `send()`, `throw()` and `close()` work.
+
+```python
+from haanim import action, logging
+
+
+def readings(limit):
+    value = 20.0
+    while value < limit:
+        yield value
+        value += 0.5
+
+
+@action
+def summary(event):
+    for value in readings(21):
+        logging.info("reading %s", value)
+    return sum(readings(25)), max(v for v in readings(22))
+```
+
+`list`, `tuple`, `set`, `dict`, `sorted`, `sum`, `min`, `max` and `str.join` pull a generator with the event
+loop free between items, so even `list()` of an endless generator only runs until the action's timeout. Other
+functions that pull a generator themselves (`any`, `all`, `itertools`, ...), and functions of the automation
+that Python code calls (a `key=` of `sorted`), cannot pause: such a run is stopped with a `TimeoutError` after
+10 seconds, because it blocks Home Assistant while it runs.
+
+Async generators work as in Python too: `yield` in an `async def`, consumed with `async for`, `anext()` and
+async comprehensions (`[x async for x in ...]`, inside an `async def`). They run on the event loop like any
+automation code, so they can wait between items without blocking anything; `asend()`, `athrow()` and
+`aclose()` work, and their `finally` blocks may `await`.
+
+When a generator's cleanup matters, close it when you are done with it (`close()`, `await aclose()`, or
+`async with contextlib.aclosing(agen)`): one left behind, for instance after `break`, is closed later by
+the garbage collector, and one caught in a reference cycle (kept in an attribute of an object it refers to)
+may not run its `finally` at all; HAAnim logs a warning when that happens.
+
+```python
+from haanim import action, haa
+
+
+async def polled(entity_id, times):
+    for _ in range(times):
+        yield haa.state(entity_id)
+        await haa.sleep(60)
+
+
+@action
+async def watch_temperature(event):
+    readings = [float(value) async for value in polled("sensor.temperature", 3)]
+    haa.set_message(f"average {sum(readings) / len(readings):.1f}")
+```
 
 ## Actions
 
@@ -202,8 +255,8 @@ forecast = await haa.service.weather.get_forecasts(entity_id="weather.home", typ
 print(forecast.response_data)
 ```
 
-A service's response, if it gives one, is always in `response_data` (an empty dictionary otherwise); do not pass
-`return_response`, which would reach the service as one of its fields.
+A service's response, if it gives one, is always in `response_data` (an empty dictionary otherwise). Passing
+`return_response` raises `TypeError`: it would reach the service as one of its fields.
 
 A service that does not exist raises `NonExistingServiceError`. A call that fails does not raise: the result
 has `success` set to `False` and the reason in `error`.
@@ -274,6 +327,139 @@ url = haa.asset_url("chime.mp3", expires=300)                 # works without lo
 
 Names are relative to the automation's `assets/` folder. An automation reaches only its own assets.
 
+## Device entities
+
+Each automation is a device in Home Assistant, named after the automation. Its status sensor
+`sensor.haanim_<id>` is on the device, and so is every entity the automation declares with a class:
+
+```python
+from haanim import (
+    DeviceEntity,
+    EntityCommandEvent,
+    StateClass,
+    UnitOfTemperature,
+    haa,
+    on_state,
+    sensor_entity,
+    switch_entity,
+)
+
+
+@sensor_entity(unit=UnitOfTemperature.CELSIUS, device_class="temperature", state_class=StateClass.MEASUREMENT)
+class average_temp:
+    """Written by the automation: no hooks."""
+
+
+@switch_entity(name="Boost", icon="mdi:fire", initial=False)
+class boost:
+    def turn_on(self, entity: DeviceEntity, event: EntityCommandEvent) -> None:
+        haa.set_message("Boosting")
+        entity.set_state(True)
+
+    def turn_off(self, entity: DeviceEntity, event: EntityCommandEvent) -> None:
+        entity.set_state(False)
+
+
+@on_state("sensor.temperature")
+def update(event):
+    haa.device.entity(average_temp).set_state(float(event.new_state))
+```
+
+The entity ID is `<platform>.haanim_<automation id>_<object id>`, where the object ID is the class name, made
+safe like an automation ID (`id=` gives another one). Above, in the automation `climate`, that is
+`sensor.haanim_climate_average_temp` and `switch.haanim_climate_boost`.
+
+| Decorator               | Options besides the common ones                          | Hooks                  |
+| ----------------------- | -------------------------------------------------------- | ---------------------- |
+| `@sensor_entity`        | `device_class`, `unit`, `state_class`, `precision`       | none                   |
+| `@binary_sensor_entity` | `device_class`                                           | none                   |
+| `@switch_entity`        | `device_class`                                           | `turn_on`, `turn_off`  |
+| `@number_entity`        | `min`, `max`, `step`, `unit`, `mode`, `device_class`     | `set_value`            |
+| `@select_entity`        | `options` (required)                                     | `select_option`        |
+| `@button_entity`        | `device_class`                                           | `press`                |
+| `@text_entity`          | `min_length`, `max_length`, `pattern`, `mode`            | `set_value`            |
+
+Platforms, commands, state classes, modes, statistics periods and common units have constants in `haanim`:
+`EntityPlatform`, `EntityCommand`, `StateClass`, `NumberMode`, `TextMode`, `Period`, and `UnitOfEnergy`,
+`UnitOfPower`, `UnitOfTemperature`, `UnitOfTime`, `UnitOfVolume`, `UnitOfPressure`, `UnitOfElectricCurrent`,
+`UnitOfElectricPotential` and `PERCENTAGE`, with Home Assistant's names and values. Each is its string, so
+`StateClass.MEASUREMENT` and `"measurement"` mean the same, and any other unit string works too.
+
+Every decorator takes `name=`, `icon=`, `id=`, `attributes=` (the attributes the entity starts with),
+`initial=` (the state it starts with) and `action_mode=` (how the hooks run when commands overlap; `DROP` by
+default, as for actions). The options are fixed by the decorator: change them in the code.
+
+**State.** HAAnim keeps each entity's state and attributes, and Home Assistant shows them. They survive
+restarts and reloads, and stay while the automation is stopped. Read and write them through the proxy:
+
+```python
+@sensor_entity(unit=UnitOfTemperature.CELSIUS)
+class average_temp:
+    pass
+
+
+@action
+def record(event):
+    entity = haa.device.entity("average_temp")   # the object ID, or the class
+    entity.set_state(21.5)                      # checked against the declaration: a number with a unit
+    entity.set_attributes(source="lounge")      # merged; None removes an attribute
+    print(entity.state, entity.attributes, entity.entity_id, entity.declared)
+```
+
+A value the declaration does not allow raises `ValueError`: a number outside `min` and `max`, an option that
+is not listed, text that does not match the pattern, anything but `True` or `False` for a switch or binary
+sensor. `haa.device.entities` lists every entity of the device.
+
+**Hooks.** When a user turns the switch on in Home Assistant, HAAnim runs `turn_on` as an action, with the
+entity's proxy and an `EntityCommandEvent` (`command`, `value`, `entity_id`, `context`). The hook decides the
+new state with `set_state()`; without that the state stays as it was. A class without the hook, and an
+automation that is not running, log a warning and ignore the command. A hook that raises is recorded in
+`last_error` like any action.
+
+**Statistics.** A sensor with a `state_class` has long-term statistics in Home Assistant, and the automation
+can import past hours into them, for instance readings an energy provider publishes a day late:
+
+```python
+from datetime import timedelta
+
+
+@sensor_entity(unit=UnitOfEnergy.KILO_WATT_HOUR, device_class="energy", state_class=StateClass.TOTAL_INCREASING)
+class energy:
+    pass
+
+
+@action
+async def backfill(event):
+    yesterday = haa.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    rows = [{"start": yesterday + timedelta(hours=h), "usage": 0.5} for h in range(24)]
+    await haa.device.entity(energy).import_statistics(rows)
+    week = await haa.statistics("sensor.grid_energy", haa.now() - timedelta(days=7), period=Period.DAY)
+    haa.set_message(f"{sum([day.get('change', 0) for day in week]):.1f} kWh this week")
+```
+
+- Each row is a whole hour that ended at least 15 minutes ago (Home Assistant compiles each hour just after
+  it ends): `start` (a datetime, or ISO text; a time without a zone is local) and, for `total` and
+  `total_increasing`, `usage`: what was used in that hour. HAAnim continues the running sum from the stored
+  one, fills hours missing between the first and last row with no usage, and shifts the hours after the
+  import, so the Energy dashboard shows no jump. For `measurement`, a row has `mean`, and optionally `min`
+  and `max`.
+- Sums can be imported only once Home Assistant records the entity live (a few minutes after it first has a
+  state): before that, Home Assistant's own sum would start again from zero after the import.
+- Values are in the entity's declared unit; statistics Home Assistant keeps in another display unit are
+  converted.
+- A later row for the same hour replaces an earlier one. Invalid rows raise `ValueError` and nothing is
+  imported.
+- `haa.statistics(entity_id, start, end=None, period="hour")` reads the statistics of any entity, and
+  `entity.statistics(start, end, period)` those of the automation's own; `period` is `5minute`, `hour`, `day`,
+  `week` or `month`. Rows have `start`, `end` and `mean`, `min`, `max`, or `state`, `sum` and `change`.
+- Without Home Assistant's recorder, these raise `StatisticsUnavailableError`.
+
+**Leftovers.** An entity whose class is deleted or renamed stays in Home Assistant as unavailable, with its
+history. The automation page in the HAAnim panel lists the device's entities in its **Entities** tab:
+**Remove** deletes a leftover, and **Purge data** resets a declared entity to its initial state and
+attributes, for instance after changing its options during development. Deleting the automation's folder
+removes its device and all its entities.
+
 ## The card
 
 Each automation has a card for dashboards, `custom:haanim-card` with `automation_id: <id>`. The card shows
@@ -318,6 +504,7 @@ actions, which exist only once the file has run: create buttons in `@startup`.
 | `create_html(id, html)`                                     | Raw HTML, shown as it is                   | `set_html`                                      |
 | `create_image(id, asset=None, url=None, alt="", ...)`       | An image from `assets/`, from a URL, or a camera's live picture | `set_asset`, `set_url`, `set_entity`, `set_refresh`, `set_alt`, `set_size`, `set_align`, `set_caption` |
 | `create_value(id, label, value, unit="")`                   | A labelled value                           | `set_value`, `set_label`, `set_unit`            |
+| `create_table(id, columns, rows=(), units=None, title=None)` | Rows of values under column names          | `set_rows`, `add_row`, `set_cell`, `clear`, `set_columns`, `set_title` |
 | `create_entity(id, entity_id)`                              | The live state of an entity                | `set_entity`                                    |
 | `create_icon(id, entity_id=None, icon=None, ...)`           | An icon, driven by an entity by default    | `set_icon`, `set_color`, `set_spin`, `set_label`, `set_entity`, `set_follow_entity` |
 | `create_gauge(id, value=None, entity_id=None, ...)`         | A progress bar or a dial                   | `set_value`, `set_entity`, `set_range`, `set_label`, `set_unit`, `set_kind`, `set_color` |
@@ -327,6 +514,28 @@ actions, which exist only once the file has run: create buttons in `@startup`.
 
 A setter that is given something invalid raises and leaves the element as it was. Markdown is sanitised:
 raw HTML is removed. A button calls its action with its extra keyword arguments as `event.data`.
+
+### Tables
+
+A table shows rows of values under column names. Cells are strings, numbers, booleans (shown as ✓ and ✗) or
+`None` for an empty cell; a column of numbers is right-aligned, and a unit is shown after each value of its
+column. Every row has one cell per column.
+
+```python
+rooms = haa.card.create_table(
+    "rooms",
+    columns=["Room", "Temperature", "Open"],
+    units=["", UnitOfTemperature.CELSIUS, ""],
+    rows=[["Kitchen", 21.5, False], ["Bedroom", 19.0, True]],
+    title="Climate",
+)
+haa.card.add_element(rooms)
+rooms.set_cell(0, 1, 21.8)                       # row 0, column 1
+rooms.add_row(["Office", 22.1, False])
+rooms.add_row(["Hall", 18.4, False], limit=20)   # keeps the last 20 rows: a rolling log
+```
+
+A table has at most 12 columns and 200 rows; it scrolls sideways when it is wider than its cell.
 
 ### Layout
 
@@ -562,17 +771,47 @@ async def test_morning_routine_only_when_home():
 | With the harness you can                    | Using                                                           |
 | ------------------------------------------- | --------------------------------------------------------------- |
 | Set states and fire events                  | `set_state`, `remove_state`, `fire_event`                       |
-| Control time                                | `now=`, `advance_time(minutes=5)`, `set_sun(sunset="18:30")`    |
-| Wait for the automation to finish reacting  | `await wait_idle()`                                             |
+| Control time                                | `now=`, `time_zone="Europe/Berlin"`, `advance_time(minutes=5)`, `set_sun(sunset="18:30")` |
+| Wait for the automation to finish reacting  | `await wait_idle()`; a long calculation: `wait_idle(max_steps=5_000_000)` |
 | Call actions                                | `await call("name", level=3)`, with `caller=` or `source="trigger"` |
 | See what it did                             | `service_calls()`, `events()`, `logs()`, `message`, `state`, `variables`, `last_error` |
-| Decide what services do                     | `stub_service("weather.get_forecasts", response={...})`, `success=False`, `remove_service` |
+| Decide what services do                     | `stub_service("weather.get_forecasts", response={...})`, `success=False`, `fields=[...]`, `remove_service` |
 | Stand in for other automations              | `stub_automation("notifications", send_message="sent")`, `automation_calls()` |
 | Check the card and press its buttons        | `card.title`, `card.blocks`, `card.block(id)`, `card.layout`, `await press(id)` |
 | Drive the lifecycle                         | `start=False`, then `load()`, `start()`, `stop()`, `reload()`   |
+| Test failures of triggered actions          | `expect_failures=True`, then `failures` (each with `action` and `error`) |
 | Provide assets and stored variables         | `assets={"logo.png": b"..."}`, `variables={"count": 3}`         |
+| Provide and read long-term statistics       | `statistics={"sensor.grid": [rows]}`, `statistics("sensor.haanim_x_energy")` |
+| Operate the device's entities               | `entity("boost").state`, `entities`, `await command("boost", "turn_on")`, `entities={"boost": True}` |
+
+Services behave as in Home Assistant. A service stubbed without a response gives none, as most services; one
+with `response=` gives it when asked, and `supports_response="only"` makes it fail unless asked. With
+`fields=["statistic_id", "stats"]` a call with any other key fails, as the service's schema refuses it
+(`entity_id` and the other targets are always accepted). A response that depends on the call is a function
+of its data:
+
+```python
+from haanim.testing import AutomationHarness
+
+ROWS = [{"start": "2025-01", "sum": 10}, {"start": "2025-02", "sum": 20}]
+
+def window(start, end, **_):
+    return {"rows": [row for row in ROWS if start <= row["start"] < end]}
+
+async def test_monthly_totals():
+    async with AutomationHarness("my_automation") as harness:
+        harness.stub_service("recorder.get_statistics", response=window)
+        ...
+```
+
+A function that raises makes the call fail with its message.
 
 Time stands still in the harness until the test advances it, so a test of "five minutes later" takes
-milliseconds.
+milliseconds. The clock runs in `time_zone` (UTC by default), and starts on Monday 2025-01-06 at noon unless
+`now=` says otherwise.
+
+An action the test did not call directly (one a trigger, an entity command or `@shutdown` ran) that fails
+makes the test fail: its exception is raised by the next call of the harness, or when the `async with`
+block ends. A test of such failures passes `expect_failures=True` and reads `failures` instead.
 
 For editors and type checkers, the same package gives completion and types for `from haanim import ...`.

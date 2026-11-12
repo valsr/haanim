@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypeVar
 
+import probatio as vol
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry
@@ -23,10 +24,13 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.sun import get_astral_event_next
 from homeassistant.util import dt as dt_util
 
+from custom_components.haanim.entities import HAEntitySink
 from custom_components.haanim.const import DOMAIN
 from custom_components.haanim.ha.assets import HAAssetSigner
 from custom_components.haanim.ha.events import EventManager
 from custom_components.haanim.ha.state import StateManager
+from custom_components.haanim.ha.statistics import HAStatistics
+from haanim.const import ResponseSupport
 from haanim.engine.errors import ServiceCallError
 from haanim.interfaces import Host
 from haanim.types import ServiceInfo
@@ -37,6 +41,21 @@ T = TypeVar("T")
 STORAGE_VERSION = 1
 
 __all__ = ["HAClock", "HAFileSystem", "HAServiceCaller", "HASunProvider", "build_host"]
+
+
+def _call_errors() -> tuple[type[Exception], ...]:
+    """Return what a failed service call raises: Home Assistant's error, or a refusing schema's.
+
+    Home Assistant's schemas use probatio; an integration's own may still use voluptuous.
+    """
+    try:
+        from voluptuous import Invalid  # pylint: disable=import-outside-toplevel
+    except ImportError:  # pragma: no cover - voluptuous is no longer installed
+        return (HomeAssistantError, vol.Invalid)
+    return (HomeAssistantError, vol.Invalid, Invalid)
+
+
+CALL_ERRORS = _call_errors()
 
 
 class HAServiceCaller:
@@ -76,6 +95,9 @@ class HAServiceCaller:
                         name=name,
                         description=description.get("description", "") or "",
                         fields=dict(description.get("fields", {}) or {}),
+                        supports_response=ResponseSupport(
+                            self._hass.services.supports_response(domain, name).value
+                        ),
                     )
                 )
         return result
@@ -94,7 +116,8 @@ class HAServiceCaller:
         ``return_response`` for the others, and HAAnim's proxy always asks.
 
         Raises:
-            ServiceCallError: If Home Assistant reports the call as failed.
+            ServiceCallError: If Home Assistant reports the call as failed or the
+                service's schema refuses the data.
         """
         if return_response and self._hass.services.has_service(domain, service):
             return_response = (
@@ -108,7 +131,8 @@ class HAServiceCaller:
                 blocking=True,
                 return_response=return_response,
             )
-        except HomeAssistantError as err:
+        except CALL_ERRORS as err:
+            # Data the service's schema refuses raises the schema library's error.
             raise ServiceCallError(domain, service, str(err)) from err
         return response if isinstance(response, dict) else None
 
@@ -265,6 +289,10 @@ class HAStorage:
         """Save a copy of a document."""
         await self._store(key).async_save(copy.deepcopy(data))
 
+    async def remove(self, key: str) -> None:
+        """Delete the document's file, if there is one."""
+        await self._store(key).async_remove()
+
 
 CardListener = Callable[[dict[str, Any]], None]
 
@@ -346,4 +374,7 @@ def build_host(hass: HomeAssistant, state_manager: StateManager, event_manager: 
         hass=hass,
         asset_signer=HAAssetSigner(hass),
         cards=HACardSink(),
+        entities=HAEntitySink(hass),
+        # Statistics are kept by the recorder; without it there are none
+        statistics=HAStatistics(hass) if "recorder" in hass.config.components else None,
     )

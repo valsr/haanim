@@ -6,18 +6,37 @@ read-only: automations are controlled through the panel, the services and the
 ``haa`` API.
 """
 
+# Home Assistant's entity classes define these properties as cached properties; ours read the store
+# pyright: reportIncompatibleVariableOverride=false
+
 from __future__ import annotations
+
+# Home Assistant calls the async_ command methods; the sync ones are not used
+# pylint: disable=abstract-method
 
 from typing import Any
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from haanim.const import (
+    EntityPlatform,
+    OPTION_DEVICE_CLASS,
+    OPTION_PRECISION,
+    OPTION_STATE_CLASS,
+    OPTION_UNIT,
+)
 from custom_components.haanim.automation_manager import AutomationManager
 from custom_components.haanim.const import DOMAIN
+from custom_components.haanim.entities import (
+    DeclaredEntity,
+    async_setup_declared_platform,
+    device_info,
+    state_text,
+)
 
 STATE_OPTIONS = ["on", "off", "error"]
 
@@ -61,6 +80,7 @@ class AutomationSensor(SensorEntity):
         self._automation_id = automation_id
         self._attr_unique_id = unique_id_of(automation_id)
         self.entity_id = f"sensor.{DOMAIN}_{automation_id}"
+        self._attr_device_info = device_info(automation_id, manager.automation_name(automation_id))
         self.added = False
 
     async def async_added_to_hass(self) -> None:
@@ -143,7 +163,7 @@ class AutomationEntities:
         """Remove the entity of an automation whose folder is gone."""
         entity = self._entities.pop(automation_id, None)
         registry = er.async_get(self._hass)
-        entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id_of(automation_id))
+        entity_id = registry.async_get_entity_id(EntityPlatform.SENSOR, DOMAIN, unique_id_of(automation_id))
         if entity_id is not None:
             registry.async_remove(entity_id)
         elif entity is not None and entity.added:
@@ -154,11 +174,52 @@ class AutomationEntities:
         """Remove the entities of automations whose folders went away while HAAnim was not running."""
         ids = set(self._manager.automation_ids())
         known = {unique_id_of(automation_id) for automation_id in ids}
+        # The sensors automations declare are not automation entities
+        devices = self._manager.devices
+        known |= {
+            stored.unique_id(automation_id)
+            for automation_id in devices.automation_ids()
+            for stored in devices.store(automation_id).entities()
+            if stored.platform == EntityPlatform.SENSOR
+        }
         self._entities = {key: entity for key, entity in self._entities.items() if key in ids}
         registry = er.async_get(self._hass)
         for registered in er.async_entries_for_config_entry(registry, self._entry.entry_id):
-            if registered.domain == "sensor" and registered.unique_id not in known:
+            if registered.domain == EntityPlatform.SENSOR and registered.unique_id not in known:
                 registry.async_remove(registered.entity_id)
+
+
+class DeclaredSensor(DeclaredEntity, SensorEntity):
+    """A sensor an automation declares."""
+
+    @property
+    def native_value(self) -> Any:  # pyright: ignore[reportIncompatibleVariableOverride]
+        """The stored state."""
+        return state_text(self.state_value)
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:  # pyright: ignore[reportIncompatibleVariableOverride]
+        """The declared unit."""
+        return self.declaration.get(OPTION_UNIT)
+
+    @property
+    def device_class(self) -> SensorDeviceClass | None:  # pyright: ignore[reportIncompatibleVariableOverride]
+        """The declared device class."""
+        value = self.declaration.get(OPTION_DEVICE_CLASS)
+        return SensorDeviceClass(value) if value else None
+
+    @property
+    def state_class(self) -> SensorStateClass | None:  # pyright: ignore[reportIncompatibleVariableOverride]
+        """The declared state class."""
+        value = self.declaration.get(OPTION_STATE_CLASS)
+        return SensorStateClass(value) if value else None
+
+    @property
+    def suggested_display_precision(
+        self,
+    ) -> int | None:  # pyright: ignore[reportIncompatibleVariableOverride]
+        """The declared precision."""
+        return self.declaration.get(OPTION_PRECISION)
 
 
 async def async_setup_entry(
@@ -173,3 +234,6 @@ async def async_setup_entry(
     if manager.started:
         # Loaded before this platform was set up: a reload of the integration
         entities.automations_loaded()
+    await async_setup_declared_platform(
+        hass, entry, async_add_entities, EntityPlatform.SENSOR, DeclaredSensor
+    )

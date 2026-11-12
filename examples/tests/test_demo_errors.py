@@ -83,7 +83,7 @@ async def test_missing_automation_and_service() -> None:
 
 async def test_a_failure_in_a_trigger() -> None:
     """Armed, the trigger fails: the failure is kept, announced, and counted on the card."""
-    async with AutomationHarness(DEMO) as automation:
+    async with AutomationHarness(DEMO, expect_failures=True) as automation:
         await automation.advance_time(seconds=11)
         assert automation.last_error is None, "not armed, the trigger does nothing"
 

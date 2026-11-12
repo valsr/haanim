@@ -1,11 +1,57 @@
 """Constants for the HAAnim engine."""
 
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Final
 
 __all__ = [
     # Enums
     "ActionMode",
+    # Device entities
+    "EntityPlatform",
+    "EntityCommand",
+    "StateClass",
+    "NumberMode",
+    "TextMode",
+    "OPTION_NAME",
+    "OPTION_ICON",
+    "OPTION_ID",
+    "OPTION_ATTRIBUTES",
+    "OPTION_INITIAL",
+    "OPTION_INITIAL_ATTRIBUTES",
+    "OPTION_ACTION_MODE",
+    "OPTION_DEVICE_CLASS",
+    "OPTION_UNIT",
+    "OPTION_STATE_CLASS",
+    "OPTION_PRECISION",
+    "OPTION_MIN",
+    "OPTION_MAX",
+    "OPTION_STEP",
+    "OPTION_MODE",
+    "OPTION_OPTIONS",
+    "OPTION_MIN_LENGTH",
+    "OPTION_MAX_LENGTH",
+    "OPTION_PATTERN",
+    # Long-term statistics
+    "Period",
+    "STAT_START",
+    "STAT_END",
+    "STAT_USAGE",
+    "STAT_MEAN",
+    "STAT_MIN",
+    "STAT_MAX",
+    "STAT_STATE",
+    "STAT_SUM",
+    "STAT_CHANGE",
+    # Units, with Home Assistant's names and values
+    "UnitOfEnergy",
+    "UnitOfPower",
+    "UnitOfTemperature",
+    "UnitOfTime",
+    "UnitOfVolume",
+    "UnitOfPressure",
+    "UnitOfElectricCurrent",
+    "UnitOfElectricPotential",
+    "PERCENTAGE",
     # Trigger kinds
     "TRIGGER_TIME",
     "TRIGGER_INTERVAL",
@@ -32,6 +78,8 @@ __all__ = [
     "DISABLED_MODULE_MEMBERS",
     "DISABLED_LOOP_MEMBERS",
     "LOOP_GETTERS",
+    # Services
+    "ResponseSupport",
 ]
 
 
@@ -47,6 +95,176 @@ class ActionMode(Enum):
     QUEUE = "queue"
     CANCEL = "cancel"
 
+
+class ResponseSupport(StrEnum):
+    """Whether a service gives response data, as Home Assistant's ``SupportsResponse``."""
+
+    NONE = "none"
+    """It never responds; most services, such as ``light.turn_on``."""
+    OPTIONAL = "optional"
+    """It responds when asked."""
+    ONLY = "only"
+    """It must be asked for its response."""
+
+
+# --- Device entities --------------------------------------------------------------
+# Each is its string (a StrEnum), so declarations written with plain strings mean the same.
+
+
+class EntityPlatform(StrEnum):
+    """The Home Assistant platforms of the entities an automation declares."""
+
+    SENSOR = "sensor"
+    BINARY_SENSOR = "binary_sensor"
+    SWITCH = "switch"
+    NUMBER = "number"
+    SELECT = "select"
+    BUTTON = "button"
+    TEXT = "text"
+
+
+class EntityCommand(StrEnum):
+    """The commands Home Assistant sends to an entity; each is handled by the class method of that name."""
+
+    TURN_ON = "turn_on"
+    TURN_OFF = "turn_off"
+    SET_VALUE = "set_value"
+    SELECT_OPTION = "select_option"
+    PRESS = "press"
+
+
+class StateClass(StrEnum):
+    """The state classes of a sensor; they decide which long-term statistics it has."""
+
+    MEASUREMENT = "measurement"
+    TOTAL = "total"
+    TOTAL_INCREASING = "total_increasing"
+
+
+class NumberMode(StrEnum):
+    """How the frontend shows a number entity."""
+
+    AUTO = "auto"
+    BOX = "box"
+    SLIDER = "slider"
+
+
+class TextMode(StrEnum):
+    """How the frontend shows a text entity."""
+
+    TEXT = "text"
+    PASSWORD = "password"
+
+
+# The options of the entity decorators, as they are stored
+OPTION_NAME: Final = "name"
+OPTION_ICON: Final = "icon"
+OPTION_ID: Final = "id"
+OPTION_ATTRIBUTES: Final = "attributes"
+OPTION_INITIAL: Final = "initial"
+OPTION_INITIAL_ATTRIBUTES: Final = "initial_attributes"
+OPTION_ACTION_MODE: Final = "action_mode"
+OPTION_DEVICE_CLASS: Final = "device_class"
+OPTION_UNIT: Final = "unit"
+OPTION_STATE_CLASS: Final = "state_class"
+OPTION_PRECISION: Final = "precision"
+OPTION_MIN: Final = "min"
+OPTION_MAX: Final = "max"
+OPTION_STEP: Final = "step"
+OPTION_MODE: Final = "mode"
+OPTION_OPTIONS: Final = "options"
+OPTION_MIN_LENGTH: Final = "min_length"
+OPTION_MAX_LENGTH: Final = "max_length"
+OPTION_PATTERN: Final = "pattern"
+
+# --- Long-term statistics ---------------------------------------------------------
+
+
+class Period(StrEnum):
+    """The periods long-term statistics are queried by."""
+
+    FIVE_MINUTES = "5minute"
+    HOUR = "hour"
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+
+
+# The fields of a statistics row
+STAT_START: Final = "start"
+STAT_END: Final = "end"
+STAT_USAGE: Final = "usage"
+STAT_MEAN: Final = "mean"
+STAT_MIN: Final = "min"
+STAT_MAX: Final = "max"
+STAT_STATE: Final = "state"
+STAT_SUM: Final = "sum"
+STAT_CHANGE: Final = "change"
+
+# --- Units ------------------------------------------------------------------------
+# Common units, with the names and values Home Assistant gives them; any other unit string works too.
+
+
+class UnitOfEnergy(StrEnum):
+    """Units of energy."""
+
+    WATT_HOUR = "Wh"
+    KILO_WATT_HOUR = "kWh"
+    MEGA_WATT_HOUR = "MWh"
+
+
+class UnitOfPower(StrEnum):
+    """Units of power."""
+
+    WATT = "W"
+    KILO_WATT = "kW"
+
+
+class UnitOfTemperature(StrEnum):
+    """Units of temperature."""
+
+    CELSIUS = "°C"
+    FAHRENHEIT = "°F"
+    KELVIN = "K"
+
+
+class UnitOfTime(StrEnum):
+    """Units of time."""
+
+    SECONDS = "s"
+    MINUTES = "min"
+    HOURS = "h"
+    DAYS = "d"
+
+
+class UnitOfVolume(StrEnum):
+    """Units of volume."""
+
+    LITERS = "L"
+    CUBIC_METERS = "m³"
+
+
+class UnitOfPressure(StrEnum):
+    """Units of pressure."""
+
+    HPA = "hPa"
+    KPA = "kPa"
+    BAR = "bar"
+
+
+class UnitOfElectricCurrent(StrEnum):
+    """Units of electric current."""
+
+    AMPERE = "A"
+
+
+class UnitOfElectricPotential(StrEnum):
+    """Units of electric potential."""
+
+    VOLT = "V"
+
+
+PERCENTAGE: Final = "%"
 
 # The kinds of trigger; each is attached with the decorator ``on_<kind>``
 TRIGGER_TIME: Final = "time"

@@ -25,7 +25,10 @@ automation_id: demo_basics
 | --- | --- |
 | [`demo_basics`](https://github.com/valsr/haanim/tree/main/examples/demo_basics/main.py) | Where to start: text, a value and buttons; actions with data, a result and a confirmation; the title and the status message |
 | [`demo_controls`](https://github.com/valsr/haanim/tree/main/examples/demo_controls/main.py) | Values, entities, icons, gauges (bar and dial) and badges, set by the automation or following an entity |
-| [`demo_layout`](https://github.com/valsr/haanim/tree/main/examples/demo_layout/main.py) | Rows and cells, a table made of rows, and moving, removing and rebuilding elements |
+| [`demo_entities`](https://github.com/valsr/haanim/tree/main/examples/demo_entities/main.py) | The automation's own device: a sensor it updates, and a switch, a number, a select and a button users operate; importing past hours of energy into long-term statistics |
+| [`demo_statistics`](https://github.com/valsr/haanim/tree/main/examples/demo_statistics/main.py) | Reading long-term statistics of an entity: day by day for the last week, month by month for this year, in a table and a graph |
+| [`demo_generators`](https://github.com/valsr/haanim/tree/main/examples/demo_generators/main.py) | Generators computing a day of readings lazily, `yield from`, and an async generator read with `async for`, stopped with `break` and `aclose()` |
+| [`demo_layout`](https://github.com/valsr/haanim/tree/main/examples/demo_layout/main.py) | Rows and cells, a table made of rows and a table element, and moving, removing and rebuilding elements |
 | [`demo_graphs`](https://github.com/valsr/haanim/tree/main/examples/demo_graphs/main.py) | Graphs of numbers, of pairs, over time, of states as a timeline, and of the history of entities |
 | [`demo_images`](https://github.com/valsr/haanim/tree/main/examples/demo_images/main.py) | Images from `assets/` and from an address; size, alignment and caption; the live picture of a camera |
 | [`demo_html`](https://github.com/valsr/haanim/tree/main/examples/demo_html/main.py) | Raw HTML: a table, styled boxes, links that run actions, and escaping text from outside |
@@ -34,6 +37,7 @@ automation_id: demo_basics
 
 The demos use a few entities: `sensor.temperature`, `input_number.temperature`, `input_boolean.fan`,
 `sun.sun` and `camera.demo`. Where one is missing the card says so; nothing fails.
+`demo_statistics` shows statistics once `sensor.temperature` has a `state_class` of `measurement` and Home Assistant has compiled its first hour.
 
 ## Tests
 

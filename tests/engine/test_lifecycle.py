@@ -255,7 +255,7 @@ class TestLoad:
         ("source", "files", "message"),
         [
             ("def broken(:\n", {}, "main.py:1: invalid syntax"),
-            ("def gen():\n    yield 1\n", {}, "main.py:2: 'yield' is not supported"),
+            ("def gen():\n    f = lambda: (yield)\n", {}, "main.py:2: 'yield' in a lambda is not supported"),
             ("import os\n", {}, "main.py:1: import of module 'os' is not allowed"),
             ("eval('1')\n", {}, "main.py:1: builtin 'eval' is not available"),
             ("x = 1\n", {"helper.py": "import os\n"}, "helper.py:1: import of module 'os' is not allowed"),

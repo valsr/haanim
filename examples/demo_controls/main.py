@@ -13,7 +13,7 @@ colour with it. "Fan" toggles the fan, and everything that follows the fan
 changes without the automation doing anything.
 """
 
-from haanim import ActionEvent, action, haa, startup
+from haanim import PERCENTAGE, ActionEvent, action, haa, startup
 
 TEMPERATURE = "sensor.temperature"
 FAN = "input_boolean.fan"  # a Toggle helper called "Fan"; any entity that is on or off will do
@@ -68,7 +68,7 @@ def build_card(event: ActionEvent) -> None:
     dials = layout.split_row(2)
     dials.add_element(card.create_gauge("dial", entity_id=TEMPERATURE, min=10, max=35, kind="dial"))
     dials.add_element(
-        card.create_gauge("load", 62, unit="%", label="Fixed value", kind="dial", color="warning")
+        card.create_gauge("load", 62, unit=PERCENTAGE, label="Fixed value", kind="dial", color="warning")
     )
 
     card.add_element(card.create_text("t_badges", "**Badges**"))

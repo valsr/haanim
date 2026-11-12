@@ -4,6 +4,7 @@
     "after_dependencies": [
         "http",
         "frontend",
+        "recorder",
         "websocket_api"
     ],
     "codeowners": [
@@ -15,5 +16,5 @@
     "iot_class": "local_polling",
     "issue_tracker": "https://github.com/valsr/haanim/issues",
     "requirements": [],
-    "version": "0.3.1"
+    "version": "0.4.0"
 }

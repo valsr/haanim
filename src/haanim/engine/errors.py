@@ -326,6 +326,18 @@ class ServiceCallError(HAAnimError):
         self.reason = reason
 
 
+class StatisticsUnavailableError(HAAnimError):
+    """Exception raised when long-term statistics are used but the host keeps none (no recorder)."""
+
+    def __init__(self) -> None:
+        """Initialize the error."""
+        super().__init__("Long-term statistics are not available: Home Assistant's recorder is not running")
+
+
+class StatisticsError(HAAnimError):
+    """Exception raised when the host fails to read or write long-term statistics."""
+
+
 PUBLIC_ERRORS: tuple[type[HAAnimError], ...] = (
     HAAnimError,
     AutomationSyntaxError,
@@ -343,5 +355,7 @@ PUBLIC_ERRORS: tuple[type[HAAnimError], ...] = (
     ActionCancelledError,
     NonExistingEntityError,
     NonExistingServiceError,
+    StatisticsUnavailableError,
+    StatisticsError,
 )
 """Errors exported to automations through the ``haanim`` module."""

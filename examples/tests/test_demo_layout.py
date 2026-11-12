@@ -16,7 +16,7 @@ async def test_rows() -> None:
         assert [row["cells"] for row in layout[:5]] == [1, 2, 3, 4, 6]
         assert layout[1] == {"cells": 2, "elements": ["a", "b"]}
         assert layout[2]["elements"] == ["three_one", "three_two", "three_three"]
-        assert automation.message == "34 elements in 14 rows"
+        assert automation.message == "36 elements in 16 rows"
 
 
 async def test_a_full_row_ignores_further_elements() -> None:
@@ -77,6 +77,16 @@ async def test_rebuild_puts_everything_back() -> None:
         await automation.press("move")
         await automation.press("hide")
         assert automation.card.layout != start
-        assert await automation.press("rebuild") == 34
+        assert await automation.press("rebuild") == 36
         assert automation.card.layout == start
         assert await automation.press("move") == "second", "the rows are the new ones"
+
+
+async def test_table_element() -> None:
+    """The same rooms as a table element: a header, a row per room, and the temperature unit."""
+    async with AutomationHarness(DEMO) as automation:
+        table = automation.card.block("rooms")
+        assert table["type"] == "table"
+        assert table["columns"] == ["Room", "Temperature", "State"]
+        assert table["units"] == ["", "°C", ""]
+        assert table["rows"] == [["Kitchen", 21.5, "Heating"], ["Bedroom", 18.0, "Idle"]]

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { describe, mock, test } from 'node:test';
 
 import { FakeHass, clicked, installDom, settle } from './fake-dom.mjs';
 
@@ -12,11 +12,11 @@ const LIST = {
         { id: 'broken', name: 'broken', version: '', state: 'error', enabled: true, message: 'main.py:1' },
     ],
 };
-const DETAIL_IDS = ['detail-header', 'detail-controls', 'detail-meta', 'detail-tabs', 'detail-actions', 'detail-log-tools', 'detail-log', 'tab-preview', 'tab-actions', 'tab-logs', 'page-error'];
+const DETAIL_IDS = ['detail-header', 'detail-controls', 'detail-meta', 'detail-tabs', 'detail-actions', 'detail-entities', 'detail-log-tools', 'detail-log', 'tab-preview', 'tab-actions', 'tab-entities', 'tab-logs', 'page-error'];
 
 /** Which tab of the page is open: the one whose pane is not hidden. */
 function openTab(parts) {
-    return ['preview', 'actions', 'logs'].filter((section) => parts[`tab-${section}`].hidden === false);
+    return ['preview', 'actions', 'entities', 'logs'].filter((section) => parts[`tab-${section}`].hidden === false);
 }
 
 function states(state = 'on') {
@@ -334,6 +334,7 @@ describe('haanim-panel', () => {
         panel.hass = hass;
         await settle();
         assert.match(header.innerHTML, /Climate/);
+        panel.disconnectedCallback(); // it would try again every two seconds while the page is open
     });
 
     test('the configuration tab shows the version and the options', async () => {
@@ -422,4 +423,110 @@ describe('haanim-panel', () => {
         await settle();
         assert.equal(page.hass.services.length, 0);
     });
+
+    test('the entities tab follows the entities and opens from its address', async () => {
+        const { panel, hass, parts } = await opened('/automation/climate/entities');
+        assert.deepEqual(openTab(parts), ['entities']);
+        assert.deepEqual(hass.active('haanim/entities/subscribe').map((subscription) => subscription.message), [
+            { type: 'haanim/entities/subscribe', automation_id: 'climate' },
+        ]);
+        hass.push('haanim/entities/subscribe', {
+            device_id: null,
+            entities: [{ key: 'old', object_id: 'old', entity_id: 'sensor.haanim_climate_old', platform: 'sensor', name: 'old', state: 1, declared: false }],
+        });
+        assert.match(parts['detail-entities'].innerHTML, /data-entity-remove="old"/);
+
+        panel.shadowRoot.fire('click', clicked({ 'entity-remove': 'old' }));
+        await settle();
+        assert.deepEqual(hass.calls.at(-2), { type: 'haanim/entities/remove', automation_id: 'climate', key: 'old' });
+        assert.deepEqual(hass.calls.at(-1), { type: 'haanim/automations/get', automation_id: 'climate' }, 'the count is read again');
+
+        panel.shadowRoot.fire('click', clicked({ 'entity-purge': 'boost' }));
+        await settle();
+        assert.deepEqual(hass.calls.at(-2), { type: 'haanim/entities/purge', automation_id: 'climate', key: 'boost' });
+    });
+
+    test('a failing remove shows its message', async () => {
+        const { panel, hass, parts } = await opened('/automation/climate/entities');
+        hass.answers['haanim/entities/remove'] = new Error('delete the class first');
+        panel.shadowRoot.fire('click', clicked({ 'entity-remove': 'boost' }));
+        await settle();
+        assert.match(parts['page-error'].innerHTML, /delete the class first/);
+    });
+
+    test('an entity name opens its more-info dialog', async () => {
+        const { panel } = await opened('/automation/climate/entities');
+        panel.dispatched = [];
+        panel.shadowRoot.fire('click', clicked({ 'more-info': 'sensor.haanim_climate_old' }));
+        assert.deepEqual(panel.dispatched.map((event) => [event.type, event.detail]), [['hass-more-info', { entityId: 'sensor.haanim_climate_old' }]]);
+    });
+
+    test('ended subscriptions are followed again a moment later: the integration was reloaded', async () => {
+        mock.timers.enable({ apis: ['setTimeout'] });
+        try {
+            const { hass, parts } = await opened('/automation/climate/entities');
+            hass.push('haanim/entities/subscribe', { device_id: null, entities: [] });
+            hass.push('haanim/entities/subscribe', { ended: true });
+            hass.push('haanim/logs/subscribe', { ended: true });
+            await settle();
+            assert.equal(hass.active('haanim/entities/subscribe').length, 0);
+            assert.equal(hass.active('haanim/logs/subscribe').length, 0);
+            assert.doesNotMatch(parts['detail-entities'].innerHTML, /Loading/, 'what was shown stays until the new one');
+            mock.timers.tick(2000);
+            await settle();
+            assert.equal(hass.active('haanim/entities/subscribe').length, 1);
+            assert.equal(hass.active('haanim/logs/subscribe').length, 1);
+        } finally {
+            mock.timers.reset();
+        }
+    });
+
+    test('a subscription that fails is tried again until it works', async () => {
+        mock.timers.enable({ apis: ['setTimeout'] });
+        try {
+            const hass = new FakeHass(states());
+            hass.failSubscribe = new Error('not ready');
+            hass.answers['haanim/automations/get'] = detail;
+            const panel = new HAAnimPanel();
+            for (const id of DETAIL_IDS) panel.shadowRoot.stub(id);
+            panel.shadowRoot.stub('detail-card', { setConfig() {} });
+            panel.route = { prefix: '/haanim', path: '/automation/climate/entities' };
+            panel.hass = hass;
+            await settle();
+            mock.timers.tick(2000);
+            await settle();
+            assert.equal(hass.subscriptions.length, 0);
+            hass.failSubscribe = null;
+            mock.timers.tick(2000);
+            await settle();
+            assert.equal(hass.active('haanim/entities/subscribe').length, 1);
+            assert.equal(hass.active('haanim/logs/subscribe').length, 1);
+        } finally {
+            mock.timers.reset();
+        }
+    });
+
+    test('leaving the page cancels following again', async () => {
+        mock.timers.enable({ apis: ['setTimeout'] });
+        try {
+            const { panel, hass } = await opened('/automation/climate/entities');
+            hass.push('haanim/entities/subscribe', { ended: true });
+            panel.route = { prefix: '/haanim', path: '' };
+            await settle();
+            mock.timers.tick(2000);
+            await settle();
+            assert.equal(hass.active('haanim/entities/subscribe').length, 0);
+        } finally {
+            mock.timers.reset();
+        }
+    });
+
+    test('leaving the page stops following the entities', async () => {
+        const { panel, hass } = await opened('/automation/climate/entities');
+        panel.route = { prefix: '/haanim', path: '' };
+        await settle();
+        assert.equal(hass.active('haanim/entities/subscribe').length, 0);
+        assert.equal(hass.active('haanim/logs/subscribe').length, 0);
+    });
 });
+

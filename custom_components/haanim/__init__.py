@@ -30,12 +30,21 @@ from custom_components.haanim.automation_manager import AutomationManager
 from custom_components.haanim.log_buffer import AutomationLogBuffer
 from custom_components.haanim.log_levels import AutomationLogLevels
 from custom_components.haanim.options import engine_options
-from custom_components.haanim.websocket import async_register_websocket
+from custom_components.haanim.websocket import async_end_subscriptions, async_register_websocket
 from haanim.engine.triggers import TriggerManager
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]  # One enum sensor per automation
+# One enum sensor per automation, and the entities automations declare
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.SWITCH,
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.BUTTON,
+    Platform.TEXT,
+]
 
 # Nothing is set in configuration.yaml. Home Assistant looks for this name; pylint takes a callable for a
 # function.
@@ -249,6 +258,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
     # Get managers
     data = hass.data[DOMAIN].get(entry.entry_id, {})
+
+    # The panel and the cards subscribe again once the integration is back
+    async_end_subscriptions(hass)
 
     # Stop and unload the automations first, while triggers and services still work
     if "manager" in data:

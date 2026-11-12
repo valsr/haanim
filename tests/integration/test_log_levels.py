@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import voluptuous as vol
+import probatio as vol
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 

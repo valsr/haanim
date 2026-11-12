@@ -6,7 +6,7 @@ from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
-import voluptuous as vol
+import probatio as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import HomeAssistant

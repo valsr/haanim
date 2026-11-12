@@ -20,6 +20,8 @@ from haanim.types import EventData, ServiceInfo, StateChangedEvent, StateVal
 
 if TYPE_CHECKING:
     from haanim.engine.automation_context import AutomationContext
+    from haanim.engine.devices import StoredEntity
+    from haanim.engine.statistics import StatisticsMetadata
 
 T = TypeVar("T")
 
@@ -28,12 +30,14 @@ __all__ = [
     "AutomationRegistry",
     "CardSink",
     "Clock",
+    "EntitySink",
     "EventBus",
     "FileSystem",
     "Host",
     "IssueReporter",
     "ServiceCaller",
     "StateProvider",
+    "StatisticsProvider",
     "StorageBackend",
     "SunProvider",
     "TimerHandle",
@@ -261,6 +265,67 @@ class AssetSigner(Protocol):
         ...
 
 
+class EntitySink(Protocol):
+    """Where the entities of automations' devices are shown: told about every change.
+
+    The sink reads what it shows from the engine's device registry; these calls
+    only say what changed.
+    """
+
+    def entity_changed(self, automation_id: str, key: str) -> None:
+        """An entity was created, or its state, attributes, declaration or declared flag changed."""
+        ...
+
+    def entity_removed(self, automation_id: str, entity: StoredEntity) -> None:
+        """A leftover entity was removed; ``entity`` is what it was."""
+        ...
+
+    def device_removed(self, automation_id: str) -> None:
+        """An automation's device and all its entities are gone."""
+        ...
+
+
+class StatisticsProvider(Protocol):
+    """Where long-term statistics are read and written: Home Assistant's recorder.
+
+    Rows are dictionaries with ``start`` (an aware datetime) and the fields of
+    the statistic: ``mean``, ``min``, ``max`` or ``state``, ``sum``; query rows
+    also have ``end`` and, for sums, ``change``.
+    """
+
+    async def query(  # pylint: disable=too-many-positional-arguments
+        self,
+        statistic_id: str,
+        start: datetime,
+        end: datetime,
+        period: str,
+        types: set[str],
+        unit: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return the rows of a period from start to end, oldest first.
+
+        Days, weeks and months are those of the host's time zone. With a unit,
+        the values are converted to it; otherwise they are in the entity's unit.
+        """
+        ...
+
+    async def has_short_term(self, statistic_id: str, start: datetime) -> bool:
+        """Return whether there are 5-minute rows from start on: the entity is recorded live."""
+        ...
+
+    async def import_rows(self, metadata: StatisticsMetadata, rows: list[dict[str, Any]]) -> None:
+        """Write hourly rows, replacing stored rows of the same hours; return once they are written."""
+        ...
+
+    async def adjust_sums(self, statistic_id: str, start: datetime, delta: float, unit: str | None) -> None:
+        """Add delta to every stored sum from start on, hourly and 5-minute rows; return once written."""
+        ...
+
+    def entity_statistic_id(self, platform: str, unique_id: str, default: str) -> str:
+        """Return the statistic ID of an entity: its current entity ID, or default if unknown."""
+        ...
+
+
 class CardSink(Protocol):
     """Receives the card content of automations, to show it."""
 
@@ -304,6 +369,10 @@ class StorageBackend(Protocol):
             key: Identifies the document.
             data: Any JSON value. Later changes to it by the caller are not stored.
         """
+        ...
+
+    async def remove(self, key: str) -> None:
+        """Remove the document saved under a key, if there is one."""
         ...
 
 
@@ -432,6 +501,10 @@ class Host:
             the host cannot.
         cards: Where the card content of automations goes. None if the host
             shows no cards.
+        entities: Where the entities of automations' devices are shown. None
+            if the host shows no entities.
+        statistics: Where long-term statistics are kept. None if the host
+            keeps none.
     """
 
     states: StateProvider
@@ -445,3 +518,5 @@ class Host:
     hass: Any = None
     asset_signer: AssetSigner | None = None
     cards: CardSink | None = None
+    entities: EntitySink | None = None
+    statistics: StatisticsProvider | None = None

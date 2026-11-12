@@ -18,6 +18,7 @@ from homeassistant.core import CoreState, Event, HomeAssistant
 
 from custom_components.haanim.config import ConfigManager, get_config_manager
 
+from custom_components.haanim.entities import HAEntitySink
 from custom_components.haanim.options import EngineOptions
 from custom_components.haanim.const import (
     DOMAIN,
@@ -34,6 +35,8 @@ from haanim.engine.automation_context import (
 )
 from haanim.engine.automation_status import AutomationStatus, AutomationStatusManager
 from haanim.engine.automation_ids import RejectedFolder
+from haanim.engine.automation_ids import automation_id as derive_automation_id
+from haanim.engine.devices import DeviceRegistry
 from haanim.engine.discovery import DiscoveredAutomation, FolderIssues, discover
 from haanim.engine.hot_reload import HotReloader
 from haanim.interfaces import AutomationTimes, Host
@@ -156,6 +159,14 @@ class AutomationManager:  # pylint: disable=too-many-public-methods
 
         self._control = AutomationControl(self._flags, self._dispatcher)
 
+        # The entities of the automations' devices; they outlive the automations' code
+        self.devices = DeviceRegistry(host.storage, host.clock, host.entities)
+        self.entity_sink: HAEntitySink | None = (
+            host.entities if isinstance(host.entities, HAEntitySink) else None
+        )
+        if self.entity_sink is not None:
+            self.entity_sink.attach(self.devices, self, entry)
+
         # State
         self._started = False
         self._stopped = False
@@ -212,6 +223,9 @@ class AutomationManager:  # pylint: disable=too-many-public-methods
 
         This should be called during integration setup.
         """
+        # The stored entities exist before any automation runs: the platforms create them as they come up
+        await self.devices.load_all()
+
         # Ensure automation folder exists
         folder = Path(self._automation_path)
         if not folder.exists():
@@ -241,6 +255,14 @@ class AutomationManager:  # pylint: disable=too-many-public-methods
         await self.async_load_all_automations()
         await start_all(self._automations.values(), self._control.is_enabled)
         self._started = True
+        # Devices of automations whose folders went away while Home Assistant was not running. Not when
+        # no automation is found at all: the folder may be a share that is not mounted yet.
+        loaded = set(self.automation_ids())
+        folders = await self._folder_ids()
+        if loaded and folders is not None:
+            for automation_id in self.devices.automation_ids():
+                if automation_id not in loaded and automation_id not in folders:
+                    await self.devices.remove_device(automation_id)
         for listener in list(self._listeners):
             listener.automations_loaded()
 
@@ -291,6 +313,9 @@ class AutomationManager:  # pylint: disable=too-many-public-methods
 
         # Unload all automations
         await self.async_unload_all_automations()
+        await self.devices.flush()
+        if self.entity_sink is not None:
+            self.entity_sink.detach()
 
         _LOGGER.info("Automation manager stopped")
 
@@ -366,10 +391,14 @@ class AutomationManager:  # pylint: disable=too-many-public-methods
         if automation_path in self._automations:
             await self.async_unload_automation(automation_path)
 
+        automation_id = self._automation_ids.get(automation_path) or derive_automation_id(
+            Path(automation_path).name
+        )
         context = AutomationContext(
             host=self.host,
             automation_path=automation_path,
-            automation_id=self._automation_ids.get(automation_path),
+            automation_id=automation_id,
+            device_store=self.devices.store(automation_id),
             status_manager=self._status_manager,
             registry=self,
             additional_imports=self._import_allowlist,
@@ -420,6 +449,8 @@ class AutomationManager:  # pylint: disable=too-many-public-methods
 
         # The name and the enabled flag are known only now
         self._status_manager.notify(automation.automation_id)
+        if self.entity_sink is not None:
+            self.entity_sink.sync_device_name(automation.automation_id)
         return metadata
 
     async def async_unload_automation(self, automation_path: str) -> bool:
@@ -507,6 +538,25 @@ class AutomationManager:  # pylint: disable=too-many-public-methods
             raise NonExistingAutomationError(automation_id)
         await self.async_load_automation(path)
 
+    async def async_entity_command(
+        self, automation_id: str, object_id: str, command: str, value: Any = None, context: Any = None
+    ) -> None:
+        """Run the hook of a declared entity for a command sent from Home Assistant.
+
+        A command to an automation that is not loaded, or for an entity it no longer
+        declares (a reload can drop one while Home Assistant sends it a command), is
+        logged and does nothing.
+        """
+        try:
+            automation = self._automation(automation_id)
+        except NonExistingAutomationError:
+            _LOGGER.warning('"%s" ignored %s: automation is not running', object_id, command)
+            return
+        try:
+            await automation.entity_command(object_id, command, value, context)
+        except KeyError:
+            _LOGGER.warning('"%s" ignored %s: the automation does not declare it', object_id, command)
+
     def automation_actions(self, automation_id: str) -> list[ActionDefinition]:
         """Return the actions of an automation; none while its code is not running.
 
@@ -537,8 +587,23 @@ class AutomationManager:  # pylint: disable=too-many-public-methods
         await self.async_unload_automation(automation_path)
         self._automation_ids.pop(automation_path, None)
         if automation is not None:
+            # Only a folder that is gone takes its device along; a main.py missing for a moment does not
+            folders = await self._folder_ids()
+            if folders is not None and automation.automation_id not in folders:
+                await self.devices.remove_device(automation.automation_id)
             for listener in list(self._listeners):
                 listener.automation_removed(automation.automation_id)
+
+    async def _folder_ids(self) -> set[str] | None:
+        """Return the automation IDs of the folders in the automation folder, with or without main.py.
+
+        None if the automation folder itself is not there.
+        """
+        files = self.host.files
+        root = Path(self._automation_path)
+        if not files.is_dir(root):
+            return None
+        return {derive_automation_id(path.name) for path in await files.list_dir(root) if files.is_dir(path)}
 
     def report_rejected(self, rejected: Sequence[RejectedFolder]) -> None:
         """Raise and clear the repair issues of folders that are not loaded because of their name."""

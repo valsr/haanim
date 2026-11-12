@@ -6,7 +6,7 @@ import inspect
 from collections.abc import Callable
 from typing import Any
 
-from haanim.engine.eval_function import get_eval_function
+from haanim.engine.eval_function import CarriedStopIteration, get_eval_function
 
 __all__ = ["as_coroutine_function", "event_arguments", "signature_problem", "takes_event"]
 
@@ -34,7 +34,16 @@ def as_coroutine_function(func: Callable[..., Any]) -> Callable[..., Any]:
         eval_function, prefix = found
 
         async def invoke(*args: Any, **kwargs: Any) -> Any:
-            return await eval_function.invoke(*prefix, *args, **kwargs)
+            # As in Python, calling a generator function gives its generator
+            if eval_function.is_generator:
+                return eval_function.make_generator(*prefix, *args, **kwargs)
+            if eval_function.is_async_generator:
+                return eval_function.make_async_generator(*prefix, *args, **kwargs)
+            try:
+                return await eval_function.invoke(*prefix, *args, **kwargs)
+            except CarriedStopIteration as carried:
+                # As for a coroutine in Python, a StopIteration leaving the action is an error
+                raise RuntimeError(f"{eval_function.name} raised StopIteration") from carried.stop
 
         return invoke
 

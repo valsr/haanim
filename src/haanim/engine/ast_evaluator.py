@@ -14,6 +14,11 @@ from typing import TYPE_CHECKING, Any
 
 from haanim.engine.eval_function import (
     CHECKPOINT,
+    CarriedGeneratorExit,
+    CarriedStopIteration,
+    NativeSection,
+    YieldPoint,
+    is_automation_generator,
     ControlFlow,
     EvalFunction,
     ReturnValue,
@@ -21,10 +26,21 @@ from haanim.engine.eval_function import (
     get_eval_function,
 )
 from haanim.engine import operators
+from haanim.engine.comprehensions import (
+    all_items,
+    async_for,
+    comprehension,
+    contains,
+    dict_comprehension,
+    drain,
+    drains,
+    generator_expression,
+    yield_from,
+)
 from haanim.engine.automation_module import ModuleLoader
 from haanim.engine.import_controller import ImportController
 from haanim.engine.safe_builtins import SafeBuiltins
-from haanim.engine.symbol_table import SCOPE_CLASS, SCOPE_COMPREHENSION, SCOPE_MODULE, SymbolTable
+from haanim.engine.symbol_table import SCOPE_CLASS, SCOPE_MODULE, SymbolTable
 from haanim.engine.errors import (
     AutomationRuntimeError,
     AutomationSecurityError,
@@ -46,6 +62,13 @@ class BreakLoop(ControlFlow):
 
 class ContinueLoop(ControlFlow):
     """Used to continue to next iteration."""
+
+
+def _stop_iteration(exc: Any) -> StopIteration | None:
+    """Return the StopIteration a raise statement raises (given as a class or an instance), or None."""
+    if isinstance(exc, type) and issubclass(exc, StopIteration):
+        return exc()
+    return exc if isinstance(exc, StopIteration) else None
 
 
 class AstEvaluator:
@@ -127,6 +150,9 @@ class AstEvaluator:
             ast.Call: self._eval_call,
             ast.Lambda: self._eval_lambda,
             ast.ListComp: self._eval_list_comprehension,
+            ast.Yield: self._eval_yield,
+            ast.YieldFrom: self._eval_yield_from,
+            ast.GeneratorExp: self._eval_generator_expression,
             ast.SetComp: self._eval_set_comprehension,
             ast.DictComp: self._eval_dict_comprehension,
             ast.JoinedStr: self._eval_joined_str,
@@ -138,6 +164,7 @@ class AstEvaluator:
             ast.AugAssign: self._eval_augmented_assignment,
             ast.If: self._eval_if,
             ast.For: self._eval_for,
+            ast.AsyncFor: self._eval_async_for,
             ast.While: self._eval_while,
             ast.Break: self._eval_break,
             ast.Continue: self._eval_continue,
@@ -285,7 +312,7 @@ class AstEvaluator:
         values: list[Any] = []
         for elt in elts:
             if isinstance(elt, ast.Starred):
-                values.extend(await self.aeval(elt.value, scope))
+                values.extend(await all_items(self, await self.aeval(elt.value, scope)))
             else:
                 values.append(await self.aeval(elt, scope))
         return values
@@ -361,7 +388,12 @@ class AstEvaluator:
             op_func = ops.get(type(op))
             if op_func is None:
                 raise AutomationRuntimeError(f"Unsupported comparison operator: {type(op).__name__}")
-            if not op_func(left, right):
+            if isinstance(op, (ast.In, ast.NotIn)) and is_automation_generator(right):
+                # Searched with the event loop free between items
+                result = await contains(self, right, left)
+                if result == isinstance(op, ast.NotIn):
+                    return False
+            elif not op_func(left, right):
                 return False
             left = right
 
@@ -418,8 +450,37 @@ class AstEvaluator:
         found = get_eval_function(func)
         if found is not None and not found[0].is_async:
             eval_function, prefix = found
+            if eval_function.is_generator:
+                return eval_function.make_generator(*prefix, *args, **kwargs)
             return await eval_function.invoke(*prefix, *args, **kwargs)
-        return func(*args, **kwargs)
+        args = await self._drain_arguments(func, args)
+        # Until it returns, native code has control: what it runs of the automation counts as one run
+        run = NativeSection.enter()
+        try:
+            return func(*args, **kwargs)
+        except StopIteration as stop:
+            raise CarriedStopIteration(stop) from None
+        finally:
+            NativeSection.leave(run)
+
+    async def _drain_arguments(self, func: Any, args: tuple[Any, ...]) -> tuple[Any, ...]:
+        """Pull an automation generator given to a consume-all call into a list, pausing between items."""
+        if args and is_automation_generator(args[0]) and drains(func, args):
+            return (await drain(self, args[0]), *args[1:])
+        return args
+
+    async def _eval_yield(self, node: ast.Yield, scope: SymbolTable) -> Any:
+        """Evaluate a yield: hand the value to the generator's consumer, and be what it sends back."""
+        value = await self.aeval(node.value, scope) if node.value is not None else None
+        return await YieldPoint(value)
+
+    async def _eval_yield_from(self, node: ast.YieldFrom, scope: SymbolTable) -> Any:
+        """Evaluate a yield from: pass every item of an iterable on, and be its return value."""
+        return await yield_from(await self.aeval(node.value, scope))
+
+    async def _eval_generator_expression(self, node: ast.GeneratorExp, scope: SymbolTable) -> Any:
+        """Evaluate a generator expression: a lazy generator over its comprehension."""
+        return await generator_expression(self, node, scope)
 
     async def _make_function(
         self,
@@ -475,78 +536,15 @@ class AstEvaluator:
 
     async def _eval_list_comprehension(self, node: ast.ListComp, scope: SymbolTable) -> list[Any]:
         """Evaluate a list comprehension."""
-        return list(await self._eval_comprehension(node, scope))
+        return await comprehension(self, node, scope)
 
     async def _eval_set_comprehension(self, node: ast.SetComp, scope: SymbolTable) -> set[Any]:
         """Evaluate a set comprehension."""
-        return set(await self._eval_comprehension(node, scope))
+        return set(await comprehension(self, node, scope))
 
     async def _eval_dict_comprehension(self, node: ast.DictComp, scope: SymbolTable) -> dict[Any, Any]:
         """Evaluate a dict comprehension."""
-        result: dict[Any, Any] = {}
-
-        async def process(generators: list[ast.comprehension], idx: int, local_scope: SymbolTable) -> None:
-            if idx >= len(generators):
-                key = await self.aeval(node.key, local_scope)
-                value = await self.aeval(node.value, local_scope)
-                result[key] = value
-                return
-
-            gen = generators[idx]
-            iterable = await self.aeval(gen.iter, local_scope)
-            for item in iterable:
-                if self.checkpoint_due():
-                    await CHECKPOINT
-                inner_scope = local_scope.create_child(SCOPE_COMPREHENSION)
-                await self._assign_target(gen.target, item, inner_scope)
-
-                # Check conditions
-                all_passed = True
-                for if_clause in gen.ifs:
-                    if not await self.aeval(if_clause, inner_scope):
-                        all_passed = False
-                        break
-
-                if all_passed:
-                    await process(generators, idx + 1, inner_scope)
-
-        await process(node.generators, 0, scope)
-        return result
-
-    async def _eval_comprehension(
-        self,
-        node: ast.ListComp | ast.SetComp,
-        scope: SymbolTable,
-    ) -> list[Any]:
-        """Evaluate a list or set comprehension."""
-        results: list[Any] = []
-
-        async def process(generators: list[ast.comprehension], idx: int, local_scope: SymbolTable) -> None:
-            if idx >= len(generators):
-                value = await self.aeval(node.elt, local_scope)
-                results.append(value)
-                return
-
-            gen = generators[idx]
-            iterable = await self.aeval(gen.iter, local_scope)
-            for item in iterable:
-                if self.checkpoint_due():
-                    await CHECKPOINT
-                inner_scope = local_scope.create_child(SCOPE_COMPREHENSION)
-                await self._assign_target(gen.target, item, inner_scope)
-
-                # Check conditions
-                all_passed = True
-                for if_clause in gen.ifs:
-                    if not await self.aeval(if_clause, inner_scope):
-                        all_passed = False
-                        break
-
-                if all_passed:
-                    await process(generators, idx + 1, inner_scope)
-
-        await process(node.generators, 0, scope)
-        return results
+        return await dict_comprehension(self, node, scope)
 
     async def _eval_joined_str(self, node: ast.JoinedStr, scope: SymbolTable) -> str:
         """Evaluate an f-string."""
@@ -614,6 +612,10 @@ class AstEvaluator:
         value = await self.aeval(node.value, scope)
         await self._assign_target(node.target, operators.IN_PLACE[type(node.op)](current, value), scope)
 
+    async def assign_target(self, target: ast.AST, value: Any, scope: SymbolTable) -> None:
+        """Assign a value to an assignment target (a name, attribute, subscript or unpacking)."""
+        await self._assign_target(target, value, scope)
+
     async def _assign_target(self, target: ast.AST, value: Any, scope: SymbolTable) -> None:
         """Assign a value to a target (name, tuple, list, etc.)."""
         if isinstance(target, ast.Name):
@@ -621,7 +623,7 @@ class AstEvaluator:
         elif isinstance(target, (ast.Tuple, ast.List)):
             if not hasattr(value, "__iter__"):
                 raise TypeError(f"cannot unpack non-iterable {type(value).__name__} object")
-            values = list(value)
+            values = list(await all_items(self, value))
             targets = target.elts
             starred = [index for index, elt in enumerate(targets) if isinstance(elt, ast.Starred)]
             if starred:
@@ -683,6 +685,10 @@ class AstEvaluator:
                 await self.aeval(stmt, scope)
         return None
 
+    async def _eval_async_for(self, node: ast.AsyncFor, scope: SymbolTable) -> None:
+        """Evaluate an async for loop: await the items of an async iterator."""
+        await async_for(self, node, scope, (BreakLoop, ContinueLoop))
+
     async def _eval_while(self, node: ast.While, scope: SymbolTable) -> Any:
         """Evaluate a while loop."""
         while await self.aeval(node.test, scope):
@@ -742,6 +748,7 @@ class AstEvaluator:
         class_scope = cell_scope.create_child(SCOPE_CLASS)
         class_scope.set("__module__", self.name)
         class_scope.set("__qualname__", node.name)
+        class_scope.set("__firstlineno__", node.lineno)
 
         for stmt in node.body:
             await self.aeval(stmt, class_scope)
@@ -818,8 +825,13 @@ class AstEvaluator:
                 raise exc_info[1].with_traceback(exc_info[2])
             raise AutomationRuntimeError("No active exception to re-raise")
         exc = await self.aeval(node.exc, scope)
+        cause = await self.aeval(node.cause, scope) if node.cause else None
+        stop = _stop_iteration(exc)
+        if stop is not None:
+            # Carried across the interpreter's frames: see CarriedStopIteration
+            stop.__cause__ = cause
+            raise CarriedStopIteration(stop) from None
         if node.cause:
-            cause = await self.aeval(node.cause, scope)
             raise exc from cause
         raise exc
 
@@ -853,12 +865,18 @@ class AstEvaluator:
         Returns:
             Whether a clause matched.
         """
+        # Automation code sees a carried StopIteration as itself
+        seen: BaseException = err
+        if isinstance(err, CarriedStopIteration):
+            seen = err.stop
+        elif isinstance(err, CarriedGeneratorExit):
+            seen = err.exit
         for handler in handlers:
-            if handler.type is not None and not isinstance(err, await self.aeval(handler.type, scope)):
+            if handler.type is not None and not isinstance(seen, await self.aeval(handler.type, scope)):
                 continue
 
             if handler.name:
-                scope.set(handler.name, err)
+                scope.set(handler.name, seen)
             try:
                 for stmt in handler.body:
                     await self.aeval(stmt, scope)

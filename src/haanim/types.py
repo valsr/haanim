@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
 
+from haanim.const import ResponseSupport
+
 STATE_UNAVAILABLE = "unavailable"
 STATE_UNKNOWN = "unknown"
 
@@ -285,9 +287,11 @@ class ServiceInfo:
         name: Service name without the domain, e.g. ``turn_on``.
         description: Human-readable description.
         fields: Parameter details keyed by parameter name.
+        supports_response: Whether the service gives response data.
     """
 
     domain: str
     name: str
     description: str = ""
     fields: dict[str, Any] = field(default_factory=dict)
+    supports_response: ResponseSupport = ResponseSupport.NONE

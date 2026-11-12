@@ -9,6 +9,7 @@ automation and is handed to the host's ``CardSink`` whenever it has changed.
 from __future__ import annotations
 
 import asyncio
+import copy
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -235,6 +236,25 @@ class HAAnimCard:
     ) -> _elements.ValueElement:
         """Create a labelled value: a string, number or boolean."""
         return _elements.ValueElement(self, id, label=label, value=value, unit=unit)
+
+    def create_table(  # pylint: disable=too-many-positional-arguments
+        self,
+        id: str,
+        columns: Sequence[str],
+        rows: Sequence[Sequence[_elements.TableCell]] = (),
+        units: Sequence[str] | None = None,
+        title: str | None = None,
+    ) -> _elements.TableElement:
+        """Create a table: column names, rows of strings, numbers and booleans, and units after the values."""
+        return _elements.TableElement(
+            self,
+            id,
+            # Copies: what the automation does with its lists later does not change the table
+            columns=copy.deepcopy(columns),
+            rows=copy.deepcopy(rows),
+            units=copy.deepcopy(units),
+            title=title,
+        )
 
     def create_entity(self, id: str, entity_id: str) -> _elements.EntityElement:
         """Create an element that shows the live state of a Home Assistant entity."""

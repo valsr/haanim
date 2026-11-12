@@ -111,14 +111,22 @@ class TestServiceProxy:
     async def test_direct_call(self, haa: HAAnim, services: FakeServiceCaller) -> None:
         """The proxy can be called directly, as in haa.service.light.turn_on(...)."""
         result = await haa.service.light.turn_on(
-            entity_id=["light.living_room", "light.kitchen"], brightness=150, rgb_color=[255, 0, 0]
+            entity_id=["light.living_room", "light.kitchen"], brightness=150
         )
         assert result.success is True
         assert services.calls[0].data == {
             "entity_id": ["light.living_room", "light.kitchen"],
             "brightness": 150,
-            "rgb_color": [255, 0, 0],
         }
+
+    @pytest.mark.parametrize("value", [True, False])
+    async def test_return_response_is_refused(
+        self, haa: HAAnim, services: FakeServiceCaller, value: bool
+    ) -> None:
+        """A return_response argument would be sent as a field, which the service refuses."""
+        with pytest.raises(TypeError, match="remove return_response"):
+            await haa.service.weather.get_forecast(return_response=value)
+        assert services.calls == []
 
     def test_proxy_of_a_missing_service(self, haa: HAAnim) -> None:
         """Getting a proxy never raises; a missing service has no description or parameters."""

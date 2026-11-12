@@ -15,7 +15,16 @@ first graph, empty it, and switch how it is drawn.
 import math
 from datetime import timedelta
 
-from haanim import ActionEvent, IntervalEvent, action, haa, on_interval, startup
+from haanim import (
+    ActionEvent,
+    IntervalEvent,
+    UnitOfPower,
+    UnitOfTemperature,
+    action,
+    haa,
+    on_interval,
+    startup,
+)
 
 TEMPERATURE = "sensor.temperature"
 FAN = "input_boolean.fan"  # a Toggle helper called "Fan"; any entity that is on or off will do
@@ -30,7 +39,7 @@ curve = haa.card.create_graph(
     "curve",
     series={"Target": [(0, 18), (6, 21), (9, 19), (17, 21.5), (22, 18), (24, 18)]},
     title="2. Pairs over a number axis: target by hour",
-    unit="°C",
+    unit=UnitOfTemperature.CELSIUS,
     min=15,
     max=25,
     x_major=6,
@@ -67,7 +76,9 @@ def build_card(event: ActionEvent) -> None:
     hours = [now - timedelta(hours=back) for back in range(6, -1, -1)]
     power = [(moment, 300 + 200 * math.sin(index)) for index, moment in enumerate(hours)]
     card.add_element(
-        card.create_graph("power", series={"Power": power}, kind="area", title="3. Over time", unit="W")
+        card.create_graph(
+            "power", series={"Power": power}, kind="area", title="3. Over time", unit=UnitOfPower.WATT
+        )
     )
 
     # 4. States: text instead of numbers. A state holds until the next point, and None is a gap.

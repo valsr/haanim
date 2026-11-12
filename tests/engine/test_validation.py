@@ -25,31 +25,21 @@ from tests.engine.helpers import automation_file, load_and_run, make_context
 # Each unsupported construct of the design's "Supported Python" section:
 # (source, line of the construct, text expected in the message).
 UNSUPPORTED: dict[str, tuple[str, int, str]] = {
-    "yield": ("x = 1\ndef gen():\n    yield 1\n", 3, "'yield' is not supported"),
-    "bare yield": ("def gen():\n    yield\n", 2, "'yield' is not supported"),
-    "yield in lambda": ("f = lambda: (yield)\n", 1, "'yield' is not supported"),
-    "yield from": ("def gen():\n\n    yield from [1, 2]\n", 3, "'yield from' is not supported"),
-    "generator expression": ("\n\ntotal = sum(x for x in [1, 2])\n", 3, "generator expressions"),
-    "async for": ("async def f(items):\n    async for item in items:\n        pass\n", 2, "'async for'"),
-    "async list comprehension": (
-        "async def f(items):\n    return [x async for x in items]\n",
-        2,
-        "async comprehensions",
+    "yield in lambda": ("f = lambda: (yield)\n", 1, "'yield' in a lambda is not supported: use a def"),
+    "yield from in an async def": (
+        "async def gen():\n\n    yield from [1, 2]\n",
+        3,
+        "'yield from' inside async function",
     ),
-    "async set comprehension": (
-        "async def f(items):\n    return {x async for x in items}\n",
+    "async for outside an async def": (
+        "items = []\nasync for item in items:\n    pass\n",
         2,
-        "async comprehensions",
+        "'async for' outside async function",
     ),
-    "async dict comprehension": (
-        "async def f(items):\n    return {x: 1 async for x in items}\n",
+    "async comprehension outside an async def": (
+        "items = []\nr = [x async for x in items]\n",
         2,
-        "async comprehensions",
-    ),
-    "async inner comprehension clause": (
-        "async def f(rows):\n    return [x for row in rows async for x in row]\n",
-        2,
-        "async comprehensions",
+        "asynchronous comprehension outside of an asynchronous function",
     ),
     "match": ("value = 1\nmatch value:\n    case 1:\n        pass\n", 2, "'match' statements"),
     "except*": ("try:\n    pass\nexcept* ValueError:\n    pass\n", 1, "'except*'"),
@@ -207,12 +197,12 @@ class TestUnsupportedConstructs:
             type(node) for source, _, _ in UNSUPPORTED.values() for node in ast.walk(ast.parse(source))
         }
 
-        assert {ast.Yield, ast.YieldFrom, ast.GeneratorExp, ast.AsyncFor, ast.Match, ast.TryStar} <= rejected
+        assert {ast.Yield, ast.YieldFrom, ast.AsyncFor, ast.Match, ast.TryStar} <= rejected
 
-    def test_generator_expression_suggests_a_list_comprehension(self) -> None:
-        """The message tells the author what to use instead."""
-        with pytest.raises(AutomationSyntaxError, match="use a list comprehension"):
-            validate_source("r = any(x for x in [1])")
+    def test_generators_are_supported(self) -> None:
+        """Generator functions, yield from and generator expressions are valid."""
+        source = "def gen():\n    yield 1\n    yield from [2]\nr = any(x for x in [1])\n"
+        assert validate_source(source).body
 
     def test_is_the_public_error(self) -> None:
         """The error is the one automations and tools import from haanim."""
@@ -269,7 +259,9 @@ class TestProblems:
 
     def test_all_problems_are_listed_in_source_order(self) -> None:
         """One error lists every problem, first one first."""
-        source = "match 1:\n    case _:\n        pass\ndef gen():\n    yield 1\nr = sum(x for x in [])\n"
+        source = (
+            "match 1:\n    case _:\n        pass\ndef gen():\n    f = lambda: (yield)\nr = lambda: (yield)\n"
+        )
 
         with pytest.raises(AutomationSyntaxError) as raised:
             validate_source(source, filename="main.py")
@@ -281,7 +273,7 @@ class TestProblems:
 
     def test_problems_on_one_line_are_ordered_by_column(self) -> None:
         """Two problems on a line are reported left to right."""
-        problems = find_unsupported(ast.parse("r = [sum(a for a in []), sum(b for b in [])]"), "main.py")
+        problems = find_unsupported(ast.parse("r = [lambda: (yield 1), lambda: (yield 2)]"), "main.py")
 
         assert [problem.col_offset for problem in problems] == sorted(
             problem.col_offset for problem in problems
@@ -290,7 +282,7 @@ class TestProblems:
 
     def test_nested_function_is_checked(self) -> None:
         """Code in function and class bodies is checked although it does not run at load."""
-        source = "class A:\n    def m(self):\n        def inner():\n            yield 1\n"
+        source = "class A:\n    def m(self):\n        def inner():\n            f = lambda: (yield)\n"
 
         _, problems = check_source(source, "main.py")
 
@@ -329,9 +321,9 @@ class TestValidateFiles:
         """A file other than the main one is checked too."""
         files = FakeFileSystem()
         files.write(Path("/a/main.py"), "import helper\n")
-        files.write(Path("/a/helper.py"), "\ndef gen():\n    yield 1\n")
+        files.write(Path("/a/helper.py"), "\ndef gen():\n    f = lambda: (yield)\n")
 
-        with pytest.raises(AutomationSyntaxError, match=r"^helper.py:3: 'yield'") as raised:
+        with pytest.raises(AutomationSyntaxError, match=r"^helper.py:3: 'yield' in a lambda") as raised:
             await validate_files(files, [Path("/a/main.py"), Path("/a/helper.py")])
 
         assert raised.value.filename == "helper.py"
@@ -340,7 +332,7 @@ class TestValidateFiles:
         """One error covers the whole automation."""
         files = FakeFileSystem()
         files.write(Path("/a/main.py"), "def broken(:\n")
-        files.write(Path("/a/helper.py"), "r = sum(x for x in [])\n")
+        files.write(Path("/a/helper.py"), "f = lambda: (yield)\n")
 
         with pytest.raises(AutomationSyntaxError) as raised:
             await validate_files(files, [Path("/a/main.py"), Path("/a/helper.py")])
@@ -377,7 +369,9 @@ class TestLoad:
         """Code before the unsupported construct is not executed."""
         marker = tmp_path / "ran"
         path = automation_file(tmp_path, "lights")
-        path.write_text(f"open({str(marker)!r}, 'w').close()\nran = True\n\ndef gen():\n    yield 1\n")
+        path.write_text(
+            f"open({str(marker)!r}, 'w').close()\nran = True\n\ndef gen():\n    f = lambda: (yield)\n"
+        )
         context = make_context(str(path), allow_all_imports=True)
 
         with pytest.raises(AutomationSyntaxError, match=r"^main.py:5: "):

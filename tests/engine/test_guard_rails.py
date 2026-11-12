@@ -241,11 +241,15 @@ class TestAllowedImports:
     def test_syntax_problems_take_precedence(self) -> None:
         """A file that is not valid supported Python is reported as that, without the security problems."""
         with pytest.raises(AutomationSyntaxError) as raised:
-            validate_source("import os\ndef gen():\n    yield 1\n", filename="main.py", imports=controller())
+            validate_source(
+                "import os\ndef gen():\n    f = lambda: (yield)\n", filename="main.py", imports=controller()
+            )
 
         assert [problem.lineno for problem in raised.value.problems] == [2 + 1]
 
-        _, problems = check_source("import os\ndef gen():\n    yield 1\n", "main.py", controller())
+        _, problems = check_source(
+            "import os\ndef gen():\n    f = lambda: (yield)\n", "main.py", controller()
+        )
         assert [(problem.lineno, problem.security) for problem in problems] == [(1, True), (3, False)]
 
     def test_imports_are_not_checked_without_rules(self) -> None:
